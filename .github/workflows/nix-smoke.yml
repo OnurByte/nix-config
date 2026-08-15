@@ -31,6 +31,17 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
+      - name: Parse Hyprland Lua
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix shell nixpkgs#lua -c bash -c '
+            for file in home/yargc/hypr/*.lua; do
+              echo "parsing $file"
+              luac -p "$file"
+            done
+          '
+
       - name: Resolve locked flake inputs
         run: nix flake metadata --no-write-lock-file
 

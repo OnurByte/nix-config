@@ -8,23 +8,20 @@
   services.greetd = {
     enable = true;
     settings.default_session = {
-      command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${pkgs.hyprland}/bin/Hyprland";
+      # Hyprland 0.53+ wants sessions launched through start-hyprland rather
+      # than invoking the compositor binary directly.
+      command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${pkgs.hyprland}/bin/start-hyprland";
       user = "greeter";
     };
   };
 
-  hardware.graphics = {
-    enable = true;
-    enable32Bit = true;
-  };
+  hardware.graphics.enable = true;
 
   hardware.bluetooth.enable = true;
-  services.blueman.enable = true;
 
   services.pipewire = {
     enable = true;
     alsa.enable = true;
-    alsa.support32Bit = true;
     pulse.enable = true;
     wireplumber.enable = true;
   };
@@ -47,19 +44,18 @@
   };
 
   environment.systemPackages = with pkgs; [
-    brightnessctl
-    playerctl
+    # Explicit backends used by Caelestia's capture/clipboard commands.
     wl-clipboard
+    cliphist
     grim
     slurp
     swappy
-    cliphist
     fuzzel
-    hyprlock
-    hypridle
-    hyprpicker
-    networkmanagerapplet
-    pavucontrol
+    gpu-screen-recorder
+
+    # Native Hyprland ecosystem helpers.
+    hyprsunset
+    hyprpolkitagent
   ];
 
   fonts.packages = with pkgs; [

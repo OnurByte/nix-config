@@ -18,23 +18,32 @@ A Linux workstation built around a simple loop:
 
 ---
 
-Kraken is my daily NixOS workstation: a clean Hyprland rice where coding agents are part of the desktop instead of a pile of forgotten terminal tabs.
+Kraken is my daily NixOS workstation: a Hyprland rice where coding agents are part of the desktop instead of a pile of forgotten terminal tabs.
 
-The rule is simple: **use cloud/provider agents where they are useful, keep the machine itself light.** There is no Ollama stack, local model daemon or GPU-burning local inference layer here.
+The rule is simple: **use cloud/provider agents where they are useful, keep the machine itself light, and let one shell own the desktop.** There is no Ollama stack, local-model daemon or pile of overlapping panels here.
 
 ## Desktop
 
 | Layer | Choice |
 |---|---|
-| compositor | **Hyprland** |
+| compositor | **Hyprland**, modular Lua config |
 | shell | **Caelestia / Quickshell**, patched by Nix |
 | terminal | **Ghostty** |
+| shell UX | **Zsh + minimal Oh My Zsh + Starship** |
 | editor | **PychoVIM** + **Zed Preview** |
 | browser | **Zen** + **Helium** + **Tor Browser** |
 | music | **Spotify + Spicetify** |
 | Discord | **Vesktop + system Vencord** |
 | desktop AI | **ChatGPT Desktop** + **Claude Desktop** |
 | agent IDEs | **bb** + **T3 Code** + **ZCode** |
+
+## One desktop shell
+
+Caelestia owns the bar, launcher, control center, network/Bluetooth/audio controls, notification history, DND, idle/lock flow, clipboard frontend, screenshots/recording and wallpaper scheme. The remaining `cliphist` watchers are only its history backend.
+
+Wallpaper changes drive Caelestia's Material scheme into the shell, GTK apps, Fuzzel-backed pickers, btop/nvtop, Hyprland borders and terminal PTYs. Spotify stays on its deliberate Catppuccin theme instead of being rewritten by the wallpaper engine.
+
+Hyprland itself is split into small Lua modules under `home/yargc/hypr/`: appearance, input, autostart and binds. No legacy `hyprland.conf`, parallel `hypridle`, `nm-applet`, Blueman or second bar.
 
 ## Agent workflow
 
@@ -65,7 +74,7 @@ flowchart LR
 
 - **bb** — primary control plane for Codex, Claude Code, OpenCode and Hermes threads/worktrees.
 - **T3 Code** — lightweight GUI with Codex, Claude and OpenCode enabled together.
-- **ZCode** — official GLM-focused agentic development environment, packaged from Z.AI's Linux AppImage and pinned by hash.
+- **ZCode** — GLM-focused agentic development environment, packaged from Z.AI's Linux artifact and pinned by hash.
 - **Plannotator** — visual review gate for Codex and Claude plans.
 - **agent-browser** — browser automation without turning the desktop into a local-model lab.
 - **CodexBar** — provider quota/reset state integrated directly into Caelestia.
@@ -73,9 +82,7 @@ flowchart LR
 
 ## Caelestia × CodexBar
 
-Kraken does not start a second bar just for AI usage.
-
-Caelestia is patched during the Nix build with a native `aiUsage` QML delegate. CodexBar refreshes provider pressure every 30 seconds; clicking it opens the Wayland GTK4 provider panel.
+Kraken does not start a second bar just for AI usage. Caelestia is patched during the Nix build with a native `aiUsage` QML delegate. CodexBar refreshes provider pressure every 30 seconds; clicking it opens the Wayland GTK provider panel.
 
 ```text
 ╭─────────────╮
@@ -90,28 +97,21 @@ Caelestia is patched during the Nix build with a native `aiUsage` QML delegate. 
 ╰─────────────╯
 ```
 
-No Waybar process, no copied shell scripts, no post-install patch step.
+## Shell
+
+Oh My Zsh is intentionally small: `git`, `sudo`, `extract` and `colored-man-pages`. Completion, autosuggestions, syntax highlighting and history search remain Home Manager-managed, while Starship owns the prompt.
+
+Caelestia also writes the active Material terminal palette as ANSI sequences; Zsh reapplies the latest palette when a new Ghostty shell starts.
 
 ## Music
 
-Spotify is managed through **Spicetify-Nix**. The Spotify package itself is supplied by the Home Manager module, so there is no duplicate client or installer.
-
-Configured extensions:
-
-- `adblockify`
-- `hidePodcasts`
-- `shuffle`
-- Catppuccin Mocha theme
-
-Music controls stay inside Caelestia's native MPRIS layer. Spotify is the default player, so the dashboard/Now Playing UI and the hardware media keys all control the same session.
+Spotify is managed through **Spicetify-Nix** with `adblockify`, `hidePodcasts`, `shuffle` and Catppuccin Mocha. Music controls stay inside Caelestia's MPRIS layer so the dashboard, Now Playing UI and hardware media keys agree on the same session.
 
 > Spicetify and its extensions are community modifications and can break when Spotify changes its client.
 
 ## Discord
 
-Discord runs through **Vesktop with Nix-managed Vencord** rather than patching the stock client after every rebuild.
-
-Vesktop/Vencord configuration is written by Home Manager, app self-updates are disabled, and the Caelestia tray handles minimize-to-tray behaviour. This keeps the Wayland experience reproducible and leaves Discord one `Super + D` away.
+Discord runs through **Vesktop with Nix-managed Vencord** rather than patching the stock client after every rebuild. App self-updates are disabled and the Caelestia tray handles the desktop integration.
 
 > Vesktop/Vencord are unofficial Discord client modifications and may conflict with Discord's Terms of Service.
 
@@ -120,6 +120,18 @@ Vesktop/Vencord configuration is written by Home Manager, app self-updates are d
 | Key | Action |
 |---|---|
 | `Super + Space` | Caelestia launcher |
+| `Super + C` | control center / quick toggles |
+| `Super + Shift + N` | notification sidebar/history |
+| `Super + Shift + V` | clipboard history |
+| `Super + .` | emoji picker |
+| `Super + /` | searchable keybind cheatsheet |
+| `Super + Shift + Space` | switch keyboard layout |
+| `Alt + Tab` | cycle windows |
+| `Print` | screenshot |
+| `Shift + Print` | frozen region screenshot |
+| `Super + Ctrl + O` | OCR selected region to clipboard (Turkish + English) |
+| `Super + Shift + R` | region recording |
+| `Super + L` | Caelestia lock |
 | `Super + M` | Spotify |
 | `Super + D` | Vesktop / Discord |
 | `Super + Shift + D` | **bb** agent IDE |
@@ -136,26 +148,24 @@ Vesktop/Vencord configuration is written by Home Manager, app self-updates are d
 | `Super + B` | Zen Browser |
 | `Super + Shift + B` | Helium |
 
-Everything is also discoverable from Caelestia's launcher. Keybinds are shortcuts, not required knowledge.
+A three-finger horizontal touchpad gesture changes workspaces. `Super + mouse wheel` does the same. The cheatsheet is searchable, so the README is not required knowledge.
 
 ## Development baseline
 
-The system is still a normal development workstation without an agent:
-
 **Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · Podman · Distrobox · libvirt · Lazygit · mise**
 
-**Bun is the JS package-manager baseline.** `pnpm` is intentionally not installed in the user environment. Node remains for runtime/LSP compatibility.
-
-A Nix-native Apache + PHP + MariaDB stack replaces XAMPP and binds Apache to localhost only.
+**Bun is the JS package-manager baseline.** Node remains for runtime/LSP compatibility. A Nix-native Apache + PHP + MariaDB stack replaces XAMPP and binds Apache to localhost only; shell controls are named `web-start`, `web-stop`, `web-restart` and `web-status` accordingly.
 
 ## Nix layout
 
 ```text
 NixOS
-├── shell
-│   ├── Caelestia
-│   ├── CodexBar QML integration
-│   └── Spotify / MPRIS
+├── Hyprland
+│   └── Lua → appearance / input / autostart / binds
+├── Caelestia
+│   ├── desktop controls + idle/lock + capture
+│   ├── wallpaper-driven theme propagation
+│   └── CodexBar QML integration
 ├── desktop
 │   ├── Zen + Helium
 │   ├── Vesktop + Vencord
@@ -180,6 +190,8 @@ Most of the system is declarative. Two fast-moving user tools intentionally keep
 
 `kraken` is a Lenovo IdeaPad Gaming 3 16ARH7 with a Ryzen 5 6600H, Radeon 660M and RTX 3050 Mobile. AMD drives the desktop; NVIDIA is available through PRIME offload.
 
+Night light is handled by `hyprsunset`: neutral from 07:00 and a mild 5000 K profile from 21:00.
+
 ## Install note
 
 > [!IMPORTANT]
@@ -197,7 +209,7 @@ sudo nixos-rebuild switch --flake .#kraken
 
 ## Influences
 
-Kraken started from ideas in [`bariscodefxy/nix-config`](https://github.com/bariscodefxy/nix-config), then moved toward its own direction: Caelestia's cohesive shell, Omarchy's application-first workflow and the restraint common in the better Hyprland/unixporn setups — **one shell, native media integration, a few strong shortcuts and as little glue code as possible.**
+Kraken started from ideas in `bariscodefxy/nix-config`, then moved toward its own direction: Caelestia's cohesive shell, Omarchy's application-first workflow and the usability-first side of Hyprland ricing — **one shell, native integrations, strong shortcuts and as little glue code as possible.**
 
 ---
 

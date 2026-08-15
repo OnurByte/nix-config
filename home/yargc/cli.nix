@@ -2,7 +2,10 @@
 {
   programs = {
     bat.enable = true;
-    btop.enable = true;
+    btop = {
+      enable = true;
+      settings.color_theme = "caelestia";
+    };
     eza.enable = true;
     fastfetch.enable = true;
     fzf.enable = true;
