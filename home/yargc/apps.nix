@@ -60,6 +60,9 @@ in
     mpv
     imv
 
+    # Opt-in Windows compatibility without making gaming part of the base rice.
+    bottles
+
     # Knowledge / coding surfaces.
     obsidian
     agenticT3Code
