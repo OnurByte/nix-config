@@ -88,21 +88,5 @@ in
     "hypr/kraken/input.lua".source = ./hypr/input.lua;
     "hypr/kraken/autostart.lua".source = ./hypr/autostart.lua;
     "hypr/kraken/binds.lua".source = ./hypr/binds.lua;
-
-    # hyprsunset intentionally keeps its own simple hyprlang-style config.
-    "hypr/hyprsunset.conf".text = ''
-      max-gamma = 100
-
-      profile {
-        time = 07:00
-        identity = true
-      }
-
-      profile {
-        time = 21:00
-        temperature = 5000
-        gamma = 0.9
-      }
-    '';
   };
 }
