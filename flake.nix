@@ -25,6 +25,11 @@
       inputs.home-manager.follows = "home-manager";
     };
 
+    spicetify-nix = {
+      url = "github:Gerg-L/spicetify-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Native vendor desktop applications packaged for NixOS.
     chatgpt-desktop = {
       url = "github:poeck/chatgpt-desktop-app-nix-flake";
@@ -62,9 +67,12 @@
       system = "x86_64-linux";
       username = "yargc";
       hostname = "kraken";
+      pkgs = nixpkgs.legacyPackages.${system};
     in
     {
-      formatter.${system} = nixpkgs.legacyPackages.${system}.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt-rfc-style;
+
+      packages.${system}.zcode = pkgs.callPackage ./home/yargc/packages/zcode.nix { };
 
       nixosConfigurations.${hostname} = nixpkgs.lib.nixosSystem {
         inherit system;

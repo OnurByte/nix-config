@@ -11,11 +11,11 @@
     shellAliases = {
       nvim = "pycho";
       zed = "zed-preview";
+      glm = "zcode";
 
       # Agent cockpit / quota surfaces.
       aipanel = "codexbar-popup";
       aicockpit = "bb-app";
-      aicowork = "aionui";
       hermeshud = "hermes-hud";
 
       # Provider quota/reset data vs local token/cost accounting.

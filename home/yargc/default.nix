@@ -1,9 +1,11 @@
 {
+  inputs,
   username,
   ...
 }:
 {
   imports = [
+    inputs.spicetify-nix.homeManagerModules.spicetify
     ./apps.nix
     ./caelestia.nix
     ./cli.nix
@@ -11,6 +13,7 @@
     ./git.nix
     ./hyprland.nix
     ./lazy-tools.nix
+    ./media.nix
     ./neovim.nix
     ./zsh.nix
   ];

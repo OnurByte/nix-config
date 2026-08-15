@@ -15,9 +15,6 @@ in
       enable = true;
       enableMcpIntegration = true;
 
-      # Codex exposes lifecycle hooks through Home Manager. When a turn ends
-      # with a plan, Plannotator opens its local browser review surface; reject
-      # feedback is returned to Codex so the same turn can revise the plan.
       settings.features.hooks = true;
       hooks.Stop = [
         {
@@ -37,9 +34,6 @@ in
       enable = true;
       enableMcpIntegration = true;
 
-      # Mirror Plannotator's upstream Claude Code plugin hooks without a
-      # mutable marketplace install. EnterPlanMode sharpens context; asking to
-      # leave plan mode opens the local visual approval/review surface.
       settings.hooks = {
         PreToolUse = [
           {
@@ -73,8 +67,6 @@ in
       enableMcpIntegration = true;
     };
 
-    # Keep Nix as the system baseline, but allow project-local runtime pinning
-    # for repos that expect .tool-versions / mise.toml workflows.
     mise = {
       enable = true;
       enableZshIntegration = true;
@@ -116,10 +108,9 @@ in
       uv
       ruff
 
-      # JS / TS
+      # JS / TS — Bun is the package manager; Node stays as a runtime/LSP dependency.
       nodejs_24
       bun
-      pnpm
       typescript
       typescript-language-server
 

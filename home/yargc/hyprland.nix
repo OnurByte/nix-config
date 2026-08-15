@@ -1,4 +1,11 @@
-{ pkgs, ... }:
+{
+  inputs,
+  pkgs,
+  ...
+}:
+let
+  zcode = inputs.self.packages.${pkgs.system}.zcode;
+in
 {
   xdg.configFile."hypr/hyprland.conf".text = ''
     monitor = ,preferred,auto,1
@@ -60,11 +67,15 @@
     bind = $mainMod, Z, exec, zed-preview
     bind = $mainMod, SPACE, exec, caelestia shell drawers toggle launcher
 
-    # Agentic desktop surfaces: one primary control plane, then focused apps.
+    # Daily desktop surfaces.
+    bind = $mainMod, M, exec, spotify
+    bind = $mainMod, D, exec, ${pkgs.vesktop}/bin/vesktop
     bind = $mainMod, A, exec, chatgpt
     bind = $mainMod SHIFT, A, exec, claude-desktop
+
+    # Agentic coding surfaces: one control plane plus focused vendor apps.
     bind = $mainMod SHIFT, D, exec, bb-app
-    bind = $mainMod SHIFT, G, exec, aionui
+    bind = $mainMod SHIFT, G, exec, ${zcode}/bin/zcode
     bind = $mainMod SHIFT, H, exec, hermes-desktop
     bind = $mainMod, T, exec, t3code-desktop
     bind = $mainMod, U, exec, codexbar-popup
@@ -113,6 +124,12 @@
     bind = SHIFT, Print, exec, grim - | swappy -f -
     bind = $mainMod, Print, exec, grim -g "$(slurp)" - | wl-copy
     bind = $mainMod SHIFT, V, exec, cliphist list | fuzzel --dmenu | cliphist decode | wl-copy
+
+    # Keep media control inside Caelestia so its selected MPRIS player, dashboard
+    # and Now Playing surface all agree about what is active.
+    bind = , XF86AudioPlay, exec, caelestia shell mpris playPause
+    bind = , XF86AudioNext, exec, caelestia shell mpris next
+    bind = , XF86AudioPrev, exec, caelestia shell mpris previous
 
     bind = , XF86MonBrightnessDown, exec, brightnessctl set 5%-
     bind = , XF86MonBrightnessUp, exec, brightnessctl set +5%

@@ -13,15 +13,44 @@ let
   };
 in
 {
+  programs.vesktop = {
+    enable = true;
+    vencord.useSystem = true;
+
+    # Updates belong to Nix, while tray behaviour should feel like a normal
+    # desktop app under Caelestia.
+    settings = {
+      appBadge = true;
+      arRPC = true;
+      checkUpdates = false;
+      customTitleBar = false;
+      disableMinSize = true;
+      hardwareAcceleration = true;
+      minimizeToTray = true;
+      tray = true;
+      discordBranch = "stable";
+    };
+
+    vencord.settings = {
+      autoUpdate = false;
+      autoUpdateNotification = false;
+      notifyAboutUpdates = false;
+    };
+  };
+
   home.packages = with pkgs; [
     # Browsers: Zen is the daily default, Helium is the Chromium-side companion.
     inputs.zen-browser.packages.${pkgs.system}.default
     inputs.helium.packages.${pkgs.system}.default
     tor-browser
 
-    # Native AI desktop apps. Both flakes package the vendors' official Linux binaries.
+    # Native AI desktop apps. Keep the rich product surfaces.
     inputs.chatgpt-desktop.packages.${pkgs.system}.default
     inputs.claude-desktop.packages.${pkgs.system}.claude-desktop-with-fhs
+
+    # Communication.
+    session-desktop
+    telegram-desktop
 
     # Desktop / files / media.
     ghostty
@@ -31,11 +60,10 @@ in
     mpv
     imv
 
-    # Communication / knowledge / agent surfaces.
-    session-desktop
-    telegram-desktop
+    # Knowledge / coding surfaces.
     obsidian
     agenticT3Code
+    inputs.self.packages.${pkgs.system}.zcode
   ];
 
   xdg.mimeApps = {

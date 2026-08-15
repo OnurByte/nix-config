@@ -32,20 +32,26 @@ in
     # Hyprland starts the shell directly.
     systemd.enable = false;
 
-    # The stock Caelestia list accepts arbitrary entry IDs; the patched shell
-    # gives aiUsage a native QML delegate backed by CodexBar.
-    settings.bar.entries = [
-      { id = "logo"; enabled = true; }
-      { id = "workspaces"; enabled = true; }
-      { id = "spacer"; enabled = true; }
-      { id = "activeWindow"; enabled = true; }
-      { id = "spacer"; enabled = true; }
-      { id = "tray"; enabled = true; }
-      { id = "aiUsage"; enabled = true; }
-      { id = "clock"; enabled = true; }
-      { id = "statusIcons"; enabled = true; }
-      { id = "power"; enabled = true; }
-    ];
+    settings = {
+      # Let Caelestia's native MPRIS/dashboard/Now Playing surfaces own music
+      # controls instead of maintaining a second bar widget stack.
+      services.defaultPlayer = "Spotify";
+
+      # The stock Caelestia list accepts arbitrary entry IDs; the patched shell
+      # gives aiUsage a native QML delegate backed by CodexBar.
+      bar.entries = [
+        { id = "logo"; enabled = true; }
+        { id = "workspaces"; enabled = true; }
+        { id = "spacer"; enabled = true; }
+        { id = "activeWindow"; enabled = true; }
+        { id = "spacer"; enabled = true; }
+        { id = "tray"; enabled = true; }
+        { id = "aiUsage"; enabled = true; }
+        { id = "clock"; enabled = true; }
+        { id = "statusIcons"; enabled = true; }
+        { id = "power"; enabled = true; }
+      ];
+    };
 
     cli = {
       enable = true;
@@ -55,7 +61,5 @@ in
 
   home.packages = [ codexbarUi ];
 
-  # The popup expects provider marks under XDG_DATA_HOME. Keep them immutable
-  # in the Nix store and expose that directory through Home Manager.
   xdg.dataFile."codexbar-waybar/icons".source = "${codexbarUi}/share/codexbar-waybar/icons";
 }

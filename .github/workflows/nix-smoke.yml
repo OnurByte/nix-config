@@ -32,13 +32,15 @@ jobs:
           done < <(find . -name '*.nix' -print0)
 
       - name: Resolve locked flake inputs
-        run: nix flake metadata
+        run: nix flake metadata --no-write-lock-file
 
       - name: Evaluate kraken module graph
         run: test "$(nix eval --raw .#nixosConfigurations.kraken.config.networking.hostName)" = kraken
 
-      # Evaluation cannot catch a stale QML patch or a broken GTK wrapper.
-      # Build the exact Caelestia package Home Manager will install; its Nix
-      # dependency graph also forces the local CodexBar Wayland UI derivation.
+      # ZCode is proprietary upstream software; the system config allows
+      # unfree packages, while a standalone CI package build must opt in.
+      - name: Build ZCode package
+        run: NIXPKGS_ALLOW_UNFREE=1 nix build --impure --no-link .#zcode
+
       - name: Build agentic Caelestia surface
         run: nix build --no-link '.#nixosConfigurations.kraken.config.home-manager.users.yargc.programs.caelestia.package'

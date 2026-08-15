@@ -4,10 +4,10 @@
 
 ### an agentic NixOS rice
 
-**Hyprland · Caelestia · bb · Codex · Claude · OpenCode · Hermes**
+**Hyprland · Caelestia · bb · Codex · Claude · OpenCode · Hermes · GLM**
 
-A Linux workstation built around the loop that actually matters:
-**ask → delegate → inspect → review → ship.**
+A Linux workstation built around a simple loop:
+**delegate → inspect → review → ship.**
 
 ![NixOS](https://img.shields.io/badge/NixOS-unstable-5277C3?style=flat-square&logo=nixos&logoColor=white)
 ![Hyprland](https://img.shields.io/badge/Hyprland-Wayland-58E1FF?style=flat-square)
@@ -18,17 +18,9 @@ A Linux workstation built around the loop that actually matters:
 
 ---
 
-## Why Kraken exists
+Kraken is my daily NixOS workstation: a clean Hyprland rice where coding agents are part of the desktop instead of a pile of forgotten terminal tabs.
 
-Most "AI dev setups" are a normal desktop with a pile of agent CLIs installed on top. Kraken treats agents as part of the desktop itself.
-
-- **One control plane for coding agents.** bb owns threads, worktrees and multi-agent orchestration instead of scattering work across terminals.
-- **Quota state belongs in the shell.** CodexBar is rendered directly inside Caelestia.
-- **Plans should be reviewed visually.** Codex and Claude Code are wired to Plannotator before plan-mode work continues.
-- **GUI for context, terminal for speed.** T3 Code and bb sit beside direct Codex/OpenCode shortcuts.
-- **The AI layer stays reproducible.** Apps, hooks, browser automation and agent tooling are pinned by Nix and `flake.lock`.
-
-The point is not to put AI everywhere. It is to make delegation feel native without giving up control of the machine.
+The rule is simple: **use cloud/provider agents where they are useful, keep the machine itself light.** There is no Ollama stack, local model daemon or GPU-burning local inference layer here.
 
 ## Desktop
 
@@ -39,7 +31,10 @@ The point is not to put AI everywhere. It is to make delegation feel native with
 | terminal | **Ghostty** |
 | editor | **PychoVIM** + **Zed Preview** |
 | browser | **Zen** + **Helium** + **Tor Browser** |
-| desktop AI | **ChatGPT Linux beta** + **Claude Desktop Linux beta** |
+| music | **Spotify + Spicetify** |
+| Discord | **Vesktop + system Vencord** |
+| desktop AI | **ChatGPT Desktop** + **Claude Desktop** |
+| agent IDEs | **bb** + **T3 Code** + **ZCode** |
 | keyboard | **Turkish Q only** |
 
 ## Agent workflow
@@ -51,8 +46,9 @@ flowchart LR
     BB --> Claude[Claude Code]
     BB --> OpenCode[OpenCode]
     BB --> Hermes[Hermes]
+    GLM[ZCode / GLM] --> Work[repo]
 
-    Codex --> Work[isolated worktree]
+    Codex --> Work
     Claude --> Work
     OpenCode --> Work
     Hermes --> Work
@@ -66,96 +62,70 @@ flowchart LR
     Usage[CodexBar] --> Shell[Caelestia]
 ```
 
-## Agent surfaces
+### The useful surfaces
 
-Kraken keeps the default set intentionally focused:
-
-| Surface | Role |
-|---|---|
-| **bb** | Primary local-first Agent IDE. Codex, Claude Code, OpenCode and Hermes share one thread/worktree/automation UI. |
-| **T3 Code** | Lightweight coding-agent GUI with Codex, Claude and OpenCode enabled together. |
-| **AionUI** | General assistant/cowork desktop and WebUI for tasks that are not just repo coding. |
-| **Hermes Desktop** | Native desktop surface for Hermes Agent. |
-| **Hermes HUD** | Optional live Hermes activity TUI. |
-| **agent-browser** | Chromium automation surface packaged for agent use. |
-| **Plannotator** | Visual plan/diff review; annotations are sent back to the agent. |
-| **CodexBar** | Provider quota, reset windows, credits and status. |
-| **ccusage** | Local token/session/cost accounting. |
-
-The fast-moving agent packages come from [`numtide/llm-agents.nix`](https://github.com/numtide/llm-agents.nix). Numtide's binary cache is enabled so this does not turn every rebuild into a local Electron/Rust compilation marathon.
-
-### Visual plan review
-
-Plannotator is integrated into **Codex and Claude Code** through Home Manager rather than an installer mutating dotfiles.
-
-```text
-Codex / Claude plan
-        │
-        ▼
- lifecycle hook
-        │
-        ▼
- Plannotator review UI
-        │
-   ┌────┴─────┐
- approve   annotate
-   │           │
-   ▼           ▼
- ship      feedback → agent
-```
-
-Codex uses its `Stop` hook. Claude Code mirrors Plannotator's upstream `EnterPlanMode` / `ExitPlanMode` flow.
+- **bb** — primary control plane for Codex, Claude Code, OpenCode and Hermes threads/worktrees.
+- **T3 Code** — lightweight GUI with Codex, Claude and OpenCode enabled together.
+- **ZCode** — official GLM-focused agentic development environment, packaged from Z.AI's Linux AppImage and pinned by hash.
+- **Plannotator** — visual review gate for Codex and Claude plans.
+- **agent-browser** — browser automation without turning the desktop into a local-model lab.
+- **CodexBar** — provider quota/reset state integrated directly into Caelestia.
+- **ccusage** — local accounting of cloud-agent usage history; it does not run an LLM locally.
 
 ## Caelestia × CodexBar
 
-Kraken does **not** start Waybar just to get an AI quota widget.
+Kraken does not start a second bar just for AI usage.
 
-The Caelestia package is patched during the Nix build with a native `aiUsage` QML delegate. It polls the CodexBar Linux CLI and renders the current provider pressure directly in Caelestia's existing vertical bar.
+Caelestia is patched during the Nix build with a native `aiUsage` QML delegate. CodexBar refreshes provider pressure every 30 seconds; clicking it opens the Wayland GTK4 provider panel.
 
 ```text
 ╭─────────────╮
 │    logo     │
 │ workspaces  │
-│             │
 │ active app  │
-│             │
 │    tray     │
-│             │
-│   🤖 34%   ├──────── click ────────╮
-│             │                       │
-│    00:42    │                ╭──────▼──────────────╮
-│   status    │                │ CodexBar GTK4 panel │
-│    power    │                │ Codex      34%      │
-╰─────────────╯                │ Claude     12%      │
-                               │ resets · credits    │
-                               │ cost · provider info│
-                               ╰─────────────────────╯
+│   🤖 34%   ├──── click ──── CodexBar panel
+│    clock    │
+│   status    │
+│    power    │
+╰─────────────╯
 ```
 
-- refresh every 30 seconds
-- left click → GTK4 provider panel
-- right click → immediate refresh
-- no Waybar process
-- no Arch/AUR dependency
-- no copied `~/.config/waybar` scripts
+No Waybar process, no copied shell scripts, no post-install patch step.
 
-The integration lives entirely in the configuration:
+## Music
 
-```text
-home/yargc/caelestia.nix
-home/yargc/packages/CodexUsage.qml
-home/yargc/packages/caelestia-codexbar.patch
-home/yargc/packages/codexbar-ui.nix
-```
+Spotify is managed through **Spicetify-Nix**. The Spotify package itself is supplied by the Home Manager module, so there is no duplicate client or installer.
+
+Configured extensions:
+
+- `adblockify`
+- `hidePodcasts`
+- `shuffle`
+- Catppuccin Mocha theme
+
+Music controls stay inside Caelestia's native MPRIS layer. Spotify is the default player, so the dashboard/Now Playing UI and the hardware media keys all control the same session.
+
+> Spicetify and its extensions are community modifications and can break when Spotify changes its client.
+
+## Discord
+
+Discord runs through **Vesktop with Nix-managed Vencord** rather than patching the stock client after every rebuild.
+
+Vesktop/Vencord configuration is written by Home Manager, app self-updates are disabled, and the Caelestia tray handles minimize-to-tray behaviour. This keeps the Wayland experience reproducible and leaves Discord one `Super + D` away.
+
+> Vesktop/Vencord are unofficial Discord client modifications and may conflict with Discord's Terms of Service.
 
 ## Shortcuts
 
 | Key | Action |
 |---|---|
 | `Super + Space` | Caelestia launcher |
+| `Super + M` | Spotify |
+| `Super + D` | Vesktop / Discord |
 | `Super + Shift + D` | **bb** agent IDE |
 | `Super + T` | T3 Code |
-| `Super + Shift + G` | AionUI |
+| `Super + Shift + G` | **ZCode / GLM** |
 | `Super + Shift + H` | Hermes Desktop |
 | `Super + U` | CodexBar provider panel |
 | `Super + Shift + C` | Codex in Ghostty |
@@ -167,76 +137,56 @@ home/yargc/packages/codexbar-ui.nix
 | `Super + B` | Zen Browser |
 | `Super + Shift + B` | Helium |
 
-Everything is also discoverable from the Caelestia launcher; keybinds are accelerators, not required tribal knowledge.
+Everything is also discoverable from Caelestia's launcher. Keybinds are shortcuts, not required knowledge.
 
-## Nix architecture
+## Development baseline
+
+The system is still a normal development workstation without an agent:
+
+**Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · Podman · Distrobox · libvirt · Lazygit · mise**
+
+**Bun is the JS package-manager baseline.** `pnpm` is intentionally not installed in the user environment. Node remains for runtime/LSP compatibility.
+
+A Nix-native Apache + PHP + MariaDB stack replaces XAMPP and binds Apache to localhost only.
+
+## Nix layout
 
 ```text
 NixOS
 ├── shell
-│   └── Caelestia + native CodexBar QML patch
-├── orchestration
-│   └── bb → Codex / Claude / OpenCode / Hermes
-├── lightweight GUI
+│   ├── Caelestia
+│   ├── CodexBar QML integration
+│   └── Spotify / MPRIS
+├── desktop
+│   ├── Zen + Helium
+│   ├── Vesktop + Vencord
+│   ├── ChatGPT + Claude
+│   └── Spotify + Spicetify
+├── agents
+│   ├── bb → Codex / Claude / OpenCode / Hermes
 │   ├── T3 Code
-│   ├── AionUI
-│   └── Hermes Desktop
-├── control + review
-│   ├── Plannotator hooks
-│   ├── agent-browser
-│   └── shared MCP registry
-└── observability
-    ├── CodexBar
-    ├── Hermes HUD
-    └── ccusage
+│   ├── ZCode / GLM
+│   ├── Plannotator
+│   └── agent-browser
+└── host
+    └── kraken
 ```
 
-Most of the system is declarative. Two fast-moving user tools intentionally retain their upstream-managed workflow:
+Most of the system is declarative. Two fast-moving user tools intentionally keep their upstream workflow:
 
 - **PSYCHOVIM** owns its mutable Neovim config, marketplace and updater.
 - **Zed Preview** follows the upstream Preview channel installer.
 
-Hermes is fully Nix-managed: CLI, Desktop and HUD.
-
-## Development baseline
-
-Kraken remains a normal full-stack workstation when no agent is involved:
-
-**Rust · Go · Python/uv · Node 24 · Bun · pnpm · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · Podman · Distrobox · libvirt · Lazygit · mise**
-
-A Nix-native Apache + PHP + MariaDB stack replaces XAMPP and binds Apache to localhost only.
-
 ## Host
 
-The current host is `kraken`: Lenovo IdeaPad Gaming 3 16ARH7, Ryzen 5 6600H, Radeon 660M and RTX 3050 Mobile. AMD drives the desktop; NVIDIA is available through PRIME offload.
-
-Host policy lives under `hosts/kraken/`, keeping the desktop/user layer reusable for another machine later.
-
-## Layout
-
-```text
-.
-├── flake.nix
-├── flake.lock
-├── hosts/kraken/
-├── modules/
-│   ├── core/
-│   ├── desktop/
-│   └── development/
-└── home/yargc/
-    ├── caelestia.nix
-    ├── dev.nix
-    ├── lazy-tools.nix
-    ├── hyprland.nix
-    └── packages/
-```
+`kraken` is a Lenovo IdeaPad Gaming 3 16ARH7 with a Ryzen 5 6600H, Radeon 660M and RTX 3050 Mobile. AMD drives the desktop; NVIDIA is available through PRIME offload.
 
 ## Install note
 
 > [!IMPORTANT]
-> `hosts/kraken/hardware-configuration.nix` is intentionally a placeholder. Never reuse another machine's generated filesystem UUIDs.
+> `hosts/kraken/hardware-configuration.nix` is intentionally a placeholder. Never reuse another machine's filesystem UUIDs.
 
-Once NixOS has generated the real hardware configuration:
+After NixOS generates the real hardware configuration:
 
 ```bash
 git clone git@github.com:OnurByte/nix-config.git ~/nix-config
@@ -248,12 +198,12 @@ sudo nixos-rebuild switch --flake .#kraken
 
 ## Influences
 
-Kraken started from ideas in [`bariscodefxy/nix-config`](https://github.com/bariscodefxy/nix-config), then moved toward its own direction: Caelestia's fluid shell, Omarchy's application-first workflow, and mature NixOS configuration patterns — with coding agents treated as a native interaction layer rather than an afterthought.
+Kraken started from ideas in [`bariscodefxy/nix-config`](https://github.com/bariscodefxy/nix-config), then moved toward its own direction: Caelestia's cohesive shell, Omarchy's application-first workflow and the restraint common in the better Hyprland/unixporn setups — **one shell, native media integration, a few strong shortcuts and as little glue code as possible.**
 
 ---
 
 <div align="center">
 
-**delegate fast · review visually · stay in control**
+**delegate fast · review visually · keep the desktop simple**
 
 </div>

@@ -33,11 +33,8 @@ in
   home.packages = [
     inputs.codexbar.packages.${pkgs.system}.default
 
-    # Keep the agent UX intentionally small. bb is the primary coding-agent
-    # control plane; AionUI covers assistant/cowork flows rather than adding
-    # several overlapping coding dashboards.
+    # Focused cloud/provider agent workflow. No Ollama or local model daemon.
     agents.bb-app
-    agents.aionui
     agents.agent-browser
 
     # Hermes is fully declarative: CLI, native desktop shell and optional HUD.
@@ -45,7 +42,7 @@ in
     agents.hermes-desktop
     agents.hermes-hud
 
-    # Local token/cost accounting across supported coding-agent histories.
+    # Local accounting of cloud-agent history; this does not run a model locally.
     agents.ccusage
 
     zedPreview
@@ -53,25 +50,13 @@ in
 
   # Use store-qualified commands so desktop launch does not depend on whatever
   # PATH a display manager happened to inherit.
-  xdg.desktopEntries = {
-    bb = {
-      name = "bb";
-      genericName = "Agent IDE";
-      comment = "Local-first control plane for Codex, Claude Code, OpenCode and Hermes";
-      exec = "${agents.bb-app}/bin/bb-app";
-      icon = "applications-development";
-      terminal = false;
-      categories = [ "Development" "Utility" ];
-    };
-
-    aionui = {
-      name = "AionUI";
-      genericName = "AI Cowork";
-      comment = "Desktop and WebUI assistant surface for local AI agents";
-      exec = "${agents.aionui}/bin/aionui";
-      icon = "applications-development";
-      terminal = false;
-      categories = [ "Development" "Utility" ];
-    };
+  xdg.desktopEntries.bb = {
+    name = "bb";
+    genericName = "Agent IDE";
+    comment = "Control plane for Codex, Claude Code, OpenCode and Hermes";
+    exec = "${agents.bb-app}/bin/bb-app";
+    icon = "applications-development";
+    terminal = false;
+    categories = [ "Development" "Utility" ];
   };
 }
