@@ -11,7 +11,7 @@ Target machine:
 
 - Lenovo IdeaPad Gaming 3 16ARH7 (`82SC`)
 - AMD Ryzen 5 6600H / Rembrandt
-- AMD Radeon 680M integrated GPU
+- AMD Radeon 660M integrated GPU
 - NVIDIA GeForce RTX 3050 Mobile (GA107M)
 - 1920x1200 165 Hz internal display
 - MediaTek MT7921 Wi-Fi
