@@ -75,6 +75,7 @@
       packages.${system} = {
         zcode = pkgs.callPackage ./home/yargc/packages/zcode.nix { };
         cuprated = pkgs.callPackage ./home/yargc/packages/cuprated.nix { };
+        turnlens = pkgs.callPackage ./home/yargc/packages/turnlens.nix { };
       };
 
       nixosConfigurations.${hostname} = nixpkgs.lib.nixosSystem {

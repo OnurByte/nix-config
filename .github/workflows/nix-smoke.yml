@@ -48,6 +48,9 @@ jobs:
       - name: Evaluate kraken module graph
         run: test "$(nix eval --raw .#nixosConfigurations.kraken.config.networking.hostName)" = kraken
 
+      - name: Build TurnLens package
+        run: nix build --no-link .#turnlens
+
       - name: Build Cuprate package
         run: nix build --no-link .#cuprated
 

@@ -9,6 +9,7 @@
     ./apps.nix
     ./caelestia.nix
     ./cli.nix
+    ./command-memory.nix
     ./dev.nix
     ./git.nix
     ./hyprland.nix

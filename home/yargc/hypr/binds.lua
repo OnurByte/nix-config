@@ -20,7 +20,8 @@ hl.bind(main .. " + SHIFT + N", hl.dsp.global("caelestia:sidebar"))
 hl.bind(main .. " + L", hl.dsp.global("caelestia:lock"))
 hl.bind(main .. " + SHIFT + Q", hl.dsp.global("caelestia:session"))
 hl.bind(main .. " + SHIFT + Space", exec("hyprctl switchxkblayout all next"))
-hl.bind(main .. " + slash", exec("ghostty -e kraken-keys"))
+hl.bind(main .. " + slash", exec("kraken-commands"))
+hl.bind(main .. " + SHIFT + slash", exec("ghostty -e kraken-keys"))
 
 -- Daily apps.
 hl.bind(main .. " + M", exec("spotify"))

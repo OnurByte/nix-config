@@ -42,8 +42,9 @@ in
     agents.hermes-desktop
     agents.hermes-hud
 
-    # Local accounting of cloud-agent history; this does not run a model locally.
+    # Broad historical accounting plus per-turn Codex/Claude measurement.
     agents.ccusage
+    inputs.self.packages.${pkgs.system}.turnlens
 
     zedPreview
   ];

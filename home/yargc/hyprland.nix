@@ -18,7 +18,8 @@ let
       Super + Shift + N     notifications
       Super + Shift + V     clipboard history
       Super + .             emoji picker
-      Super + /             this cheatsheet
+      Super + /             command palette
+      Super + Shift + /     keybind cheatsheet
       Super + Shift + Space keyboard layout
       Alt + Tab             next window
       Alt + Shift + Tab     previous window
