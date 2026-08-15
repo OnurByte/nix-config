@@ -1,5 +1,5 @@
 {
-  description = "OnurByte's NixOS workstation";
+  description = "Kraken — an agentic NixOS rice";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -25,7 +25,7 @@
       inputs.home-manager.follows = "home-manager";
     };
 
-    # Native Linux desktop apps packaged from the vendors' official binaries.
+    # Native vendor desktop applications packaged for NixOS.
     chatgpt-desktop = {
       url = "github:poeck/chatgpt-desktop-app-nix-flake";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -36,16 +36,20 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # AI quota / local usage tooling.
+    # CodexBar's upstream Linux CLI plus the Wayland GTK usage surface source.
     codexbar = {
       url = "github:alioguzhan/codexbar-flake";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    ccusage = {
-      url = "github:ccusage/ccusage";
-      inputs.nixpkgs.follows = "nixpkgs";
+    codexbar-ui-src = {
+      url = "github:Marouan-chak/codexbar-waybar";
+      flake = false;
     };
+
+    # Daily-updated Nix packages for coding agents, agent control planes and
+    # agent-native tooling. Keep its own tested nixpkgs pin for cache hits.
+    llm-agents.url = "github:numtide/llm-agents.nix";
   };
 
   outputs =

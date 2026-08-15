@@ -60,13 +60,18 @@
     bind = $mainMod, Z, exec, zed-preview
     bind = $mainMod, SPACE, exec, caelestia shell drawers toggle launcher
 
-    # Native AI desktop apps + terminal agents.
+    # Agentic desktop surfaces: one primary control plane, then focused apps.
     bind = $mainMod, A, exec, chatgpt
     bind = $mainMod SHIFT, A, exec, claude-desktop
+    bind = $mainMod SHIFT, D, exec, bb-app
+    bind = $mainMod SHIFT, G, exec, aionui
+    bind = $mainMod SHIFT, H, exec, hermes-desktop
+    bind = $mainMod, T, exec, t3code-desktop
+    bind = $mainMod, U, exec, codexbar-popup
+
+    # Direct terminal agents remain one chord away when the GUI is unnecessary.
     bind = $mainMod SHIFT, C, exec, $terminal -e codex
     bind = $mainMod SHIFT, O, exec, $terminal -e opencode
-    bind = $mainMod SHIFT, H, exec, $terminal -e hermes-bootstrap
-    bind = $mainMod, U, exec, $terminal -e codexbar cards
 
     bind = $mainMod, Q, killactive,
     bind = $mainMod SHIFT, Q, exit,

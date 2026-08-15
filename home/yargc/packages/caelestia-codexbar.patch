@@ -1,0 +1,17 @@
+--- a/modules/bar/Bar.qml
++++ b/modules/bar/Bar.qml
+@@ -130,6 +130,14 @@ ColumnLayout {
+                     }
+                 }
+             }
++            DelegateChoice {
++                roleValue: "aiUsage"
++                delegate: EntryWrapper {
++                    CodexUsage {
++                        objectName: "taskbarAiUsage"
++                    }
++                }
++            }
+             DelegateChoice {
+                 roleValue: "clock"
+                 delegate: EntryWrapper {

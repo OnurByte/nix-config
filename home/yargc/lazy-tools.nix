@@ -4,6 +4,8 @@
   ...
 }:
 let
+  agents = inputs.llm-agents.packages.${pkgs.system};
+
   zedPreview = pkgs.writeShellApplication {
     name = "zed-preview";
     runtimeInputs = with pkgs; [
@@ -26,45 +28,50 @@ let
       exec "$zed" "$@"
     '';
   };
-
-  hermes = pkgs.writeShellApplication {
-    name = "hermes-bootstrap";
-    runtimeInputs = with pkgs; [
-      bash
-      curl
-      coreutils
-      git
-      gnugrep
-      gnused
-      gawk
-      findutils
-      gnutar
-      gzip
-      unzip
-      nodejs_24
-      python3
-      uv
-      ripgrep
-      ffmpeg
-    ];
-    text = ''
-      set -euo pipefail
-
-      hermes_bin="$HOME/.local/bin/hermes"
-      if [ ! -x "$hermes_bin" ]; then
-        echo "Installing Hermes Agent from Nous Research..." >&2
-        curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash -s -- --skip-browser
-      fi
-
-      exec "$hermes_bin" "$@"
-    '';
-  };
 in
 {
   home.packages = [
     inputs.codexbar.packages.${pkgs.system}.default
-    inputs.ccusage.packages.${pkgs.system}.default
+
+    # Keep the agent UX intentionally small. bb is the primary coding-agent
+    # control plane; AionUI covers assistant/cowork flows rather than adding
+    # several overlapping coding dashboards.
+    agents.bb-app
+    agents.aionui
+    agents.agent-browser
+
+    # Hermes is fully declarative: CLI, native desktop shell and optional HUD.
+    agents.hermes-agent
+    agents.hermes-desktop
+    agents.hermes-hud
+
+    # Local token/cost accounting across supported coding-agent histories.
+    agents.ccusage
+
     zedPreview
-    hermes
   ];
+
+  # Use store-qualified commands so desktop launch does not depend on whatever
+  # PATH a display manager happened to inherit.
+  xdg.desktopEntries = {
+    bb = {
+      name = "bb";
+      genericName = "Agent IDE";
+      comment = "Local-first control plane for Codex, Claude Code, OpenCode and Hermes";
+      exec = "${agents.bb-app}/bin/bb-app";
+      icon = "applications-development";
+      terminal = false;
+      categories = [ "Development" "Utility" ];
+    };
+
+    aionui = {
+      name = "AionUI";
+      genericName = "AI Cowork";
+      comment = "Desktop and WebUI assistant surface for local AI agents";
+      exec = "${agents.aionui}/bin/aionui";
+      icon = "applications-development";
+      terminal = false;
+      categories = [ "Development" "Utility" ];
+    };
+  };
 }

@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: nix-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -27,8 +31,14 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
-      - name: Resolve flake inputs
+      - name: Resolve locked flake inputs
         run: nix flake metadata
 
       - name: Evaluate kraken module graph
         run: test "$(nix eval --raw .#nixosConfigurations.kraken.config.networking.hostName)" = kraken
+
+      # Evaluation cannot catch a stale QML patch or a broken GTK wrapper.
+      # Build the exact Caelestia package Home Manager will install; its Nix
+      # dependency graph also forces the local CodexBar Wayland UI derivation.
+      - name: Build agentic Caelestia surface
+        run: nix build --no-link '.#nixosConfigurations.kraken.config.home-manager.users.yargc.programs.caelestia.package'

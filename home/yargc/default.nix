@@ -20,9 +20,8 @@
     homeDirectory = "/home/${username}";
     stateVersion = "26.05";
 
-    # Mutable upstream tools (PSYCHOVIM, Zed Preview, Hermes) install their
-    # launchers here. Keep it ahead of the Nix profile so their official
-    # self-update flow remains intact.
+    # PSYCHOVIM and Zed Preview intentionally retain their upstream-managed
+    # user-space launchers. Agent tooling is declarative through Nix.
     sessionPath = [ "$HOME/.local/bin" ];
 
     sessionVariables = {

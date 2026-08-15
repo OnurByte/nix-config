@@ -22,6 +22,13 @@ in
         "root"
         "@wheel"
       ];
+
+      # numtide/llm-agents.nix publishes CI-built agent packages here. Without
+      # the cache, large Electron/Rust agent surfaces would rebuild locally.
+      extra-substituters = [ "https://cache.numtide.com" ];
+      extra-trusted-public-keys = [
+        "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+      ];
     };
 
     channel.enable = false;

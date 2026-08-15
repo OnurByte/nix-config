@@ -3,6 +3,15 @@
   pkgs,
   ...
 }:
+let
+  # Nixpkgs enables Codex in T3 Code by default, but leaves Claude/OpenCode
+  # disabled. Kraken treats all three as first-class backends in the same UI.
+  agenticT3Code = pkgs.t3code.override {
+    enableClaude = true;
+    enableCodex = true;
+    enableOpencode = true;
+  };
+in
 {
   home.packages = with pkgs; [
     # Browsers: Zen is the daily default, Helium is the Chromium-side companion.
@@ -22,11 +31,11 @@
     mpv
     imv
 
-    # Communication / knowledge / editor-adjacent apps.
+    # Communication / knowledge / agent surfaces.
     session-desktop
     telegram-desktop
     obsidian
-    t3code
+    agenticT3Code
   ];
 
   xdg.mimeApps = {
