@@ -35,7 +35,6 @@ The rule is simple: **use cloud/provider agents where they are useful, keep the 
 | Discord | **Vesktop + system Vencord** |
 | desktop AI | **ChatGPT Desktop** + **Claude Desktop** |
 | agent IDEs | **bb** + **T3 Code** + **ZCode** |
-| keyboard | **Turkish Q only** |
 
 ## Agent workflow
 
