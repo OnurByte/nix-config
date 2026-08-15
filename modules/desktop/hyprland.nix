@@ -53,8 +53,7 @@
     fuzzel
     gpu-screen-recorder
 
-    # Native Hyprland ecosystem helpers.
-    hyprsunset
+    # Native Hyprland ecosystem helper.
     hyprpolkitagent
   ];
 
