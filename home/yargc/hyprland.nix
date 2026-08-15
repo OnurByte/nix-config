@@ -17,7 +17,9 @@ in
     exec-once = hypridle
 
     input {
-      kb_layout = tr
+      # Turkish Q is the default, not a restriction. Keep a second layout
+      # available for apps/workflows that are more comfortable with US XKB.
+      kb_layout = tr,us
       follow_mouse = 1
 
       touchpad {
@@ -66,6 +68,7 @@ in
     bind = $mainMod, N, exec, $terminal -e pycho
     bind = $mainMod, Z, exec, zed-preview
     bind = $mainMod, SPACE, exec, caelestia shell drawers toggle launcher
+    bind = $mainMod SHIFT, SPACE, exec, hyprctl switchxkblayout all next
 
     # Daily desktop surfaces.
     bind = $mainMod, M, exec, spotify
