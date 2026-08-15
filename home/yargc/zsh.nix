@@ -49,10 +49,14 @@
       web-status = "systemctl status httpd mysql";
     };
 
+    # Ctrl-G opens Navi and inserts the chosen curated command into the current
+    # prompt for editing. Ctrl-R remains Atuin's rich local history search.
     # Caelestia pushes the active Material palette to existing PTYs and stores
     # the same escape sequence for newly opened Ghostty shells. Bypass the
     # user-facing `cat = bat` alias so raw terminal escape sequences stay raw.
     initContent = lib.mkOrder 1200 ''
+      eval "$(navi widget zsh)"
+
       if [[ -r "$HOME/.local/state/caelestia/sequences.txt" ]]; then
         command cat "$HOME/.local/state/caelestia/sequences.txt"
       fi

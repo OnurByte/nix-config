@@ -14,12 +14,15 @@ or convenience hacks that make the system harder to reproduce.
 - **Hyprland config is Lua.** Keep `home/yargc/hyprland.nix` as the Home Manager wiring layer and compositor logic under `home/yargc/hypr/*.lua`; do not recreate `hyprland.conf`.
 - Turkish Q is the default keyboard layout for this host, but layout switching must remain available.
 - **Zsh keeps a deliberately small Oh My Zsh layer plus Starship.** Do not add an OMZ theme or a large plugin bundle without a concrete workflow reason.
+- **Command memory is Navi + Atuin, not another launcher stack.** Curated/reusable commands belong in `home/yargc/command-memory.nix`; `Super + /` is the desktop copy palette, `Ctrl + G` inserts Navi selections into the current Zsh prompt, and `Ctrl + R` is Atuin history.
+- Keep Atuin local by default: no account, history sync or update checks unless explicitly requested.
 - **Spotify uses Spicetify + Caelestia MPRIS.** Keep music controls, Now Playing and hardware media keys on the same player service.
 - **Discord uses Home Manager Vesktop + system Vencord.** Do not patch the stock Discord client with BetterDiscord.
 - **Bun is the user-facing JavaScript package manager.** Do not add pnpm or yarn globally. Node may remain for runtime/LSP compatibility.
 - **Cloud/provider agents are first class.** Do not add Ollama, LM Studio, llama.cpp services or other local-model daemons unless explicitly requested.
 - **ChatGPT Desktop and Claude Desktop stay first-class apps.** They are not replaced by generic local-assistant frontends.
 - **bb is the primary multi-agent control plane.** Avoid adding overlapping agent dashboards unless they have a clearly distinct role.
+- **TurnLens and ccusage have different jobs.** Keep TurnLens for per-turn Codex/Claude analysis and ccusage for broader historical accounting; do not remove one just because the other exists.
 - **ZCode is the GLM surface.** Keep it packaged from the official, pinned Linux artifact.
 - **Monero is a first-class privacy toolchain.** Keep the official GUI/CLI available; Feather is the lightweight complementary wallet and Eigenwallet must come from nixpkgs rather than a local binary repack.
 - **Cuprate is experimental.** Keep `cuprated` available for opt-in testing, but do not replace `monerod` or auto-start it while upstream still labels the release preview/WIP.
@@ -32,6 +35,7 @@ or convenience hacks that make the system harder to reproduce.
 - Never guess filesystem UUIDs, partition identifiers or mount topology. `hosts/kraken/hardware-configuration.nix` stays a placeholder until generated on the actual machine.
 - Prefer NixOS/Home Manager modules and pinned derivations over `curl | sh` installers.
 - Before writing a custom AppImage, `.deb` or vendor-binary derivation, check nixpkgs and the upstream repository for a maintained Nix package/flake. Use the maintained package when it satisfies the requested channel/features.
+- TurnLens is pinned from its official tagged source with both the source and npm dependency hashes fixed. Do not replace it with `npx ...@latest` in the persistent configuration.
 - Preserve `flake.lock`; update pins only when the change is intentional.
 - Prefer store-qualified executable paths in desktop entries when practical; Lua compositor binds may use profile commands that Home Manager guarantees.
 - Keep unfree packages deliberate and documented.
@@ -46,7 +50,8 @@ or convenience hacks that make the system harder to reproduce.
 2. Parse every Hyprland Lua file with `luac -p`.
 3. Run `nix flake metadata --no-write-lock-file`.
 4. Evaluate `.#nixosConfigurations.kraken.config.networking.hostName` and expect `kraken`.
-5. If touching ZCode, build `.#zcode` with unfree packages allowed.
-6. If touching Cuprate packaging, build `.#cuprated`.
-7. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
-8. Keep README user-facing. Implementation guardrails and agent instructions belong here.
+5. If touching TurnLens packaging, build `.#turnlens`.
+6. If touching ZCode, build `.#zcode` with unfree packages allowed.
+7. If touching Cuprate packaging, build `.#cuprated`.
+8. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
+9. Keep README user-facing. Implementation guardrails and agent instructions belong here.

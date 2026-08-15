@@ -68,7 +68,7 @@ flowchart LR
 
     Browser[agent-browser] --> BB
     MCP[shared MCP registry] --> BB
-    Usage[CodexBar] --> Shell[Caelestia]
+    Usage[CodexBar / TurnLens] --> Shell[Caelestia + terminal]
 ```
 
 ### The useful surfaces
@@ -79,7 +79,8 @@ flowchart LR
 - **Plannotator** — visual review gate for Codex and Claude plans.
 - **agent-browser** — browser automation without turning the desktop into a local-model lab.
 - **CodexBar** — provider quota/reset state integrated directly into Caelestia.
-- **ccusage** — local accounting of cloud-agent usage history; it does not run an LLM locally.
+- **TurnLens** — pinned local CLI for per-turn Codex/Claude token usage, reasoning/tool-call context and API-equivalent cost.
+- **ccusage** — broader historical cloud-agent accounting; it complements rather than replaces TurnLens.
 
 ## Caelestia × CodexBar
 
@@ -103,6 +104,17 @@ Kraken does not start a second bar just for AI usage. Caelestia is patched durin
 Oh My Zsh is intentionally small: `git`, `sudo`, `extract` and `colored-man-pages`. Completion, autosuggestions, syntax highlighting and history search remain Home Manager-managed, while Starship owns the prompt.
 
 Caelestia also writes the active Material terminal palette as ANSI sequences; Zsh reapplies the latest palette when a new Ghostty shell starts.
+
+## Command memory
+
+Kraken does not expect rarely used commands to be memorized or buried in a notes app.
+
+- `Super + /` opens **Kraken Commands**, a Navi-backed searchable palette of curated commands. A selection is copied to the clipboard instead of being executed blindly from a launcher.
+- `Ctrl + G` opens Navi inside Zsh and inserts the chosen command into the current prompt, where it can be reviewed or edited before running.
+- `Ctrl + R` opens **Atuin** fuzzy history search. It stays local on this machine: sync and update checks are disabled.
+- `Super + Shift + /` opens the separate searchable keybind cheatsheet.
+
+The curated commands live declaratively in `home/yargc/command-memory.nix`, so agent commands, Nix maintenance, the local web stack, Git/GitHub and Monero tooling have one source of truth. **Kraken Commands** also appears in Caelestia's normal app launcher through its desktop entry.
 
 ## Privacy / Monero
 
@@ -139,7 +151,10 @@ Discord runs through **Vesktop with Nix-managed Vencord** rather than patching t
 | `Super + Shift + N` | notification sidebar/history |
 | `Super + Shift + V` | clipboard history |
 | `Super + .` | emoji picker |
-| `Super + /` | searchable keybind cheatsheet |
+| `Super + /` | **Kraken Commands** palette |
+| `Super + Shift + /` | searchable keybind cheatsheet |
+| `Ctrl + G` | Navi command cheatsheet → current Zsh prompt |
+| `Ctrl + R` | Atuin fuzzy shell history |
 | `Super + Shift + Space` | switch keyboard layout |
 | `Alt + Tab` | cycle windows |
 | `Print` | screenshot |
@@ -163,7 +178,7 @@ Discord runs through **Vesktop with Nix-managed Vencord** rather than patching t
 | `Super + B` | Zen Browser |
 | `Super + Shift + B` | Helium |
 
-A three-finger horizontal touchpad gesture changes workspaces. `Super + mouse wheel` does the same. The cheatsheet is searchable, so the README is not required knowledge.
+A three-finger horizontal touchpad gesture changes workspaces. `Super + mouse wheel` does the same. Commands and keybinds both have searchable surfaces, so the README is not required knowledge.
 
 ## Development baseline
 
@@ -181,6 +196,9 @@ NixOS
 │   ├── desktop controls + idle/lock + capture
 │   ├── wallpaper-driven theme propagation
 │   └── CodexBar QML integration
+├── command memory
+│   ├── Navi → curated commands / Ctrl-G widget
+│   └── Atuin → local Ctrl-R history
 ├── privacy
 │   ├── Tor client + Zapret2
 │   └── Monero GUI / CLI + Feather + Eigenwallet + Cuprate
@@ -193,6 +211,7 @@ NixOS
 │   ├── bb → Codex / Claude / OpenCode / Hermes
 │   ├── T3 Code
 │   ├── ZCode / GLM
+│   ├── TurnLens + ccusage
 │   ├── Plannotator
 │   └── agent-browser
 └── host

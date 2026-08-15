@@ -1,13 +1,27 @@
 { pkgs, ... }:
 let
-  krakenCommands = pkgs.writeShellApplication {
-    name = "kraken-commands";
+  krakenCommandPicker = pkgs.writeShellApplication {
+    name = "kraken-command-picker";
     runtimeInputs = [
-      pkgs.ghostty
+      pkgs.libnotify
       pkgs.navi
+      pkgs.wl-clipboard
     ];
     text = ''
-      exec ghostty -e navi
+      command="$(navi --print)" || exit 0
+      [[ -n "$command" ]] || exit 0
+
+      printf '%s' "$command" | wl-copy
+      notify-send "Kraken Commands" "Command copied to clipboard"
+      printf '\nCopied to clipboard:\n%s\n' "$command"
+    '';
+  };
+
+  krakenCommands = pkgs.writeShellApplication {
+    name = "kraken-commands";
+    runtimeInputs = [ pkgs.ghostty ];
+    text = ''
+      exec ghostty -e ${krakenCommandPicker}/bin/kraken-command-picker
     '';
   };
 in
@@ -38,7 +52,8 @@ in
   ];
 
   # Curated commands live in one searchable source instead of scattered aliases
-  # or README snippets. Navi can insert a selection for editing before execution.
+  # or README snippets. The Zsh Navi widget inserts a selection for editing;
+  # the desktop palette copies it so a launcher cannot execute it accidentally.
   xdg.dataFile."navi/cheats/kraken.cheat".text = ''
     % agents, usage, turnlens
 
@@ -54,11 +69,20 @@ in
     # Weekly Codex + Claude usage report
     turnlens report weekly
 
-    # Group agent usage by project
+    # Group Codex + Claude usage by project
     turnlens report project
 
-    # Run TurnLens without refreshing pricing over the network
+    # Report usage without refreshing pricing over the network
     turnlens report --offline
+
+    # Broad daily agent usage accounting with ccusage
+    ccusage daily
+
+    # Broad weekly agent usage accounting with ccusage
+    ccusage weekly
+
+    # Show current provider quota/reset state
+    codexbar cards
 
     % agents, coding
 
@@ -74,19 +98,25 @@ in
     # Start Hermes agent
     hermes
 
+    # Start the bb multi-agent control plane
+    bb-app
+
     % kraken, nixos
 
-    # Evaluate Kraken without activating it
-    sudo nixos-rebuild test --flake .#kraken
+    # Test the configured Kraken NixOS generation
+    nh os test
 
-    # Activate the current Kraken flake
-    sudo nixos-rebuild switch --flake .#kraken
+    # Build and activate the configured Kraken NixOS generation
+    nh os switch
 
     # Inspect locked flake inputs
-    nix flake metadata --no-write-lock-file
+    cd ~/nix-config && nix flake metadata --no-write-lock-file
 
     # Update flake inputs intentionally
-    nix flake update
+    cd ~/nix-config && nix flake update
+
+    # Clean old Nix generations while keeping recent ones
+    nh clean all --keep 5
 
     % kraken, web
 
@@ -133,7 +163,7 @@ in
   xdg.desktopEntries.kraken-commands = {
     name = "Kraken Commands";
     genericName = "Command Palette";
-    comment = "Search remembered commands and insert one for editing";
+    comment = "Search curated commands and copy one to the clipboard";
     exec = "${krakenCommands}/bin/kraken-commands";
     icon = "utilities-terminal";
     terminal = false;
