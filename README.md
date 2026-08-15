@@ -226,6 +226,7 @@ The desktop deliberately keeps rich native/GUI surfaces where they are better th
 - **Session / Telegram** — messaging.
 - **Obsidian** — notes/knowledge.
 - **Thunar** — file manager.
+- **Bottles** — opt-in Windows application compatibility through the nixpkgs Wine/FHS stack; it does not turn Kraken into a gaming distribution.
 
 Application self-updaters are disabled where Nix should own updates.
 
