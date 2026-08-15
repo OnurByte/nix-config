@@ -16,7 +16,7 @@ or convenience hacks that make the system harder to reproduce.
 - **ChatGPT Desktop and Claude Desktop stay first-class apps.** They are not replaced by generic local-assistant frontends.
 - **bb is the primary multi-agent control plane.** Avoid adding overlapping agent dashboards unless they have a clearly distinct role.
 - **ZCode is the GLM surface.** Keep it packaged from the official, pinned Linux artifact.
-- The keyboard layout is **Turkish Q only**.
+- Turkish Q is the default keyboard layout for this host, but layout switching must remain available; do not turn a personal input preference into a project-wide restriction.
 - Do not reintroduce gaming packages unless explicitly requested.
 
 ## Nix contract
