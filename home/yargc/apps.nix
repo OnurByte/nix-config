@@ -10,6 +10,10 @@
     inputs.helium.packages.${pkgs.system}.default
     tor-browser
 
+    # Native AI desktop apps. Both flakes package the vendors' official Linux binaries.
+    inputs.chatgpt-desktop.packages.${pkgs.system}.default
+    inputs.claude-desktop.packages.${pkgs.system}.claude-desktop-with-fhs
+
     # Desktop / files / media.
     ghostty
     thunar
@@ -24,31 +28,6 @@
     obsidian
     t3code
   ];
-
-  # ChatGPT has no official Linux desktop build. Claude Desktop now has an
-  # official Linux beta, but upstream supports Ubuntu/Debian packages rather
-  # than NixOS. Until there is a first-party/Nixpkgs package, keep both as
-  # isolated app-mode Helium windows instead of adding another packaging trust
-  # dependency to the base system.
-  xdg.desktopEntries = {
-    chatgpt = {
-      name = "ChatGPT";
-      genericName = "AI Assistant";
-      exec = "helium --app=https://chatgpt.com";
-      icon = "helium";
-      terminal = false;
-      categories = [ "Network" "Utility" ];
-    };
-
-    claude = {
-      name = "Claude";
-      genericName = "AI Assistant";
-      exec = "helium --app=https://claude.ai";
-      icon = "helium";
-      terminal = false;
-      categories = [ "Network" "Utility" ];
-    };
-  };
 
   xdg.mimeApps = {
     enable = true;

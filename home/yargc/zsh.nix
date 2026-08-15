@@ -12,7 +12,14 @@
       nvim = "pycho";
       zed = "zed-preview";
       hermes = "hermes-bootstrap";
+
+      # Provider quota/reset data vs local token/cost accounting.
       aiusage = "codexbar cards";
+      ailimits = "codexbar --provider all";
+      aicost = "ccusage daily";
+      aiweek = "ccusage weekly";
+      claude-blocks = "ccusage blocks";
+
       ll = "eza -lah --group-directories-first";
       cat = "bat";
       rebuild = "nh os switch";

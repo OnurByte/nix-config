@@ -24,6 +24,28 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.home-manager.follows = "home-manager";
     };
+
+    # Native Linux desktop apps packaged from the vendors' official binaries.
+    chatgpt-desktop = {
+      url = "github:poeck/chatgpt-desktop-app-nix-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    claude-desktop = {
+      url = "github:heytcass/claude-desktop-linux-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # AI quota / local usage tooling.
+    codexbar = {
+      url = "github:alioguzhan/codexbar-flake";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    ccusage = {
+      url = "github:ccusage/ccusage";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =

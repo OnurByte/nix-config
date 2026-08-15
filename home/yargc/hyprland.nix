@@ -60,9 +60,9 @@
     bind = $mainMod, Z, exec, zed-preview
     bind = $mainMod, SPACE, exec, caelestia shell drawers toggle launcher
 
-    # Omarchy-inspired first-class AI launchers.
-    bind = $mainMod, A, exec, helium --app=https://chatgpt.com
-    bind = $mainMod SHIFT, A, exec, helium --app=https://claude.ai
+    # Native AI desktop apps + terminal agents.
+    bind = $mainMod, A, exec, chatgpt
+    bind = $mainMod SHIFT, A, exec, claude-desktop
     bind = $mainMod SHIFT, C, exec, $terminal -e codex
     bind = $mainMod SHIFT, O, exec, $terminal -e opencode
     bind = $mainMod SHIFT, H, exec, $terminal -e hermes-bootstrap

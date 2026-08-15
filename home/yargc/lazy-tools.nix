@@ -1,10 +1,9 @@
 {
+  inputs,
   pkgs,
   ...
 }:
 let
-  codexbar = pkgs.callPackage ./packages/codexbar-cli.nix { };
-
   zedPreview = pkgs.writeShellApplication {
     name = "zed-preview";
     runtimeInputs = with pkgs; [
@@ -63,7 +62,8 @@ let
 in
 {
   home.packages = [
-    codexbar
+    inputs.codexbar.packages.${pkgs.system}.default
+    inputs.ccusage.packages.${pkgs.system}.default
     zedPreview
     hermes
   ];

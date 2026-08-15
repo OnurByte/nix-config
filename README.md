@@ -54,8 +54,8 @@ nvidia-offload <command>
 | `Super + E` | Thunar |
 | `Super + N` | PychoVIM |
 | `Super + Z` | Zed Preview |
-| `Super + A` | ChatGPT app window |
-| `Super + Shift + A` | Claude app window |
+| `Super + A` | native ChatGPT Linux app |
+| `Super + Shift + A` | native Claude Desktop Linux app |
 | `Super + Shift + C` | Codex |
 | `Super + Shift + O` | OpenCode |
 | `Super + Shift + H` | Hermes Agent |
@@ -69,8 +69,25 @@ The normal browser stack is deliberately small:
 - **Helium** — Chromium-side companion browser
 - **Tor Browser** — isolated Tor browsing
 
-There is no generic Firefox install in the default app set. ChatGPT and Claude do not rely on
-unofficial Linux Electron wrappers; they are app-mode Helium desktop entries.
+There is no generic Firefox install in the default app set.
+
+## Native AI desktop apps
+
+### ChatGPT
+
+The config uses `poeck/chatgpt-desktop-app-nix-flake`, which packages OpenAI's native Linux desktop
+binary from OpenAI's own `persistent.oaistatic.com` Debian artifacts. It is not a browser wrapper.
+The installed command is `chatgpt`.
+
+### Claude Desktop
+
+The config uses `heytcass/claude-desktop-linux-flake`, which packages Anthropic's official Linux
+beta from the Claude APT repository. The FHS-enabled output is used so desktop MCP servers that call
+`npx`, `uvx` or Docker-compatible tooling have a conventional runtime environment. The installed
+command is `claude-desktop`.
+
+Both app packages are community Nix packaging around vendor-hosted proprietary binaries; the app
+payloads themselves come from OpenAI/Anthropic.
 
 ## Editors and coding agents
 
@@ -90,18 +107,43 @@ the Nix system generation.
 
 ### AI stack
 
+- ChatGPT Desktop Linux
+- Claude Desktop Linux
 - Codex
 - Claude Code
 - OpenCode
 - Hermes Agent
 - T3 Code
 - CodexBar Linux CLI
+- ccusage
 
 Codex, Claude Code and OpenCode are managed through Home Manager and share one declarative MCP
 registry (`programs.mcp.servers`). Hermes is lazy-bootstrapped from Nous Research on first use.
 
-`aiusage` runs `codexbar cards`. CodexBar is pinned as a Nix package from the upstream static Linux
-CLI release rather than using the Darwin-only GUI package from nixpkgs.
+## AI quota and usage commands
+
+Two tools are installed because they answer different questions:
+
+- **CodexBar** reads provider/session information and is the main tool for real plan quota windows,
+  remaining usage, reset timers, credits and provider status.
+- **ccusage** analyzes local agent logs for token/cost/session history across Claude Code, Codex,
+  OpenCode, Hermes and other supported CLIs.
+
+Convenience aliases:
+
+```bash
+aiusage        # CodexBar card view
+ailimits       # all enabled CodexBar providers / quota windows
+aicost         # local daily token/cost report
+aiweek         # local weekly token/cost report
+claude-blocks  # Claude Code 5-hour local billing-window analysis
+```
+
+`Super + U` opens `codexbar cards` in Ghostty.
+
+CodexBar comes from `alioguzhan/codexbar-flake`, which packages the complete upstream static Linux
+CLI payload. This replaces the old hand-written local CodexBar derivation. `ccusage` is consumed from
+its own upstream Nix flake.
 
 ## Apps
 
@@ -110,8 +152,8 @@ CLI release rather than using the Darwin-only GUI package from nixpkgs.
 - Obsidian
 - LocalSend
 - T3 Code
-- ChatGPT web-app window
-- Claude web-app window
+- ChatGPT Desktop Linux beta
+- Claude Desktop Linux beta
 - mpv + imv
 
 ## Development stack
@@ -184,7 +226,6 @@ nh clean all --keep 5
 │   └── development/
 └── home/
     └── yargc/
-        ├── packages/
         └── *.nix
 ```
 
@@ -234,7 +275,6 @@ Do not put API keys, tokens, SSH private keys or `.env` contents directly in the
 - HP Victus/WMI modules
 - another machine's Disko partition layout
 - random NVIDIA PRIME IDs guessed from another laptop
-- unofficial ChatGPT/Claude Linux desktop wrappers
 - impermanence before the first NixOS migration is proven stable
 
 The target is a recoverable workstation config, not the largest possible dotfiles dependency graph.
