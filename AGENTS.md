@@ -21,7 +21,8 @@ or convenience hacks that make the system harder to reproduce.
 - **ChatGPT Desktop and Claude Desktop stay first-class apps.** They are not replaced by generic local-assistant frontends.
 - **bb is the primary multi-agent control plane.** Avoid adding overlapping agent dashboards unless they have a clearly distinct role.
 - **ZCode is the GLM surface.** Keep it packaged from the official, pinned Linux artifact.
-- **Monero is a first-class privacy toolchain.** Keep the official GUI/CLI available; Feather is the lightweight complementary wallet.
+- **Monero is a first-class privacy toolchain.** Keep the official GUI/CLI available; Feather is the lightweight complementary wallet and Eigenwallet must come from nixpkgs rather than a local binary repack.
+- **Cuprate is experimental.** Keep `cuprated` available for opt-in testing, but do not replace `monerod` or auto-start it while upstream still labels the release preview/WIP.
 - Keep the system Tor client available on the standard local SOCKS endpoint for privacy-aware CLI software. Do not confuse it with Tor Browser's separate bundled Tor instance.
 - Do not auto-enable a Monero node, mining, P2Pool or other always-on blockchain workloads unless explicitly requested; wallet tooling should not silently consume large storage/bandwidth.
 - Do not reintroduce gaming packages unless explicitly requested.
@@ -30,6 +31,7 @@ or convenience hacks that make the system harder to reproduce.
 
 - Never guess filesystem UUIDs, partition identifiers or mount topology. `hosts/kraken/hardware-configuration.nix` stays a placeholder until generated on the actual machine.
 - Prefer NixOS/Home Manager modules and pinned derivations over `curl | sh` installers.
+- Before writing a custom AppImage, `.deb` or vendor-binary derivation, check nixpkgs and the upstream repository for a maintained Nix package/flake. Use the maintained package when it satisfies the requested channel/features.
 - Preserve `flake.lock`; update pins only when the change is intentional.
 - Prefer store-qualified executable paths in desktop entries when practical; Lua compositor binds may use profile commands that Home Manager guarantees.
 - Keep unfree packages deliberate and documented.
@@ -45,5 +47,6 @@ or convenience hacks that make the system harder to reproduce.
 3. Run `nix flake metadata --no-write-lock-file`.
 4. Evaluate `.#nixosConfigurations.kraken.config.networking.hostName` and expect `kraken`.
 5. If touching ZCode, build `.#zcode` with unfree packages allowed.
-6. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
-7. Keep README user-facing. Implementation guardrails and agent instructions belong here.
+6. If touching Cuprate packaging, build `.#cuprated`.
+7. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
+8. Keep README user-facing. Implementation guardrails and agent instructions belong here.

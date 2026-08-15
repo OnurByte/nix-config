@@ -48,6 +48,9 @@ jobs:
       - name: Evaluate kraken module graph
         run: test "$(nix eval --raw .#nixosConfigurations.kraken.config.networking.hostName)" = kraken
 
+      - name: Build Cuprate package
+        run: nix build --no-link .#cuprated
+
       # ZCode is proprietary upstream software; the system config allows
       # unfree packages, while a standalone CI package build must opt in.
       - name: Build ZCode package

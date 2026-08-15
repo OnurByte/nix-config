@@ -34,7 +34,7 @@ The rule is simple: **use cloud/provider agents where they are useful, keep the 
 | browser | **Zen** + **Helium** + **Tor Browser** |
 | music | **Spotify + Spicetify** |
 | Discord | **Vesktop + system Vencord** |
-| privacy | **Tor client + Zapret2 + Monero** |
+| privacy | **Tor client + Zapret2 + Monero + Eigenwallet** |
 | desktop AI | **ChatGPT Desktop** + **Claude Desktop** |
 | agent IDEs | **bb** + **T3 Code** + **ZCode** |
 
@@ -113,8 +113,10 @@ Kraken keeps privacy tooling available without turning it into an always-on home
 - **Monero GUI** is the reference graphical wallet.
 - **Monero CLI** provides `monerod`, `monero-wallet-cli` and `monero-wallet-rpc` for advanced use and native SOCKS5 workflows.
 - **Feather** is installed as the lightweight desktop alternative with integrated Tor support.
+- **Eigenwallet** comes directly from nixpkgs and provides the BTC ↔ XMR atomic-swap desktop workflow.
+- **Cuprate / `cuprated`** is the Rust alternative Monero node implementation. The pinned preview binary is available for testing without replacing `monerod`.
 
-A Monero node is **not** enabled as a background service by default. Running a full/pruned node is deliberately opt-in so a normal desktop rebuild does not silently commit large amounts of storage and bandwidth.
+Neither `monerod` nor `cuprated` is enabled as a background service by default. Running a full/pruned node is deliberately opt-in so a normal desktop rebuild does not silently commit large amounts of storage and bandwidth.
 
 ## Music
 
@@ -181,7 +183,7 @@ NixOS
 │   └── CodexBar QML integration
 ├── privacy
 │   ├── Tor client + Zapret2
-│   └── Monero GUI / CLI + Feather
+│   └── Monero GUI / CLI + Feather + Eigenwallet + Cuprate
 ├── desktop
 │   ├── Zen + Helium
 │   ├── Vesktop + Vencord

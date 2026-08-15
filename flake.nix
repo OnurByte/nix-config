@@ -72,7 +72,10 @@
     {
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
-      packages.${system}.zcode = pkgs.callPackage ./home/yargc/packages/zcode.nix { };
+      packages.${system} = {
+        zcode = pkgs.callPackage ./home/yargc/packages/zcode.nix { };
+        cuprated = pkgs.callPackage ./home/yargc/packages/cuprated.nix { };
+      };
 
       nixosConfigurations.${hostname} = nixpkgs.lib.nixosSystem {
         inherit system;
