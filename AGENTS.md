@@ -21,6 +21,9 @@ or convenience hacks that make the system harder to reproduce.
 - **ChatGPT Desktop and Claude Desktop stay first-class apps.** They are not replaced by generic local-assistant frontends.
 - **bb is the primary multi-agent control plane.** Avoid adding overlapping agent dashboards unless they have a clearly distinct role.
 - **ZCode is the GLM surface.** Keep it packaged from the official, pinned Linux artifact.
+- **Monero is a first-class privacy toolchain.** Keep the official GUI/CLI available; Feather is the lightweight complementary wallet.
+- Keep the system Tor client available on the standard local SOCKS endpoint for privacy-aware CLI software. Do not confuse it with Tor Browser's separate bundled Tor instance.
+- Do not auto-enable a Monero node, mining, P2Pool or other always-on blockchain workloads unless explicitly requested; wallet tooling should not silently consume large storage/bandwidth.
 - Do not reintroduce gaming packages unless explicitly requested.
 
 ## Nix contract
@@ -33,6 +36,7 @@ or convenience hacks that make the system harder to reproduce.
 - Keep the Apache/PHP/MariaDB development stack local-only unless explicitly asked otherwise.
 - Keep custom Caelestia patches small and build-tested; do not fork the whole shell for one widget.
 - Caelestia CLI theme flags are opt-out upstream: explicitly set every `enable*` flag so new rebuilds do not theme unrelated software by accident.
+- Keep Zapret2 narrow by default: TLS ClientHello on TCP/443 with host autodetection. Broaden ports/interfaces only for a demonstrated need.
 
 ## Change checklist
 

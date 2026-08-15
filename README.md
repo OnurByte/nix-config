@@ -34,6 +34,7 @@ The rule is simple: **use cloud/provider agents where they are useful, keep the 
 | browser | **Zen** + **Helium** + **Tor Browser** |
 | music | **Spotify + Spicetify** |
 | Discord | **Vesktop + system Vencord** |
+| privacy | **Tor client + Zapret2 + Monero** |
 | desktop AI | **ChatGPT Desktop** + **Claude Desktop** |
 | agent IDEs | **bb** + **T3 Code** + **ZCode** |
 
@@ -103,6 +104,18 @@ Oh My Zsh is intentionally small: `git`, `sudo`, `extract` and `colored-man-page
 
 Caelestia also writes the active Material terminal palette as ANSI sequences; Zsh reapplies the latest palette when a new Ghostty shell starts.
 
+## Privacy / Monero
+
+Kraken keeps privacy tooling available without turning it into an always-on homelab.
+
+- **Zapret2** is enabled through the native NixOS module. Only TLS ClientHello traffic on TCP/443 is sent through its NFQUEUE path, with persistent host autodetection so the bypass stays targeted.
+- A **system Tor client** provides a stable local SOCKS endpoint at `127.0.0.1:9050` for applications that support proxies directly. Tor Browser stays separate and keeps its own bundled Tor process.
+- **Monero GUI** is the reference graphical wallet.
+- **Monero CLI** provides `monerod`, `monero-wallet-cli` and `monero-wallet-rpc` for advanced use and native SOCKS5 workflows.
+- **Feather** is installed as the lightweight desktop alternative with integrated Tor support.
+
+A Monero node is **not** enabled as a background service by default. Running a full/pruned node is deliberately opt-in so a normal desktop rebuild does not silently commit large amounts of storage and bandwidth.
+
 ## Music
 
 Spotify is managed through **Spicetify-Nix** with `adblockify`, `hidePodcasts`, `shuffle` and Catppuccin Mocha. Music controls stay inside Caelestia's MPRIS layer so the dashboard, Now Playing UI and hardware media keys agree on the same session.
@@ -152,7 +165,7 @@ A three-finger horizontal touchpad gesture changes workspaces. `Super + mouse wh
 
 ## Development baseline
 
-**Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · Podman · Distrobox · libvirt · Lazygit · mise**
+**Git · gh · Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · Podman · Distrobox · libvirt · Lazygit · mise**
 
 **Bun is the JS package-manager baseline.** Node remains for runtime/LSP compatibility. A Nix-native Apache + PHP + MariaDB stack replaces XAMPP and binds Apache to localhost only; shell controls are named `web-start`, `web-stop`, `web-restart` and `web-status` accordingly.
 
@@ -166,6 +179,9 @@ NixOS
 │   ├── desktop controls + idle/lock + capture
 │   ├── wallpaper-driven theme propagation
 │   └── CodexBar QML integration
+├── privacy
+│   ├── Tor client + Zapret2
+│   └── Monero GUI / CLI + Feather
 ├── desktop
 │   ├── Zen + Helium
 │   ├── Vesktop + Vencord
@@ -206,10 +222,6 @@ sudo cp /etc/nixos/hardware-configuration.nix hosts/kraken/hardware-configuratio
 sudo nixos-rebuild test --flake .#kraken
 sudo nixos-rebuild switch --flake .#kraken
 ```
-
-## Influences
-
-Kraken started from ideas in `bariscodefxy/nix-config`, then moved toward its own direction: Caelestia's cohesive shell, Omarchy's application-first workflow and the usability-first side of Hyprland ricing — **one shell, native integrations, strong shortcuts and as little glue code as possible.**
 
 ---
 

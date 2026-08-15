@@ -9,6 +9,7 @@
     ../../modules/core
     ../../modules/desktop
     ../../modules/development
+    ../../modules/privacy
   ];
 
   networking.hostName = hostname;

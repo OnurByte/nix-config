@@ -15,6 +15,7 @@
     ./lazy-tools.nix
     ./media.nix
     ./neovim.nix
+    ./privacy.nix
     ./zsh.nix
   ];
 
