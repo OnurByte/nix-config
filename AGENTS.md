@@ -28,6 +28,7 @@ or convenience hacks that make the system harder to reproduce.
 - **Cuprate is experimental.** Keep `cuprated` available for opt-in testing, but do not replace `monerod` or auto-start it while upstream still labels the release preview/WIP.
 - Keep the system Tor client available on the standard local SOCKS endpoint for privacy-aware CLI software. Do not confuse it with Tor Browser's separate bundled Tor instance.
 - Do not auto-enable a Monero node, mining, P2Pool or other always-on blockchain workloads unless explicitly requested; wallet tooling should not silently consume large storage/bandwidth.
+- **Bottles is an intentional Windows-compatibility utility.** Keep the nixpkgs package and the 32-bit graphics userspace needed by Wine; its presence is not permission to restore a gaming stack.
 - Do not reintroduce gaming packages unless explicitly requested.
 
 ## Nix contract
