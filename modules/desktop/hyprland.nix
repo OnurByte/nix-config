@@ -15,7 +15,12 @@
     };
   };
 
-  hardware.graphics.enable = true;
+  hardware.graphics = {
+    enable = true;
+    # Bottles/Wine still encounters 32-bit Windows software in normal desktop
+    # use. Keep the matching Mesa/Vulkan userspace available system-wide.
+    enable32Bit = true;
+  };
 
   hardware.bluetooth.enable = true;
 
