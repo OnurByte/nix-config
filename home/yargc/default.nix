@@ -10,6 +10,7 @@
     ./dev.nix
     ./git.nix
     ./hyprland.nix
+    ./lazy-tools.nix
     ./neovim.nix
     ./zsh.nix
   ];
@@ -19,11 +20,17 @@
     homeDirectory = "/home/${username}";
     stateVersion = "26.05";
 
+    # Mutable upstream tools (PSYCHOVIM, Zed Preview, Hermes) install their
+    # launchers here. Keep it ahead of the Nix profile so their official
+    # self-update flow remains intact.
+    sessionPath = [ "$HOME/.local/bin" ];
+
     sessionVariables = {
-      EDITOR = "nvim";
-      VISUAL = "nvim";
+      EDITOR = "pycho";
+      VISUAL = "pycho";
+      GIT_EDITOR = "pycho";
       TERMINAL = "ghostty";
-      BROWSER = "helium";
+      BROWSER = "zen-beta";
     };
   };
 

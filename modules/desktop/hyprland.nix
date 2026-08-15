@@ -32,6 +32,11 @@
   services.upower.enable = true;
   services.power-profiles-daemon.enable = true;
 
+  programs.localsend = {
+    enable = true;
+    openFirewall = true;
+  };
+
   environment.sessionVariables = {
     NIXOS_OZONE_WL = "1";
     QT_QPA_PLATFORM = "wayland;xcb";

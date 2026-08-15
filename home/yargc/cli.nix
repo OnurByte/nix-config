@@ -32,5 +32,12 @@
     sops
     openssl
     just
+
+    # Hardware / workstation diagnostics.
+    pciutils
+    usbutils
+    lm_sensors
+    smartmontools
+    nvtopPackages.full
   ];
 }

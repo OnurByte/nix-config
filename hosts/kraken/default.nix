@@ -5,6 +5,7 @@
 {
   imports = [
     ./hardware-configuration.nix
+    ./hardware.nix
     ../../modules/core
     ../../modules/desktop
     ../../modules/development

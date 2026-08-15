@@ -10,7 +10,7 @@
       };
 
       init.defaultBranch = "main";
-      core.editor = "nvim";
+      core.editor = "pycho";
       pull.rebase = true;
       fetch.prune = true;
       rerere.enabled = true;

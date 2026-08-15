@@ -17,6 +17,16 @@
       enable = true;
       enableMcpIntegration = true;
     };
+
+    # Keep Nix as the system baseline, but allow project-local runtime pinning
+    # for repos that expect .tool-versions / mise.toml workflows.
+    mise = {
+      enable = true;
+      enableZshIntegration = true;
+      enableMutableConfig = true;
+    };
+
+    lazygit.enable = true;
   };
 
   home.packages = with pkgs; [

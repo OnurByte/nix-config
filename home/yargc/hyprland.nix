@@ -10,8 +10,7 @@
     exec-once = hypridle
 
     input {
-      kb_layout = tr,us
-      kb_options = grp:caps_toggle
+      kb_layout = tr
       follow_mouse = 1
 
       touchpad {
@@ -49,14 +48,25 @@
 
     $mainMod = SUPER
     $terminal = ${pkgs.ghostty}/bin/ghostty
-    $browser = helium
+    $browser = zen-beta
+    $chromium = helium
     $fileManager = ${pkgs.thunar}/bin/thunar
 
     bind = $mainMod, RETURN, exec, $terminal
     bind = $mainMod, B, exec, $browser
+    bind = $mainMod SHIFT, B, exec, $chromium
     bind = $mainMod, E, exec, $fileManager
-    bind = $mainMod, N, exec, $terminal -e nvim
+    bind = $mainMod, N, exec, $terminal -e pycho
+    bind = $mainMod, Z, exec, zed-preview
     bind = $mainMod, SPACE, exec, caelestia shell drawers toggle launcher
+
+    # Omarchy-inspired first-class AI launchers.
+    bind = $mainMod, A, exec, helium --app=https://chatgpt.com
+    bind = $mainMod SHIFT, A, exec, helium --app=https://claude.ai
+    bind = $mainMod SHIFT, C, exec, $terminal -e codex
+    bind = $mainMod SHIFT, O, exec, $terminal -e opencode
+    bind = $mainMod SHIFT, H, exec, $terminal -e hermes-bootstrap
+    bind = $mainMod, U, exec, $terminal -e codexbar cards
 
     bind = $mainMod, Q, killactive,
     bind = $mainMod SHIFT, Q, exit,

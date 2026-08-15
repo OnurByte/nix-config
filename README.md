@@ -1,36 +1,172 @@
 # OnurByte NixOS config
 
-A clean NixOS + Home Manager workstation config built from ideas in
-[`bariscodefxy/nix-config`](https://github.com/bariscodefxy/nix-config) and other mature NixOS configs,
-then stripped back for a Linux/terminal/Neovim-first development machine.
+Personal NixOS + Home Manager workstation config for `yargc@kraken`, inspired by
+[`bariscodefxy/nix-config`](https://github.com/bariscodefxy/nix-config), Omarchy and a handful of
+mature NixOS configs. The gaming/Victus-specific parts of the original base were removed and the
+stack was rebuilt around development, AI tooling, privacy and a terminal-first workflow.
 
-## What this keeps
+## Kraken hardware
 
-- Nix flakes + Home Manager
-- Hyprland on Wayland
-- Caelestia shell/launcher
-- Helium + Firefox + Tor Browser
-- Turkish/US keyboard layout (`Caps Lock` toggles layout)
-- Ghostty, Zsh, Starship and Neovim
-- Rust, Go, Python, Node/Bun, PHP, Java and Lua toolchains
-- Codex, Claude Code and OpenCode through Home Manager
-- one shared MCP registry ready to feed all three coding agents
-- Podman/Distrobox and libvirt/virt-manager
-- `nh` for rebuild/test/cleanup
+Target machine:
+
+- Lenovo IdeaPad Gaming 3 16ARH7 (`82SC`)
+- AMD Ryzen 5 6600H / Rembrandt
+- AMD Radeon 680M integrated GPU
+- NVIDIA GeForce RTX 3050 Mobile (GA107M)
+- 1920x1200 165 Hz internal display
+- MediaTek MT7921 Wi-Fi
+- Realtek RTL8111/8168 Ethernet
+- Crucial P3 NVMe
+- ~27 GiB RAM
+
+The host uses the latest mainline NixOS kernel and AMD P-State active mode. Hybrid graphics is
+configured for an AMD-driven desktop with NVIDIA PRIME offload:
+
+```text
+NVIDIA 01:00.0 -> PCI:1:0:0
+AMD    05:00.0 -> PCI:5:0:0
+```
+
+Run GPU-heavy applications explicitly with:
+
+```bash
+nvidia-offload <command>
+```
+
+## Desktop
+
+- Hyprland + Caelestia
+- Ghostty
+- Turkish Q only (`kb_layout = tr`)
+- PipeWire + WirePlumber
+- Bluetooth + Blueman
+- LocalSend with its local-network firewall port enabled
 - clipboard history, screenshots, lock/idle handling
 
-## What was deliberately removed
+### Key bindings
 
-- Steam/game launchers and gaming modules
-- PrismLauncher input
-- Half-Life/HLSKD custom packages
-- HP Victus/WMI-specific hardware modules
-- another machine's Disko partition layout
-- auto-enabled web/database servers
-- large editor/IDE collections that duplicate the Neovim workflow
+| Key | Action |
+|---|---|
+| `Super + Return` | Ghostty |
+| `Super + Space` | Caelestia launcher |
+| `Super + B` | Zen Browser |
+| `Super + Shift + B` | Helium |
+| `Super + E` | Thunar |
+| `Super + N` | PychoVIM |
+| `Super + Z` | Zed Preview |
+| `Super + A` | ChatGPT app window |
+| `Super + Shift + A` | Claude app window |
+| `Super + Shift + C` | Codex |
+| `Super + Shift + O` | OpenCode |
+| `Super + Shift + H` | Hermes Agent |
+| `Super + U` | CodexBar usage cards |
 
-This repo is intentionally boring about hardware. Machine-specific disk UUIDs, GPU modules and
-vendor laptop tweaks should live in the host layer, not be copied from somebody else's laptop.
+## Browsers
+
+The normal browser stack is deliberately small:
+
+- **Zen Browser** — default HTTP/HTTPS browser
+- **Helium** — Chromium-side companion browser
+- **Tor Browser** — isolated Tor browsing
+
+There is no generic Firefox install in the default app set. ChatGPT and Claude do not rely on
+unofficial Linux Electron wrappers; they are app-mode Helium desktop entries.
+
+## Editors and coding agents
+
+### PychoVIM
+
+`OnurByte/PSYCHOVIM` is the default terminal editor. Nix supplies Neovim and the compiler/runtime
+dependencies, while PychoVIM keeps ownership of its mutable config, marketplace and updater.
+
+The first `pycho` (or `nvim`, which aliases to `pycho`) bootstraps the official PSYCHOVIM installer.
+After that, its own launcher in `~/.local/bin` takes precedence.
+
+### Zed Preview
+
+`zed` maps to `zed-preview`. The first launch runs Zed's official Preview-channel installer. Keeping
+the preview binary upstream-managed lets the fast-moving preview channel update independently from
+the Nix system generation.
+
+### AI stack
+
+- Codex
+- Claude Code
+- OpenCode
+- Hermes Agent
+- T3 Code
+- CodexBar Linux CLI
+
+Codex, Claude Code and OpenCode are managed through Home Manager and share one declarative MCP
+registry (`programs.mcp.servers`). Hermes is lazy-bootstrapped from Nous Research on first use.
+
+`aiusage` runs `codexbar cards`. CodexBar is pinned as a Nix package from the upstream static Linux
+CLI release rather than using the Darwin-only GUI package from nixpkgs.
+
+## Apps
+
+- Session
+- Telegram Desktop
+- Obsidian
+- LocalSend
+- T3 Code
+- ChatGPT web-app window
+- Claude web-app window
+- mpv + imv
+
+## Development stack
+
+System baseline:
+
+- Rust + rust-analyzer
+- Go + gopls
+- Python + uv + Ruff
+- Node.js 24 + Bun + pnpm + TypeScript language server
+- PHP + Composer + Intelephense
+- Java 21 + JDT LS
+- Lua + Lua Language Server + Stylua
+- nixd + nixfmt
+- GCC/Clang/GDB/CMake/Make
+- Podman + Distrobox
+- libvirt + virt-manager
+- GitHub CLI + Lazygit
+- mise
+
+Nix owns the reliable machine-wide baseline. `mise` is available for repositories that require
+project-specific runtime versions or already ship `mise.toml` / `.tool-versions`.
+
+## XAMPP-style local web stack
+
+Upstream XAMPP is not used. The equivalent stack is native NixOS services:
+
+- Apache HTTPD
+- PHP
+- MariaDB
+- default database: `dev`
+- document root: `/srv/http` (owned by `yargc`)
+- Apache listens only on `127.0.0.1:80`
+
+Convenience commands:
+
+```bash
+xampp-start
+xampp-stop
+xampp-restart
+xampp-status
+```
+
+Open the local site at `http://localhost`.
+
+## Nix workflow
+
+Home Manager runs as a NixOS module, so system and user state switch together:
+
+```bash
+nh os test
+nh os switch
+nix flake update
+nh clean all --keep 5
+```
 
 ## Layout
 
@@ -40,6 +176,7 @@ vendor laptop tweaks should live in the host layer, not be copied from somebody 
 ├── hosts/
 │   └── kraken/
 │       ├── default.nix
+│       ├── hardware.nix
 │       └── hardware-configuration.nix
 ├── modules/
 │   ├── core/
@@ -47,90 +184,57 @@ vendor laptop tweaks should live in the host layer, not be copied from somebody 
 │   └── development/
 └── home/
     └── yargc/
+        ├── packages/
+        └── *.nix
 ```
-
-Home Manager runs as a NixOS module, so system and user configuration are switched together.
 
 ## Before the first real switch
 
-`hosts/kraken/hardware-configuration.nix` is intentionally a placeholder. **Do not boot this config
-until you replace it with the file generated by your own NixOS installation.**
+`hosts/kraken/hardware-configuration.nix` is intentionally still a placeholder. `hardware.nix`
+contains the known model/GPU tuning, but it **does not replace** the generated filesystem, initrd and
+device configuration for the actual NixOS installation.
 
-```bash
-sudo cp /etc/nixos/hardware-configuration.nix \
-  ~/nix-config/hosts/kraken/hardware-configuration.nix
-```
-
-The config also assumes an x86_64 UEFI machine with systemd-boot by default. If the machine uses
-legacy BIOS or needs GRUB, change `modules/core/boot.nix` before switching.
-
-## First migration
-
-Clone the repo into the location used by `nh`:
+After NixOS generates the machine file, replace the placeholder with the real one and then test:
 
 ```bash
 git clone git@github.com:OnurByte/nix-config.git ~/nix-config
 cd ~/nix-config
-```
 
-Copy in the real hardware config, then create/update the lockfile and test the build:
+sudo cp /etc/nixos/hardware-configuration.nix \
+  hosts/kraken/hardware-configuration.nix
 
-```bash
 nix flake lock
 sudo nixos-rebuild test --flake .#kraken
-```
-
-If the test generation is healthy:
-
-```bash
 sudo nixos-rebuild switch --flake .#kraken
 ```
 
-After the first switch you can use the shorter workflow:
+Do not copy another machine's `hardware-configuration.nix` or disk UUIDs.
 
-```bash
-nh os test
-nh os switch
-nix flake update
-nh clean all --keep 5
-```
+## Mutable vs declarative boundary
 
-## Defaults worth knowing
+Most of the workstation is reproducible through Nix. Three tools are intentionally allowed to own
+their fast-moving user-space installation because that matches their upstream workflow:
 
-| thing | choice |
-|---|---|
-| host | `kraken` |
-| user | `yargc` |
-| Nixpkgs | `nixos-unstable` |
-| WM | Hyprland |
-| shell UI | Caelestia |
-| terminal | Ghostty |
-| editor | Neovim |
-| browser | Helium |
-| containers | Podman + Distrobox |
+- PSYCHOVIM
+- Zed Preview
+- Hermes Agent
 
-`pycho` is an alias for `nvim`, so both commands land in the same editor/config.
-
-## MCP
-
-Home Manager's shared MCP registry is enabled and Codex, Claude Code and OpenCode are already wired
-to consume it. No servers are enabled by default. Add future servers under `programs.mcp.servers` in
-`home/yargc/dev.nix` instead of maintaining three separate MCP configs.
+Their launchers live under `~/.local/bin`, which is placed before the Nix profile. Everything else
+should stay declarative unless there is a good reason not to.
 
 ## Secrets
 
-Do not put API keys, tokens, SSH private keys or `.env` files directly into this flake. They can end
-up in the Nix store. The repo ignores common secret paths; if declarative secrets become useful,
-add `sops-nix`/age as a separate step after the base system is stable.
+Do not put API keys, tokens, SSH private keys or `.env` contents directly in the flake. `sops` and
+`age` are installed; adding `sops-nix` is the next step if declarative secrets are needed.
 
-## Next upgrades, not first-boot dependencies
+## Deliberately not added
 
-Good candidates once the migration is proven on real hardware:
+- Steam / gaming modules / PrismLauncher
+- Half-Life custom packages from the original base
+- HP Victus/WMI modules
+- another machine's Disko partition layout
+- random NVIDIA PRIME IDs guessed from another laptop
+- unofficial ChatGPT/Claude Linux desktop wrappers
+- impermanence before the first NixOS migration is proven stable
 
-- `sops-nix` for declarative secrets
-- Tailscale/headscale module if the machine needs private remote access
-- host-specific GPU/power modules
-- impermanence only if you actually want ephemeral root/state management
-- CI that evaluates/formats the flake on each push
-
-The goal is a config you can understand and recover, not a giant dotfiles dependency graph.
+The target is a recoverable workstation config, not the largest possible dotfiles dependency graph.
