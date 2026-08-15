@@ -2,252 +2,335 @@
 
 # KRAKEN
 
-### an agentic NixOS rice
+### sovereign, agentic NixOS workstation
 
-**Hyprland · Caelestia · bb · Codex · Claude · OpenCode · Hermes · GLM**
+**NixOS · Hyprland · Caelestia · Monero · Codex · Claude · OpenCode · Hermes**
 
-A Linux workstation built around a simple loop:
-**delegate → inspect → review → ship.**
+*A personal workstation built to be inspectable, reproducible, private where it matters, and fast to operate.*
 
 ![NixOS](https://img.shields.io/badge/NixOS-unstable-5277C3?style=flat-square&logo=nixos&logoColor=white)
 ![Hyprland](https://img.shields.io/badge/Hyprland-Wayland-58E1FF?style=flat-square)
 ![Caelestia](https://img.shields.io/badge/Caelestia-Quickshell-8B5CF6?style=flat-square)
-![Agents](https://img.shields.io/badge/workflow-agentic-22C55E?style=flat-square)
+![Monero](https://img.shields.io/badge/Monero-inspired-FF6600?style=flat-square&logo=monero&logoColor=white)
 
 </div>
 
 ---
 
-Kraken is my daily NixOS workstation: a Hyprland rice where coding agents are part of the desktop instead of a pile of forgotten terminal tabs.
+Kraken is not a generic NixOS starter and it is not a package dump. It is the source code for one workstation: `yargc@kraken`.
 
-The rule is simple: **use cloud/provider agents where they are useful, keep the machine itself light, and let one shell own the desktop.** There is no Ollama stack, local-model daemon or pile of overlapping panels here.
+The goal is to make the machine feel personal without making it fragile. The desktop should be beautiful without needing five overlapping shell layers. Development tools should be powerful without turning the host into a permanent background-service farm. AI agents should remove mechanical work without becoming an opaque operator of the machine. Privacy should be a property of the architecture, not a browser extension installed as an afterthought.
 
-## Desktop
+## Philosophy
+
+### Own the machine
+
+The configuration should be understandable, recoverable and rebuildable by its user.
+
+NixOS and Home Manager own the stable system surface. Packages are taken from nixpkgs or upstream flakes when possible. Custom packages are pinned to exact sources and hashes, and important custom builds are exercised in CI. Random install scripts, floating `latest` artifacts and hidden state are avoided unless an upstream-managed mutable workflow is a deliberate choice.
+
+The machine should never require remembering what was clicked in a settings window six months ago in order to reproduce its essential behavior.
+
+### Privacy is autonomy
+
+Kraken is strongly influenced by the values that make **Monero** important to me: privacy, fungibility, censorship resistance, decentralization, self-custody and minimizing unnecessary trust.
+
+That does **not** mean pretending a desktop can become private merely by routing everything through Tor. Kraken still uses normal web services and cloud AI products when they are useful. The principle is narrower and more practical: the user should decide what runs, what leaves the machine, what stays local and which third party is being trusted.
+
+That philosophy appears throughout the config:
+
+- Tor exists as a first-class system capability instead of an emergency add-on.
+- Monero tooling is available without silently starting a blockchain node in the background.
+- `monerod` and Rust-based `cuprated` are opt-in, not ambient services.
+- Feather, Monero GUI/CLI and Eigenwallet are installed from controlled package sources.
+- Atuin history remains local; sync is disabled.
+- agent usage and quota pressure are surfaced instead of hidden.
+- services are not opened to the network merely because a development package was installed.
+- secrets do not belong in the public Nix store.
+
+Kraken is **not affiliated with or endorsed by the Monero project**. It simply shares a preference for user sovereignty over invisible convenience.
+
+### Agents are tools, not authority
+
+The agent loop is:
+
+**delegate → inspect → review → ship**
+
+Codex, Claude Code, OpenCode and Hermes can perform large amounts of mechanical work, but the workstation is designed to keep their actions visible. `bb` is the main multi-agent control plane, Plannotator provides a visual review gate, TurnLens exposes per-turn token/cost behavior, and CodexBar exposes provider quota/reset pressure.
+
+The point is not maximum automation. The point is **maximum leverage without surrendering understanding**.
+
+### One job, one surface
+
+A rice gets worse when every new feature brings another bar, launcher, notification daemon and tray app.
+
+Caelestia owns the desktop shell: bar, launcher, control center, Wi-Fi/Bluetooth/audio surfaces, notifications, DND, lock/idle flow, clipboard UI, capture controls and wallpaper-driven theming. Hyprland owns composition and window behavior. Ghostty owns the terminal. Navi and Atuin solve command memory. There is no second bar competing with Caelestia and no parallel desktop shell pretending to be integration.
+
+### Explicit beats magical
+
+Kraken prefers an explicit command over an invisible daemon when the daemon provides little daily value.
+
+A Monero node does not start just because `monerod` exists. Cuprate does not replace the reference daemon behind the user's back. Flake inputs are not silently updated. The local web stack is controlled explicitly. Commands selected from the desktop command palette are copied rather than executed blindly.
+
+The machine should surprise its owner as little as possible.
+
+## The workstation
 
 | Layer | Choice |
 |---|---|
+| OS | **NixOS unstable + Home Manager** |
 | compositor | **Hyprland**, modular Lua config |
-| shell | **Caelestia / Quickshell**, patched by Nix |
+| desktop shell | **Caelestia / Quickshell** |
 | terminal | **Ghostty** |
-| shell UX | **Zsh + minimal Oh My Zsh + Starship** |
+| shell | **Zsh + minimal Oh My Zsh + Starship** |
 | editor | **PychoVIM** + **Zed Preview** |
-| browser | **Zen** + **Helium** + **Tor Browser** |
-| music | **Spotify + Spicetify** |
-| Discord | **Vesktop + system Vencord** |
-| privacy | **Tor client + Zapret2 + Monero + Eigenwallet** |
-| desktop AI | **ChatGPT Desktop** + **Claude Desktop** |
-| agent IDEs | **bb** + **T3 Code** + **ZCode** |
+| browsers | **Zen** + **Helium** + **Tor Browser** |
+| agent control | **bb** |
+| coding agents | **Codex · Claude Code · OpenCode · Hermes** |
+| agent GUIs | **T3 Code · ZCode / GLM** |
+| desktop AI | **ChatGPT Desktop · Claude Desktop** |
+| privacy | **Tor · Zapret2 · Monero stack** |
+| containers | **Podman · Distrobox · libvirt** |
+| command memory | **Navi · Atuin · Kraken Commands** |
 
-## One desktop shell
+## Desktop architecture
 
-Caelestia owns the bar, launcher, control center, network/Bluetooth/audio controls, notification history, DND, idle/lock flow, clipboard frontend, screenshots/recording and wallpaper scheme. The remaining `cliphist` watchers are only its history backend.
+```text
+Hyprland
+└── Caelestia
+    ├── bar
+    ├── launcher
+    ├── control center
+    ├── notifications + DND
+    ├── Wi-Fi / Bluetooth / audio
+    ├── lock + idle
+    ├── clipboard frontend
+    ├── screenshots / recording
+    ├── wallpaper / Material palette
+    └── CodexBar usage delegate
+```
 
-Wallpaper changes drive Caelestia's Material scheme into the shell, GTK apps, Fuzzel-backed pickers, btop/nvtop, Hyprland borders and terminal PTYs. Spotify stays on its deliberate Catppuccin theme instead of being rewritten by the wallpaper engine.
+Hyprland configuration is split into small Lua modules under `home/yargc/hypr/`:
 
-Hyprland itself is split into small Lua modules under `home/yargc/hypr/`: appearance, input, autostart and binds. No legacy `hyprland.conf`, parallel `hypridle`, `nm-applet`, Blueman or second bar.
+```text
+hyprland.lua
+└── kraken/
+    ├── appearance.lua
+    ├── input.lua
+    ├── autostart.lua
+    └── binds.lua
+```
 
-## Agent workflow
+There is no Waybar, `nm-applet`, Blueman tray UI, parallel lock/idle stack or night-light daemon. Caelestia is the shell rather than decoration layered on top of another shell.
+
+Wallpaper changes propagate the active Material palette into the surfaces where dynamic theming is useful: Caelestia, GTK, Ghostty PTYs, Hyprland borders, Fuzzel-backed pickers, btop and nvtop. Apps with deliberate themes, such as Spotify, are allowed to keep them.
+
+## Agentic workflow
 
 ```mermaid
 flowchart LR
-    Intent[Intent] --> BB[bb]
+    Human[Intent] --> BB[bb]
     BB --> Codex[Codex]
     BB --> Claude[Claude Code]
     BB --> OpenCode[OpenCode]
     BB --> Hermes[Hermes]
-    GLM[ZCode / GLM] --> Work[repo]
 
-    Codex --> Work
-    Claude --> Work
-    OpenCode --> Work
-    Hermes --> Work
+    Codex --> Repo[Repository]
+    Claude --> Repo
+    OpenCode --> Repo
+    Hermes --> Repo
+    ZCode[ZCode / GLM] --> Repo
 
-    Work --> Review[Plannotator]
+    Repo --> Review[Plannotator / human review]
     Review -->|approve| Ship[Ship]
     Review -->|feedback| BB
 
-    Browser[agent-browser] --> BB
-    MCP[shared MCP registry] --> BB
-    Usage[CodexBar / TurnLens] --> Shell[Caelestia + terminal]
+    Usage[CodexBar · TurnLens · ccusage] --> Human
 ```
 
-### The useful surfaces
+The main surfaces have intentionally different jobs:
 
-- **bb** — primary control plane for Codex, Claude Code, OpenCode and Hermes threads/worktrees.
-- **T3 Code** — lightweight GUI with Codex, Claude and OpenCode enabled together.
-- **ZCode** — GLM-focused agentic development environment, packaged from Z.AI's Linux artifact and pinned by hash.
-- **Plannotator** — visual review gate for Codex and Claude plans.
-- **agent-browser** — browser automation without turning the desktop into a local-model lab.
-- **CodexBar** — provider quota/reset state integrated directly into Caelestia.
-- **TurnLens** — pinned local CLI for per-turn Codex/Claude token usage, reasoning/tool-call context and API-equivalent cost.
-- **ccusage** — broader historical cloud-agent accounting; it complements rather than replaces TurnLens.
+- **bb** coordinates agent threads/worktrees and is the primary control plane.
+- **T3 Code** gives Codex, Claude and OpenCode a shared graphical coding surface.
+- **ZCode** provides the GLM-focused desktop agent environment.
+- **Plannotator** turns agent planning into an explicit review step.
+- **CodexBar** exposes quotas and reset pressure through Caelestia rather than another bar.
+- **TurnLens** measures individual Codex/Claude turns from their transcripts.
+- **ccusage** remains useful for broader historical usage accounting.
 
-## Caelestia × CodexBar
-
-Kraken does not start a second bar just for AI usage. Caelestia is patched during the Nix build with a native `aiUsage` QML delegate. CodexBar refreshes provider pressure every 30 seconds; clicking it opens the Wayland GTK provider panel.
-
-```text
-╭─────────────╮
-│    logo     │
-│ workspaces  │
-│ active app  │
-│    tray     │
-│   🤖 34%   ├──── click ──── CodexBar panel
-│    clock    │
-│   status    │
-│    power    │
-╰─────────────╯
-```
-
-## Shell
-
-Oh My Zsh is intentionally small: `git`, `sudo`, `extract` and `colored-man-pages`. Completion, autosuggestions, syntax highlighting and history search remain Home Manager-managed, while Starship owns the prompt.
-
-Caelestia also writes the active Material terminal palette as ANSI sequences; Zsh reapplies the latest palette when a new Ghostty shell starts.
+No local LLM runtime is enabled by default. Kraken is not an Ollama/LM Studio box unless that becomes an intentional future requirement.
 
 ## Command memory
 
-Kraken does not expect rarely used commands to be memorized or buried in a notes app.
+A workstation full of powerful CLI tools is useless if their syntax lives in forgotten notes.
 
-- `Super + /` opens **Kraken Commands**, a Navi-backed searchable palette of curated commands. A selection is copied to the clipboard instead of being executed blindly from a launcher.
-- `Ctrl + G` opens Navi inside Zsh and inserts the chosen command into the current prompt, where it can be reviewed or edited before running.
-- `Ctrl + R` opens **Atuin** fuzzy history search. It stays local on this machine: sync and update checks are disabled.
-- `Super + Shift + /` opens the separate searchable keybind cheatsheet.
+Kraken therefore treats command discovery as part of the desktop:
 
-The curated commands live declaratively in `home/yargc/command-memory.nix`, so agent commands, Nix maintenance, the local web stack, Git/GitHub and Monero tooling have one source of truth. **Kraken Commands** also appears in Caelestia's normal app launcher through its desktop entry.
+- `Super + /` — open **Kraken Commands**, search curated Navi cheatsheets and copy the selected command.
+- `Ctrl + G` — open Navi inside Zsh and insert a selected command into the current prompt for review/editing.
+- `Ctrl + R` — search local shell history with Atuin.
+- `Super + Shift + /` — searchable keybind cheatsheet.
 
-## Privacy / Monero
+The curated command source lives in `home/yargc/command-memory.nix`. Agent tooling, Nix maintenance, Git/GitHub, the local web stack and Monero commands therefore have one declarative home instead of being spread across README snippets and random notes.
 
-Kraken keeps privacy tooling available without turning it into an always-on homelab.
+## Privacy and Monero
 
-- **Zapret2** is enabled through the native NixOS module. Only TLS ClientHello traffic on TCP/443 is sent through its NFQUEUE path, with persistent host autodetection so the bypass stays targeted.
-- A **system Tor client** provides a stable local SOCKS endpoint at `127.0.0.1:9050` for applications that support proxies directly. Tor Browser stays separate and keeps its own bundled Tor process.
-- **Monero GUI** is the reference graphical wallet.
-- **Monero CLI** provides `monerod`, `monero-wallet-cli` and `monero-wallet-rpc` for advanced use and native SOCKS5 workflows.
-- **Feather** is installed as the lightweight desktop alternative with integrated Tor support.
-- **Eigenwallet** comes directly from nixpkgs and provides the BTC ↔ XMR atomic-swap desktop workflow.
-- **Cuprate / `cuprated`** is the Rust alternative Monero node implementation. The pinned preview binary is available for testing without replacing `monerod`.
+Privacy tooling is first-class, but expensive background behavior remains opt-in.
 
-Neither `monerod` nor `cuprated` is enabled as a background service by default. Running a full/pruned node is deliberately opt-in so a normal desktop rebuild does not silently commit large amounts of storage and bandwidth.
+### Network/privacy layer
 
-## Music
+- **Tor client** provides a stable local SOCKS endpoint at `127.0.0.1:9050` for software that explicitly supports it.
+- **Tor Browser** remains isolated from the system Tor client and uses its own intended browser/Tor integration.
+- **Zapret2** is enabled through its NixOS module with a deliberately narrow TCP/443 TLS ClientHello baseline rather than indiscriminately processing all traffic.
 
-Spotify is managed through **Spicetify-Nix** with `adblockify`, `hidePodcasts`, `shuffle` and Catppuccin Mocha. Music controls stay inside Caelestia's MPRIS layer so the dashboard, Now Playing UI and hardware media keys agree on the same session.
+### Monero layer
 
-> Spicetify and its extensions are community modifications and can break when Spotify changes its client.
+- **Monero GUI** — reference graphical wallet.
+- **Monero CLI** — `monerod`, `monero-wallet-cli`, `monero-wallet-rpc` and advanced workflows.
+- **Feather** — lightweight privacy-focused Monero desktop wallet with Tor support.
+- **Cuprate / `cuprated`** — Rust alternative Monero node implementation, currently treated as an opt-in preview tool.
+- **Eigenwallet** — BTC ↔ XMR atomic-swap desktop workflow from nixpkgs.
 
-## Discord
+Neither `monerod` nor `cuprated` is enabled as a system service. Installing a node implementation must not silently consume hundreds of gigabytes of storage or persistent bandwidth.
 
-Discord runs through **Vesktop with Nix-managed Vencord** rather than patching the stock client after every rebuild. App self-updates are disabled and the Caelestia tray handles the desktop integration.
+For software that can move funds, package provenance matters more than convenience: prefer nixpkgs or official/upstream Nix packaging; when a custom package is unavoidable, pin the exact artifact and cryptographic hash and build-test it in CI.
 
-> Vesktop/Vencord are unofficial Discord client modifications and may conflict with Discord's Terms of Service.
+## Development environment
 
-## Shortcuts
+The base workstation carries the toolchains needed for normal full-stack and systems work:
 
-| Key | Action |
-|---|---|
-| `Super + Space` | Caelestia launcher |
-| `Super + C` | control center / quick toggles |
-| `Super + Shift + N` | notification sidebar/history |
-| `Super + Shift + V` | clipboard history |
-| `Super + .` | emoji picker |
-| `Super + /` | **Kraken Commands** palette |
-| `Super + Shift + /` | searchable keybind cheatsheet |
-| `Ctrl + G` | Navi command cheatsheet → current Zsh prompt |
-| `Ctrl + R` | Atuin fuzzy shell history |
-| `Super + Shift + Space` | switch keyboard layout |
-| `Alt + Tab` | cycle windows |
-| `Print` | screenshot |
-| `Shift + Print` | frozen region screenshot |
-| `Super + Ctrl + O` | OCR selected region to clipboard (Turkish + English) |
-| `Super + Shift + R` | region recording |
-| `Super + L` | Caelestia lock |
-| `Super + M` | Spotify |
-| `Super + D` | Vesktop / Discord |
-| `Super + Shift + D` | **bb** agent IDE |
-| `Super + T` | T3 Code |
-| `Super + Shift + G` | **ZCode / GLM** |
-| `Super + Shift + H` | Hermes Desktop |
-| `Super + U` | CodexBar provider panel |
-| `Super + Shift + C` | Codex in Ghostty |
-| `Super + Shift + O` | OpenCode in Ghostty |
-| `Super + A` | ChatGPT Desktop |
-| `Super + Shift + A` | Claude Desktop |
-| `Super + N` | PychoVIM |
-| `Super + Z` | Zed Preview |
-| `Super + B` | Zen Browser |
-| `Super + Shift + B` | Helium |
+**Git · gh · Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · CMake · GDB · Lazygit · mise**
 
-A three-finger horizontal touchpad gesture changes workspaces. `Super + mouse wheel` does the same. Commands and keybinds both have searchable surfaces, so the README is not required knowledge.
+**Bun is the JavaScript package-manager baseline.** Node remains because runtimes, language servers and third-party tooling still depend on it.
 
-## Development baseline
+The web stack is Nix-native rather than XAMPP:
 
-**Git · gh · Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · Podman · Distrobox · libvirt · Lazygit · mise**
+- Apache
+- PHP
+- MariaDB
+- localhost-oriented development defaults
+- `web-start`, `web-stop`, `web-restart`, `web-status`
 
-**Bun is the JS package-manager baseline.** Node remains for runtime/LSP compatibility. A Nix-native Apache + PHP + MariaDB stack replaces XAMPP and binds Apache to localhost only; shell controls are named `web-start`, `web-stop`, `web-restart` and `web-status` accordingly.
+Podman, Distrobox and libvirt cover isolated/container/VM workflows without making Docker Desktop part of the workstation model.
 
-## Nix layout
+## Applications
+
+The desktop deliberately keeps rich native/GUI surfaces where they are better than another terminal wrapper:
+
+- **Zen Browser** — daily browser.
+- **Helium** — Chromium-side companion.
+- **Tor Browser** — anonymity-oriented browsing surface.
+- **ChatGPT Desktop / Claude Desktop** — native AI product surfaces.
+- **Vesktop + system Vencord** — Discord client integration managed by Nix.
+- **Spotify + Spicetify-Nix** — music with Caelestia MPRIS integration.
+- **Session / Telegram** — messaging.
+- **Obsidian** — notes/knowledge.
+- **Thunar** — file manager.
+
+Application self-updaters are disabled where Nix should own updates.
+
+## Packaging policy
+
+When adding software, the preference order is:
+
+1. **nixpkgs**
+2. **official/upstream flake**
+3. **source derivation**
+4. **pinned binary derivation** only when the earlier options are impractical
+
+Binary packages must pin exact versions/URLs and hashes. Important custom packages get dedicated CI builds.
+
+There are intentional exceptions for fast-moving user-space workflows:
+
+- **PSYCHOVIM** owns its mutable Neovim configuration and updater while Nix supplies its dependencies.
+- **Zed Preview** follows the official Preview installer because the desired upstream Preview channel is not represented by a dedicated flake output.
+
+An exception should remain an exception, not become the default installation method.
+
+## Repository layout
 
 ```text
-NixOS
-├── Hyprland
-│   └── Lua → appearance / input / autostart / binds
-├── Caelestia
-│   ├── desktop controls + idle/lock + capture
-│   ├── wallpaper-driven theme propagation
-│   └── CodexBar QML integration
-├── command memory
-│   ├── Navi → curated commands / Ctrl-G widget
-│   └── Atuin → local Ctrl-R history
-├── privacy
-│   ├── Tor client + Zapret2
-│   └── Monero GUI / CLI + Feather + Eigenwallet + Cuprate
-├── desktop
-│   ├── Zen + Helium
-│   ├── Vesktop + Vencord
-│   ├── ChatGPT + Claude
-│   └── Spotify + Spicetify
-├── agents
-│   ├── bb → Codex / Claude / OpenCode / Hermes
-│   ├── T3 Code
-│   ├── ZCode / GLM
-│   ├── TurnLens + ccusage
-│   ├── Plannotator
-│   └── agent-browser
-└── host
-    └── kraken
+.
+├── flake.nix
+├── flake.lock
+├── hosts/
+│   └── kraken/
+├── modules/
+│   ├── core/
+│   ├── desktop/
+│   ├── development/
+│   └── privacy/
+└── home/
+    └── yargc/
+        ├── hypr/
+        ├── packages/
+        ├── command-memory.nix
+        ├── privacy.nix
+        ├── dev.nix
+        └── ...
 ```
 
-Most of the system is declarative. Two fast-moving user tools intentionally keep their upstream workflow:
+Home Manager is loaded as a NixOS module so the host and user environment evaluate as one system.
 
-- **PSYCHOVIM** owns its mutable Neovim config, marketplace and updater.
-- **Zed Preview** follows the upstream Preview channel installer.
+## Host: `kraken`
 
-## Host
+The target machine is a **Lenovo IdeaPad Gaming 3 16ARH7 (82SC)**:
 
-`kraken` is a Lenovo IdeaPad Gaming 3 16ARH7 with a Ryzen 5 6600H, Radeon 660M and RTX 3050 Mobile. AMD drives the desktop; NVIDIA is available through PRIME offload.
+- Ryzen 5 6600H
+- Radeon 660M iGPU
+- RTX 3050 Mobile
+- 1920×1200 / 165 Hz panel
+- Btrfs NVMe storage
 
-Night light is handled by `hyprsunset`: neutral from 07:00 and a mild 5000 K profile from 21:00.
+AMD drives the normal desktop. NVIDIA is available through PRIME offload when an application actually needs it.
 
-## Install note
+Hardware-specific configuration belongs in the host layer. Another machine's filesystem UUIDs, partition map, GPU assumptions or vendor modules must never be copied merely because the rest of the rice looks good.
 
-> [!IMPORTANT]
-> `hosts/kraken/hardware-configuration.nix` is intentionally a placeholder. Never reuse another machine's filesystem UUIDs.
+## Important installation note
 
-After NixOS generates the real hardware configuration:
+> [!CAUTION]
+> `hosts/kraken/hardware-configuration.nix` is a placeholder until the real NixOS installation generates one for this machine. Do not invent UUIDs and do not copy somebody else's hardware configuration.
+
+The intended migration is from the NixOS installer environment: mount the target filesystems, generate the hardware configuration for the mounted system, place this repo/config on the target, then build/install `.#kraken`.
+
+Before any destructive partitioning or bootloader work, verify the actual machine with commands such as `lsblk -f` and confirm UEFI/boot assumptions. The repository currently targets systemd-boot on UEFI.
+
+Once running on NixOS, normal maintenance is intentionally small:
 
 ```bash
-git clone git@github.com:OnurByte/nix-config.git ~/nix-config
-cd ~/nix-config
-sudo cp /etc/nixos/hardware-configuration.nix hosts/kraken/hardware-configuration.nix
-sudo nixos-rebuild test --flake .#kraken
-sudo nixos-rebuild switch --flake .#kraken
+nh os test
+nh os switch
+nh clean all --keep 5
 ```
+
+Flake updates are explicit:
+
+```bash
+cd ~/nix-config
+nix flake update
+nh os switch
+```
+
+## Non-goals
+
+Kraken is deliberately **not** trying to be:
+
+- a universal NixOS framework for every machine;
+- a self-hosted AI cluster;
+- an always-on Monero node by default;
+- a gaming distribution;
+- a collection of every fashionable Wayland utility;
+- a desktop where three launchers and two bars solve the same problem;
+- a system whose important state only exists outside Git.
+
+It is one opinionated workstation that should become easier to understand as it grows, not harder.
 
 ---
 
 <div align="center">
 
-**delegate fast · review visually · keep the desktop simple**
+### user sovereignty over invisible convenience
+
+**declare what matters · expose what costs · minimize trust · review before ship**
 
 </div>
