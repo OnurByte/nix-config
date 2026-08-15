@@ -20,6 +20,8 @@ let
       Super + .             emoji picker
       Super + /             command palette
       Super + Shift + /     keybind cheatsheet
+      Ctrl + G              Navi command -> current prompt
+      Ctrl + R              Atuin fuzzy shell history
       Super + Shift + Space keyboard layout
       Alt + Tab             next window
       Alt + Shift + Tab     previous window
