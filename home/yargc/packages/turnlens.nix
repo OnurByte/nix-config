@@ -12,7 +12,7 @@ buildNpmPackage rec {
     owner = "kelesmert";
     repo = "turnlens";
     tag = "v${version}";
-    hash = lib.fakeHash;
+    hash = "sha256-fv475/OTTr9WxHi72t/CSyvnjwLLvk8UWeRgkQUT1lw=";
   };
 
   npmDepsHash = lib.fakeHash;
