@@ -20,6 +20,7 @@
     ./neovim.nix
     ./privacy.nix
     ./secrets.nix
+    ./skills.nix
     ./zsh.nix
   ];
 
