@@ -22,6 +22,7 @@ It is a personal config, not a framework. The point is to keep the machine repro
 - **One desktop shell.** Hyprland handles windows; Caelestia handles the bar, launcher, control center, notifications, lock/idle, clipboard and capture UI.
 - **Agents stay reviewable.** Codex, Claude Code, OpenCode, Grok Build and Hermes can do the mechanical work; `bb`, Plannotator, TurnLens and CodexBar keep the workflow visible.
 - **Privacy is normal configuration, not a special mode.** Tor and Monero tooling are available, Atuin stays local, and expensive background services are opt-in.
+- **Recovery is part of the workstation.** Nix generations handle system rollback, Snapper handles short-term Btrfs recovery and Restic handles real backups.
 - **No duplicate surface for the same job.** A new daemon, tray app or launcher needs a reason to exist.
 
 ## Look
@@ -51,6 +52,7 @@ The intended palette is cold and dark rather than neon-heavy: black, graphite, b
 | media | Spotify + Spicetify · MPV + MPRIS |
 | privacy | Tor · Zapret2 · Monero GUI/CLI · Feather · Eigenwallet · Cuprate |
 | containers / VMs | Podman · Distrobox · libvirt · virt-manager |
+| recovery | Btrfs scrub · Snapper · Restic |
 | Windows compatibility | Bottles |
 
 ## Desktop
@@ -119,15 +121,18 @@ Toolchains:
 
 **Git · gh · Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · CMake · GDB · Lazygit · mise**
 
-Bun is the user-facing JavaScript package manager. Node stays for runtimes and language servers.
+Bun is the user-facing JavaScript package manager. Node stays for runtimes and language servers. Nix supplies the workstation baseline; per-project versions can still be owned by `mise` or `nix develop` without adding more global package managers.
 
 The local web stack is Nix-native:
 
 - Apache
 - PHP
 - MariaDB
-- localhost-oriented defaults
+- localhost-only HTTP listener
+- installed declaratively but stopped at boot
 - `web-start`, `web-stop`, `web-restart`, `web-status`
+
+`vesper-web.target` is the only switch for that stack, so the database and web server do not become permanent background services just because development support is installed.
 
 ## Media
 
@@ -174,7 +179,25 @@ Preference order:
 
 T3 Code Nightly uses an official pinned upstream AppImage because nixpkgs tracks the stable channel rather than the requested nightly channel.
 
-Current intentional mutable exceptions are PychoVIM's upstream-managed config and Zed Preview's official Preview installer.
+PychoVIM is Onur's own editor project and intentionally owns its mutable user configuration/updater. Zed Preview intentionally uses the official Preview installer. They are explicit workstation choices, not accidental reproducibility leaks.
+
+## Recovery
+
+The storage/recovery layers have separate jobs:
+
+```text
+Nix generations -> roll back NixOS configuration
+Snapper         -> short-term Btrfs filesystem snapshots
+Restic          -> encrypted backup outside the laptop
+```
+
+Btrfs scrub runs monthly whenever the real hardware configuration reports Btrfs. Snapper activates conditionally on a real Btrfs root, with a separate Home timeline when `/home` is a distinct Btrfs mount.
+
+Restic is configured as a daily systemd job with 7 daily, 4 weekly and 12 monthly snapshots plus a monthly repository check. Repository credentials stay out of the Nix store in `/etc/vesper/restic.env`; a missing removable backup disk produces a clean skip rather than a failed timer.
+
+`vesper-doctor` checks the live filesystem, scrub timer, AMD pstate, NVIDIA/PRIME visibility, Hyprland refresh rate, Tor, web target, backup configuration and failed systemd units.
+
+See [`docs/INSTALL.md`](docs/INSTALL.md) for the verified disk inventory and NixOS migration rules, and [`docs/BACKUP.md`](docs/BACKUP.md) for Restic setup and restore testing.
 
 ## Layout
 
@@ -182,6 +205,9 @@ Current intentional mutable exceptions are PychoVIM's upstream-managed config an
 .
 ├── flake.nix
 ├── flake.lock
+├── docs/
+│   ├── INSTALL.md
+│   └── BACKUP.md
 ├── hosts/
 │   └── vesper/
 ├── modules/
@@ -193,6 +219,7 @@ Current intentional mutable exceptions are PychoVIM's upstream-managed config an
     ├── hypr/
     ├── packages/
     ├── command-memory.nix
+    ├── doctor.nix
     ├── caelestia.nix
     ├── dev.nix
     └── privacy.nix
@@ -206,19 +233,24 @@ Current intentional mutable exceptions are PychoVIM's upstream-managed config an
 - Radeon 660M iGPU
 - RTX 3050 Mobile
 - 1920×1200 / 165 Hz panel
-- Btrfs NVMe storage
+- 1 TB NVMe
+- 4 GiB FAT32 EFI system partition
+- LUKS2-encrypted Btrfs root
+- zstd compression + noatime
+- zram swap
 
-AMD drives the desktop. NVIDIA is PRIME offload only.
+AMD drives the desktop. NVIDIA is PRIME offload only. The machine follows the kernel line selected by the pinned NixOS unstable revision instead of forcing `linuxPackages_latest`.
+
+The verified current storage UUIDs and subvolume-capture procedure live in `docs/INSTALL.md`.
 
 > [!CAUTION]
-> `hosts/vesper/hardware-configuration.nix` is a placeholder until the real NixOS installer generates one on this machine. Do not invent filesystem UUIDs or copy another machine's hardware configuration.
-
-The repository targets systemd-boot on UEFI. Before installation or partition changes, verify the actual disk layout with `lsblk -f` and confirm the boot mode.
+> `hosts/vesper/hardware-configuration.nix` remains a placeholder until the complete current Btrfs subvolume map is captured or NixOS generates the real file. The root `@`, EFI UUID, LUKS UUID and Btrfs UUID are known, but the other mounted subvolume names must not be guessed.
 
 Once the machine is on NixOS:
 
 ```bash
 nh os test
+vesper-doctor
 nh os switch
 nh clean all --keep 5
 ```
