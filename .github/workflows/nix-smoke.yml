@@ -46,6 +46,7 @@ jobs:
       - name: Parse Hyprland Lua
         shell: bash
         run: |
+          set -euo pipefail
           nix shell nixpkgs#lua -c bash -c '
             for file in home/yargc/hypr/*.lua; do
               echo "parsing $file"
