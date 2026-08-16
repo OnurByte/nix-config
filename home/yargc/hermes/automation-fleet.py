@@ -75,7 +75,7 @@ def jobs() -> list[dict[str, Any]]:
             "deliver": "local",
             "script": "free-ai-linuxdo-collect.py",
             "skills": [RESEARCH_SKILL],
-            "enabled_toolsets": ["web", "browser", "terminal"],
+            "enabled_toolsets": ["web", "browser", "terminal", "file"],
             **a,
             "prompt": """Run the Free AI Radar with Linux.do as a first-class source. The script provides a wide latest/search candidate pool. Find legitimate, genuinely useful free AI access: free tiers, official credits/promotions, free model endpoints, coding agents, APIs, open-source/self-hosted replacements, local workflows, bridges, wrappers, compatibility layers, and low-hit GitHub projects. Inspect low-view threads and useful comments, then verify outward against the original repository, release, docs, author, or provider. Exclude leaked/shared credentials, stolen keys, account theft, payment bypass, abusive mass-account creation, or service-restriction evasion. Return only worthwhile findings. For each state exactly what is free, quota/limit/catch, self-hosting cost if any, expiration/uncertainty, why it is useful, confidence, Linux.do source, and primary source.""",
         },
@@ -117,11 +117,11 @@ def jobs() -> list[dict[str, Any]]:
             "name": "Upstream Edge Radar",
             "schedule": "15 19 * * *",
             "deliver": "notify",
-            "script": "upstream-edge-monitor.py",
+            "monitor_script": "upstream-edge-monitor.py",
             "skills": [RESEARCH_SKILL],
             "enabled_toolsets": ["web", "terminal"],
             **a,
-            "prompt": """The pre-run gate has detected changed upstream repository heads and supplied the before/after snapshot. Investigate only the changed areas plus any directly related Tor/privacy or Codex/Claude/OpenCode developments needed to understand Vesper impact. Focus on recently merged or active PRs, issues, commits, deprecations, breaking changes, new capabilities, fixes, and workarounds in Hermes Agent, llm-agents.nix, nixpkgs/NixOS, Home Manager, Hyprland, Caelestia, Zen/Helium integrations, Cuprate/Monero and adjacent agent tooling. Report only material changes with evidence-backed upstream links and suggested Vesper impact. If the changed head is routine/noise and nothing is meaningfully actionable or informative, respond with exactly [SILENT].""",
+            "prompt": """Hermes' monitor_script detected a changed upstream snapshot and supplied the exact change context. Investigate only the changed areas plus any directly related Tor/privacy or Codex/Claude/OpenCode developments needed to understand Vesper impact. Focus on recently merged or active PRs, issues, commits, deprecations, breaking changes, new capabilities, fixes, and workarounds in Hermes Agent, llm-agents.nix, nixpkgs/NixOS, Home Manager, Hyprland, Caelestia, Zen/Helium integrations, Cuprate/Monero and adjacent agent tooling. Report only material changes with evidence-backed upstream links and suggested Vesper impact. If the changed head is routine/noise and nothing is meaningfully actionable or informative, respond with exactly [SILENT].""",
         },
         {
             "name": "Second Brain Reflection",
@@ -272,11 +272,13 @@ def choose_existing(spec: dict[str, Any], by_name: dict[str, list[dict[str, Any]
     return None
 
 
-def resolve_script(spec: dict[str, Any]) -> str | None:
-    candidates = []
-    if spec.get("script"):
-        candidates.append(spec["script"])
-    candidates.extend(spec.get("script_candidates", []))
+def resolve_job_script(spec: dict[str, Any], field: str) -> str | None:
+    candidates: list[str] = []
+    value = spec.get(field)
+    if value:
+        candidates.append(str(value))
+    if field == "script":
+        candidates.extend(spec.get("script_candidates", []))
     if not candidates:
         return None
     for name in candidates:
@@ -294,7 +296,8 @@ def desired_fields(spec: dict[str, Any], notify_target: str) -> dict[str, Any]:
         "skills": list(spec.get("skills") or []),
         "model": spec.get("model"),
         "provider": spec.get("provider"),
-        "script": resolve_script(spec),
+        "script": resolve_job_script(spec, "script"),
+        "monitor_script": resolve_job_script(spec, "monitor_script"),
         "no_agent": bool(spec.get("no_agent", False)),
         "enabled_toolsets": spec.get("enabled_toolsets"),
         "deliver": deliver,
@@ -332,8 +335,8 @@ def reconcile(apply: bool) -> int:
     else:
         print(f"Notification target: {notify_target}")
 
-    # Pass 1: create/update every job without context_from. This gives all
-    # upstream jobs stable IDs before fan-in edges are written.
+    # Pass 1: create/update every job. This gives all upstream jobs stable IDs
+    # before context_from fan-in edges are written in pass 2.
     for spec in specs:
         current = choose_existing(spec, by_name)
         if current is None:
@@ -350,6 +353,7 @@ def reconcile(apply: bool) -> int:
                     model=fields["model"],
                     provider=fields["provider"],
                     script=fields["script"],
+                    monitor_script=fields["monitor_script"],
                     enabled_toolsets=fields["enabled_toolsets"],
                     no_agent=fields["no_agent"],
                 )
