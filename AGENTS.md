@@ -52,7 +52,7 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 2. Parse every Hyprland Lua file with `luac -p`.
 3. Run `nix flake metadata --no-write-lock-file`.
 4. Evaluate `.#nixosConfigurations.vesper.config.networking.hostName` and expect `vesper`.
-5. Evaluate the complete Home Manager activation closure with `nix build --dry-run --no-link '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage'`.
+5. Evaluate the complete Home Manager activation derivation with `nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath'`.
 6. If touching T3 Code Nightly, build `.#t3code-nightly`.
 7. If touching TurnLens, build `.#turnlens`.
 8. If touching Cuprate, build `.#cuprated`.
