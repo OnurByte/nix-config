@@ -54,9 +54,9 @@ in
   home.packages = [
     inputs.codexbar.packages.${pkgs.system}.default
 
-    # Focused cloud/provider agent workflow. No Ollama or local model daemon.
+    # Focused cloud/provider agent workflow. Browser control comes from the
+    # Helium and Zen MCP servers in dev.nix rather than another browser layer.
     agents.bb-app
-    agents.agent-browser
 
     # Official xAI Grok Build package from nixpkgs.
     pkgs.grok-build

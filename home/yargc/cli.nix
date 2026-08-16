@@ -22,15 +22,12 @@
     fd
     jq
     curl
-    wget
     aria2
     unzip
     zip
     p7zip
     file
-    tree
     gh
-    gnupg
     age
     sops
     openssl
