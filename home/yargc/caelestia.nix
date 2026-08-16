@@ -11,6 +11,7 @@ let
   };
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
+  hermesRuntime = pkgs.callPackage ./packages/hermes-runtime.nix { };
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./packages/caelestia-codexbar.patch ];
@@ -23,6 +24,8 @@ let
         --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
         --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
+      substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
+        --subst-var-by hermesRuntime ${hermesRuntime}/bin/vesper-hermes
     '';
   });
 
@@ -125,6 +128,7 @@ in
         { id = "tray"; enabled = true; }
         { id = "agentCockpit"; enabled = true; }
         { id = "privacyHud"; enabled = true; }
+        { id = "hermesBriefing"; enabled = true; }
         { id = "aiUsage"; enabled = true; }
         { id = "clock"; enabled = true; }
         { id = "statusIcons"; enabled = true; }
@@ -187,6 +191,19 @@ in
       categories = [
         "Utility"
         "Security"
+      ];
+    };
+
+    vesper-hermes-briefings = {
+      name = "Vesper Hermes Briefings";
+      genericName = "Research Inbox";
+      comment = "Open the persistent Hermes research briefing inbox";
+      exec = "vesper-hermes inbox";
+      icon = "mail-unread";
+      terminal = false;
+      categories = [
+        "Utility"
+        "Development"
       ];
     };
   };

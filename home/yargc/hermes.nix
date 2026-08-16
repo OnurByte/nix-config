@@ -1,8 +1,11 @@
-{ config, ... }:
+{ config, pkgs, ... }:
 let
   home = config.home.homeDirectory;
+  hermesRuntime = pkgs.callPackage ./packages/hermes-runtime.nix { };
 in
 {
+  home.packages = [ hermesRuntime ];
+
   # Keep the Morning Check runner declarative. The collector remains mutable for
   # now because the current local collector has not been imported into this repo.
   home.file.".hermes/scripts/morning-check-deliver.sh" = {
@@ -38,19 +41,31 @@ in
         exit 1
       fi
 
-      # 1) Collect bounded input data.
+      # 1) Collect bounded local/project input data.
       if ! timeout 50 bash "$COLLECT" >"$DATA_FILE" 2>"$COLLECT_ERR"; then
         printf '%s\n' "Warning: data collection was partial or failed; continue with available data." >>"$DATA_FILE"
         tail -20 "$COLLECT_ERR" >>"$DATA_FILE" 2>/dev/null || true
+      fi
+
+      # Reuse persistent Hermes research instead of re-discovering the same web
+      # stories inside Morning Check. The dedicated research lanes own discovery.
+      if command -v vesper-hermes >/dev/null 2>&1; then
+        {
+          echo
+          echo '### HERMES BRIEFING INBOX'
+          vesper-hermes list --json 2>/dev/null | head -c 30000 || true
+          echo
+        } >>"$DATA_FILE"
       fi
 
       # 2) Build the report prompt.
       cat >"$PROMPT_FILE" <<'PROMPT'
       Morning Check — concise Telegram briefing.
 
-      The DATA section below contains collected input. Use it as the primary source.
-      If additional verification is genuinely useful, use at most 2 web_search/x_search calls.
-      Otherwise, finish using the provided DATA.
+      The DATA section below contains collected input plus recent persistent Hermes briefings.
+      Use it as the primary source. Prefer existing verified Hermes findings over researching the
+      same story again. If additional verification is genuinely useful, use at most 2
+      web_search/x_search calls. Otherwise, finish using the provided DATA.
 
       ## Final response
 
@@ -119,7 +134,7 @@ in
         cat "$PROMPT_FILE"
         echo
         echo '----- DATA -----'
-        head -c 90000 "$DATA_FILE"
+        head -c 120000 "$DATA_FILE"
         echo
         echo '----- END DATA -----'
       } >"$FULL_PROMPT_FILE"

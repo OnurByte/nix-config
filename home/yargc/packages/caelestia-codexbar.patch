@@ -1,6 +1,6 @@
 --- a/modules/bar/Bar.qml
 +++ b/modules/bar/Bar.qml
-@@ -130,6 +130,30 @@ ColumnLayout {
+@@ -130,6 +130,38 @@ ColumnLayout {
                      }
                  }
              }
@@ -17,6 +17,14 @@
 +                delegate: EntryWrapper {
 +                    PrivacyHud {
 +                        objectName: "taskbarPrivacyHud"
++                    }
++                }
++            }
++            DelegateChoice {
++                roleValue: "hermesBriefing"
++                delegate: EntryWrapper {
++                    HermesBriefing {
++                        objectName: "taskbarHermesBriefing"
 +                    }
 +                }
 +            }
