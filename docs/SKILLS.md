@@ -3,6 +3,8 @@
 Vesper keeps one canonical active skill tree at `~/.agents/skills`.
 Codex, Claude Code and OpenCode expose their normal skill paths as links back into that tree so there is one active copy to reason about.
 
+All Vesper-authored skill names, metadata and instructions are written in English.
+
 The upstream Anthropic skills come from `anthropics/skills` pinned to commit:
 
 ```text
@@ -25,6 +27,7 @@ Vesper-local skills:
 
 - `vesper-maintainer`
 - `hermes-research-radar`
+- `vesper-obsidian-second-brain`
 
 Canonical paths:
 
@@ -40,10 +43,34 @@ Agent compatibility paths:
 ~/.config/opencode/skills/<skill> -> ~/.agents/skills/<skill>
 ```
 
-The active tree is Home Manager owned. Do not edit generated links directly.
+Vesper's local workflow skills are also exposed to Hermes under:
+
+```text
+~/.hermes/skills/vesper/<skill> -> ~/.agents/skills/<skill>
+```
+
+Hermes keeps its own bundled skills alongside these links. In particular, Hermes already ships its upstream `obsidian` skill for reading, searching, creating and editing Obsidian notes. `vesper-obsidian-second-brain` complements that skill with Vesper's memory, research-ingestion, reflection and skill-promotion policy rather than replacing it.
+
+The active shared tree is Home Manager owned. Do not edit generated links directly.
 Local skill source files live under `home/yargc/skills/` in this repository.
 
-## hermes drafts
+## Hermes daily research lanes
+
+`hermes-research-radar` defines separate English-named lanes rather than one generic daily digest:
+
+```text
+unknown-frontier-ai
+agenda
+free-ai-radar
+```
+
+`unknown-frontier-ai` is the broad, high-cost discovery lane for overlooked AI findings across Reddit, GitHub and X/Twitter.
+`agenda` is a separate current-events lane ranked by importance, recency and consequence rather than obscurity.
+`free-ai-radar` treats Linux.do as a first-class source for legitimate free AI tools, tiers, self-hosted alternatives and cost-saving workflows.
+
+Each lane keeps independent state, scoring and output so a mainstream agenda item does not dilute hidden-gem discovery and vice versa.
+
+## Hermes drafts
 
 Hermes may discover a reusable method while running scheduled research.
 That does not make the method an active skill immediately.
@@ -68,6 +95,16 @@ observation
 
 This keeps self-improvement possible without letting one noisy run mutate the active skill tree.
 
+## second brain
+
+Hermes built-in memory is the compact hot memory for facts that should remain in future sessions.
+Obsidian is the larger long-term knowledge graph.
+Skills are procedural memory.
+
+The Vesper second-brain workflow promotes only durable findings, useful relationships, important corrections, open questions and high-value source knowledge into Obsidian instead of dumping the entire scrape corpus into the vault.
+
+A later reflection/consolidation pass may connect the day's research, update durable notes, save only compact critical facts to Hermes memory and stage reusable procedures as skill drafts.
+
 ## use them
 
 Agents discover their normal compatibility paths automatically. You can also name a skill explicitly:
@@ -78,6 +115,7 @@ use webapp-testing to test the local app
 use mcp-builder to design this MCP server
 use vesper-maintainer to diagnose and repair this workstation issue
 use hermes-research-radar for this scheduled research program
+use vesper-obsidian-second-brain to consolidate durable research into Obsidian
 ```
 
 ## update
