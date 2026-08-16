@@ -23,7 +23,10 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Keep the two `wl-paste -> cliphist store` watchers; they are Caelestia's clipboard backend.
 - Do not reintroduce `nm-applet`, Blueman UI, Pavucontrol, Waybar, hypridle or hyprlock while Caelestia owns those surfaces.
 - Hyprland config is Lua. Keep `home/yargc/hyprland.nix` as wiring and compositor logic under `home/yargc/hypr/*.lua`.
-- The Vesper visual language is controlled glass: dark wallpaper, translucent shell surfaces, readable blur, soft shadow, thin border. Do not turn every app transparent.
+- The Vesper visual language is Apple/visionOS-inspired controlled glass. Shell surfaces should use layered translucency, readable backdrop blur, calm spacing, generous continuous rounding, soft shadow and thin luminous borders.
+- Prefer quiet neutral or palette-tinted glass over neon multi-colour borders, opaque telemetry cards or a heavy Material-dashboard look.
+- Keep glass concentrated in the shell, launchers, drawers, popovers and HUD surfaces. Do not turn every application transparent.
+- Prefer native Caelestia panels/drawers for shell information when practical instead of spawning a terminal-shaped dashboard.
 - Wallpaper assets should come from maintained/public sources or nixpkgs. Do not generate bespoke wallpapers unless explicitly requested.
 - Turkish Q stays the default layout; US switching remains available.
 - Zsh stays minimal: Home Manager features + small Oh My Zsh layer + Starship.
@@ -34,9 +37,15 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Bun is the user-facing JavaScript package manager; do not add pnpm/yarn globally.
 - Cloud/provider agents are first class. Grok Build is the official xAI CLI entry point; use nixpkgs `grok-build`, not the unrelated `grok-cli` package or a mutable installer wrapper.
 - Do not add Ollama, LM Studio or another local-model daemon unless requested.
-- `bb` is the primary multi-agent control plane. T3 Code Nightly is the GUI coding surface.
+- `bb` is the primary multi-agent control plane. Keep `BB_TELEMETRY=false` and use bb's existing automation/plugin model instead of adding another orchestrator.
+- T3 Code Nightly is the GUI coding surface.
 - Keep T3 Code on an official pinned nightly AppImage and expose Codex, Claude Code and OpenCode to its PATH.
 - TurnLens, ccusage and CodexBar have different jobs; keep them distinct.
+- The Agent Cockpit may observe live processes and Git state, but persistent session snapshots belong under `~/.local/state/vesper/agents/` rather than hidden ad-hoc files elsewhere.
+- `~/.agents/skills` is the canonical active skill tree. Agent-specific skill paths should link back to it instead of becoming separately maintained copies.
+- Hermes research may propose reusable skills under `~/.local/share/vesper/skill-drafts/`. Drafts stay inactive until reviewed and promoted.
+- Hermes' own cron/scheduled automation layer owns recurring Hermes research. Do not duplicate the same jobs with GitHub Actions, systemd timers or a second cron layer.
+- Hermes cron is only the heartbeat: scheduled runs resume persistent research state and should not rediscover the workflow from scratch or create more cron jobs.
 - Monero GUI/CLI, Feather and Eigenwallet are first-class privacy tools. Cuprate remains opt-in/experimental and must not replace `monerod` silently.
 - Keep the system Tor client available separately from Tor Browser's bundled Tor.
 - Do not auto-enable blockchain nodes, mining or P2Pool.
@@ -59,11 +68,11 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Do not add disk-backed hibernation until the real swap target and resume parameters are known.
 - Secure Boot may be added only after the real NixOS installation is stable; private signing keys must never enter Git.
 - PychoVIM is Onur's own project and intentionally keeps its upstream-managed mutable config/updater. Do not "fix" that by replacing its ownership model.
-- Zed Preview intentionally uses the official Preview installer. Treat that as an explicit workstation choice.
+- Zed is the stable `pkgs.zed-editor.fhs` package from the locked nixpkgs revision. Do not reintroduce the mutable Preview installer unless explicitly requested.
 
 ## Nix contract
 
-- Prefer NixOS/Home Manager modules and pinned packages over mutable installers except for the explicit PychoVIM and Zed Preview exceptions above.
+- Prefer NixOS/Home Manager modules and pinned packages over mutable installers except for PychoVIM's explicit updater-owned config.
 - Check nixpkgs and upstream Nix support before writing a custom derivation.
 - Grok Build must come from `pkgs.grok-build` so its version follows the pinned nixpkgs input.
 - Preserve `flake.lock`; update pins only intentionally.
