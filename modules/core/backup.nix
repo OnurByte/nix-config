@@ -27,6 +27,14 @@ let
       : "''${RESTIC_REPOSITORY:?RESTIC_REPOSITORY must be set in /etc/vesper/restic.env}"
       : "''${RESTIC_PASSWORD_FILE:?RESTIC_PASSWORD_FILE must be set in /etc/vesper/restic.env}"
 
+      # For removable local repositories, set RESTIC_REPOSITORY_CHECK_PATH to
+      # the drive mount point. A missing drive becomes a clean skip instead of a
+      # noisy failed backup. Remote repositories can simply omit this variable.
+      if [ -n "''${RESTIC_REPOSITORY_CHECK_PATH:-}" ] && [ ! -e "$RESTIC_REPOSITORY_CHECK_PATH" ]; then
+        echo "Backup target is not mounted: $RESTIC_REPOSITORY_CHECK_PATH; skipping." >&2
+        exit 0
+      fi
+
       staging=/var/lib/vesper-backup
       install -d -m 0700 "$staging"
       rm -f "$staging/mariadb.sql"
@@ -94,6 +102,11 @@ let
 
       : "''${RESTIC_REPOSITORY:?RESTIC_REPOSITORY must be set in /etc/vesper/restic.env}"
       : "''${RESTIC_PASSWORD_FILE:?RESTIC_PASSWORD_FILE must be set in /etc/vesper/restic.env}"
+
+      if [ -n "''${RESTIC_REPOSITORY_CHECK_PATH:-}" ] && [ ! -e "$RESTIC_REPOSITORY_CHECK_PATH" ]; then
+        echo "Backup target is not mounted: $RESTIC_REPOSITORY_CHECK_PATH; skipping check." >&2
+        exit 0
+      fi
 
       exec restic check
     '';
