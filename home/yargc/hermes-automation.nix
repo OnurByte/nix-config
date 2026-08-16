@@ -7,6 +7,7 @@
 let
   home = config.home.homeDirectory;
   support = ./hermes/automation-support.py;
+  boundedCollector = ./hermes/bounded-collector.py;
   fleet = ./hermes/automation-fleet.py;
   upstreamMonitor = ./hermes/upstream-edge-monitor.py;
   cronRetention = ./hermes/cron-retention.py;
@@ -72,10 +73,24 @@ in
     scripts_dir="${home}/.hermes/scripts"
     ${pkgs.coreutils}/bin/mkdir -p "$scripts_dir"
 
+    # Shared implementation is kept inside Hermes' sandbox as a private helper.
+    ${pkgs.coreutils}/bin/rm -f "$scripts_dir/_vesper-automation-support.py"
+    ${pkgs.coreutils}/bin/install -m 0644 ${support} "$scripts_dir/_vesper-automation-support.py"
+
+    # High-volume discovery collectors persist their full candidate corpus and
+    # emit a bounded valid-JSON sample into the agent prompt.
     for name in \
       frontier-github-collect.py \
       frontier-reddit-collect.py \
-      free-ai-linuxdo-collect.py \
+      free-ai-linuxdo-collect.py
+    do
+      ${pkgs.coreutils}/bin/rm -f "$scripts_dir/$name"
+      ${pkgs.coreutils}/bin/install -m 0755 ${boundedCollector} "$scripts_dir/$name"
+    done
+
+    # Low-volume deterministic jobs can execute the shared implementation
+    # directly because their stdout is already naturally bounded.
+    for name in \
       vesper-health-watch.py \
       vesper-skill-integrity-watch.py \
       project-inventory.py \
