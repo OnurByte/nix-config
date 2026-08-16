@@ -50,7 +50,7 @@ The intended palette is cold and dark rather than neon-heavy: black, graphite, b
 | command memory | Navi + local Atuin |
 | media | Spotify + Spicetify · MPV + MPRIS |
 | privacy | Tor · Zapret2 · Monero GUI/CLI · Feather · Eigenwallet · Cuprate |
-| containers | Podman · Distrobox |
+| containers / VMs | Podman · Distrobox · libvirt · virt-manager |
 | Windows compatibility | Bottles |
 
 ## Desktop
