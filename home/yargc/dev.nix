@@ -11,6 +11,37 @@ let
   zen = inputs.zen-browser.packages.${pkgs.system}.default;
   npx = "${pkgs.nodejs_24}/bin/npx";
   mcpCache = "${config.home.homeDirectory}/.cache/vesper-mcp/npm";
+
+  githubMcpArchive = pkgs.fetchurl {
+    url = "https://github.com/github/github-mcp-server/releases/download/v1.9.0/github-mcp-server_Linux_x86_64.tar.gz";
+    hash = "sha256-y/OL0zZFGMz4C2olWH1e8RZVsV1jy7SLwGY4TQtbWWQ=";
+  };
+
+  githubMcpServer = pkgs.runCommand "github-mcp-server-1.9.0" {
+    nativeBuildInputs = [
+      pkgs.gnutar
+      pkgs.gzip
+    ];
+  } ''
+    mkdir -p "$out/bin"
+    tar -xzf ${githubMcpArchive}
+    install -Dm755 github-mcp-server "$out/bin/github-mcp-server"
+  '';
+
+  githubMcp = pkgs.writeShellApplication {
+    name = "vesper-github-mcp";
+    runtimeInputs = [
+      pkgs.gh
+      githubMcpServer
+    ];
+    text = ''
+      if token="$(gh auth token 2>/dev/null)" && [ -n "$token" ]; then
+        export GITHUB_PERSONAL_ACCESS_TOKEN="$token"
+      fi
+
+      exec github-mcp-server stdio --toolsets=context,repos,issues,pull_requests,actions
+    '';
+  };
 in
 {
   programs = {
@@ -19,6 +50,22 @@ in
       servers = {
         nixos = {
           command = "${pkgs.mcp-nixos}/bin/mcp-nixos";
+        };
+
+        context7 = {
+          command = npx;
+          args = [
+            "-y"
+            "@upstash/context7-mcp@4.0.2"
+          ];
+          env = {
+            NPM_CONFIG_CACHE = mcpCache;
+            NPM_CONFIG_UPDATE_NOTIFIER = "false";
+          };
+        };
+
+        github = {
+          command = "${githubMcp}/bin/vesper-github-mcp";
         };
 
         "helium-devtools" = {
@@ -178,5 +225,8 @@ in
       lua-language-server
       stylua
     ])
-    ++ [ plannotator ];
+    ++ [
+      plannotator
+      githubMcp
+    ];
 }
