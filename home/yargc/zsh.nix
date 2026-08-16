@@ -41,6 +41,7 @@
       nixup = "cd ~/nix-config && nix flake update && nh os switch";
       nixclean = "nh clean all --keep 5";
       doctor = "vesper-doctor";
+      share = "onionshare-safe";
 
       # Native Apache + MariaDB development stack. The target is intentionally
       # not wanted by multi-user.target, so it only runs when requested.
