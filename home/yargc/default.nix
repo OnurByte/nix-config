@@ -14,6 +14,7 @@
     ./dev.nix
     ./doctor.nix
     ./git.nix
+    ./hermes.nix
     ./hyprland.nix
     ./lazy-tools.nix
     ./media.nix
