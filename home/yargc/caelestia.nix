@@ -9,6 +9,8 @@ let
     src = inputs.codexbar-ui-src;
     inherit codexbar;
   };
+  agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
+  privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./packages/caelestia-codexbar.patch ];
@@ -17,6 +19,10 @@ let
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
         --subst-var-by codexbarStatus ${codexbarUi}/bin/codexbar-status \
         --subst-var-by codexbarPopup ${codexbarUi}/bin/codexbar-popup
+      substitute ${./packages/AgentCockpit.qml} modules/bar/components/AgentCockpit.qml \
+        --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
+      substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
+        --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
     '';
   });
 
@@ -115,6 +121,8 @@ in
         { id = "activeWindow"; enabled = true; }
         { id = "spacer"; enabled = true; }
         { id = "tray"; enabled = true; }
+        { id = "agentCockpit"; enabled = true; }
+        { id = "privacyHud"; enabled = true; }
         { id = "aiUsage"; enabled = true; }
         { id = "clock"; enabled = true; }
         { id = "statusIcons"; enabled = true; }
@@ -146,10 +154,40 @@ in
   };
 
   home.packages = [
+    agentCockpit
+    privacyHud
     codexbarUi
     pkgs.adw-gtk3
     pkgs.papirus-icon-theme
   ];
+
+  xdg.desktopEntries = {
+    vesper-agent-cockpit = {
+      name = "Vesper Agent Cockpit";
+      genericName = "Coding Agent Monitor";
+      comment = "Inspect active coding agents and their Git worktrees";
+      exec = "vesper-agent-cockpit";
+      icon = "utilities-terminal";
+      terminal = false;
+      categories = [
+        "Development"
+        "Utility"
+      ];
+    };
+
+    vesper-privacy-hud = {
+      name = "Vesper Privacy HUD";
+      genericName = "Privacy Status";
+      comment = "Inspect local Tor, microphone, camera, clipboard and Monero state";
+      exec = "vesper-privacy-hud";
+      icon = "security-high";
+      terminal = false;
+      categories = [
+        "Utility"
+        "Security"
+      ];
+    };
+  };
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
   home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;
