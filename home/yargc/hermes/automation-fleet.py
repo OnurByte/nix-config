@@ -117,10 +117,11 @@ def jobs() -> list[dict[str, Any]]:
             "name": "Upstream Edge Radar",
             "schedule": "15 19 * * *",
             "deliver": "notify",
+            "script": "upstream-edge-monitor.py",
             "skills": [RESEARCH_SKILL],
             "enabled_toolsets": ["web", "terminal"],
             **a,
-            "prompt": """Check the upstream edge of the user's stack for changes that matter before they become ordinary release-note knowledge: Hermes Agent, llm-agents.nix, nixpkgs/NixOS, Home Manager, Hyprland, Caelestia, Zen/Helium browser integrations, Tor/privacy tooling, Cuprate/Monero, Codex/Claude/OpenCode agent tooling. Focus on recently merged or active PRs, issues, commits, deprecations, breaking changes, new capabilities, fixes, and workarounds that could affect Vesper. Report only material changes since recent runs. If nothing is meaningfully actionable or informative, respond with exactly [SILENT]. Otherwise give concise evidence-backed items with upstream links and suggested Vesper impact.""",
+            "prompt": """The pre-run gate has detected changed upstream repository heads and supplied the before/after snapshot. Investigate only the changed areas plus any directly related Tor/privacy or Codex/Claude/OpenCode developments needed to understand Vesper impact. Focus on recently merged or active PRs, issues, commits, deprecations, breaking changes, new capabilities, fixes, and workarounds in Hermes Agent, llm-agents.nix, nixpkgs/NixOS, Home Manager, Hyprland, Caelestia, Zen/Helium integrations, Cuprate/Monero and adjacent agent tooling. Report only material changes with evidence-backed upstream links and suggested Vesper impact. If the changed head is routine/noise and nothing is meaningfully actionable or informative, respond with exactly [SILENT].""",
         },
         {
             "name": "Second Brain Reflection",
@@ -368,8 +369,8 @@ def reconcile(apply: bool) -> int:
                 print(f"OK      {spec['name']}")
         resolved[spec["name"]] = current
 
-    # Pass 2: wire fan-in edges using canonical job IDs. Hermes stores IDs in
-    # context_from even though user-facing docs also allow names.
+    # Pass 2: wire fan-in edges using canonical job IDs. Hermes accepts names in
+    # its user-facing API, but canonical IDs make the stored graph unambiguous.
     for spec in specs:
         source_names = spec.get("context_from") or []
         if not source_names:
