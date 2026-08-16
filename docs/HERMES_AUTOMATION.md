@@ -38,10 +38,10 @@ The collectors can inspect hundreds of candidates cheaply. The agent spends its 
 | 09:05 | Unknown Frontier AI — Synthesis | local | fan-in of three frontier scouts |
 | 09:20 | Daily Agenda | local | important current developments, independent of obscurity |
 | 10:00 | Morning Check | notify | final daily briefing: projects, todos, agenda, frontier, free AI |
-| 19:15 | Upstream Edge Radar | notify only when meaningful | early PR/issue/commit changes in the Vesper stack |
+| 19:15 | Upstream Edge Radar | notify on material change | cheap upstream-head gate, then PR/issue/commit analysis only after a change |
 | 23:30 | Second Brain Reflection | local | Obsidian consolidation and research-derived skill candidates |
 
-`Vesper Health Watch` runs every three hours as a no-agent watchdog and emits only on a state transition. `Hermes Cron Retention` runs Monday at 03:15 and prunes cron-source sessions/outputs older than 30 days.
+`Vesper Health Watch` runs every three hours as a no-agent watchdog and emits only on a state transition. `Hermes Cron Retention` runs Monday at 03:15 and prunes ended cron-source sessions and cron output older than 30 days.
 
 ## Weekly schedule
 
@@ -87,22 +87,32 @@ Linux.do is a first-class discovery source. Findings are verified outward agains
 
 Unauthorized access, stolen/shared credentials, leaked keys, payment bypass, abusive account creation and service-restriction evasion are excluded.
 
-## Deterministic collectors
+## Deterministic collectors and gates
 
-`home/yargc/hermes/automation-support.py` is installed under several script names. Its behavior is selected from its filename.
+`home/yargc/hermes/automation-support.py` is copied under several script names. Its behavior is selected from its filename.
 
-Current modes:
+Shared support modes:
 
 - `frontier-github-collect.py`
 - `frontier-reddit-collect.py`
 - `free-ai-linuxdo-collect.py`
 - `vesper-health-watch.py`
 - `vesper-skill-integrity-watch.py`
-- `vesper-cron-retention.py`
 - `project-inventory.py`
 - `ai-usage-snapshot.py`
 
-Watchdogs keep a small state hash under `$VESPER_RESEARCH_STATE_DIR` so unchanged failures do not repeatedly notify.
+Dedicated scripts:
+
+- `upstream-edge-monitor.py` — stores the last tracked upstream-head snapshot and emits `wakeAgent=false` when nothing changed, so the Upstream Edge Radar spends no model tokens on unchanged ticks
+- `vesper-cron-retention.py` — deletes old cron output and runs `hermes sessions prune --older-than 30 --source cron --yes`
+
+Watchdogs keep small state under `$VESPER_RESEARCH_STATE_DIR` so unchanged failures do not repeatedly notify.
+
+### Why scripts are copied instead of linked
+
+Hermes resolves cron script paths with `realpath` and requires the resolved path to stay under `~/.hermes/scripts/`. A normal Home Manager `home.file.source` becomes a symlink into `/nix/store`, which Hermes correctly treats as escaping its script sandbox.
+
+For that reason the Nix modules use Home Manager activation steps to copy Nix-owned scripts as real regular files into `~/.hermes/scripts/`. The desired fleet Python file itself is not executed through the Hermes script sandbox and may remain a normal Home Manager source link under `~/.config/vesper/hermes/`.
 
 ## Runtime state vs declarative state
 
@@ -134,7 +144,7 @@ vesper-hermes-cron-sync --apply
 hermes cron list
 ```
 
-The first command is a dry-run.
+The first sync command is a dry-run.
 
 The reconciler:
 
@@ -183,6 +193,7 @@ Hermes' bundled `obsidian` skill and Vesper's `vesper-obsidian-second-brain` ski
 - Raw scouts and intermediate synthesis are local-only.
 - Only final daily/weekly reports and changed alarms notify.
 - No-agent watchdogs consume zero model tokens.
+- Upstream Edge Radar uses a `wakeAgent` pre-run gate and spends zero model tokens when tracked upstream heads are unchanged.
 - Source-specific `enabled_toolsets` avoid loading every tool schema into every cron turn.
 - Collector scripts front-load breadth so the agent does not waste the bounded reasoning window on mechanical enumeration.
 - Old cron sessions and output are pruned after 30 days.
@@ -199,4 +210,4 @@ hermes skills list
 vesper-doctor --json
 ```
 
-A healthy fleet has one job per managed name, no duplicate `Sabah check`, valid skills, local scout delivery, correct fan-in IDs, silent healthy watchdogs and a single Hermes scheduler owner.
+A healthy fleet has one job per managed name, no duplicate `Sabah check`, valid skills, local scout delivery, correct fan-in IDs, silent healthy watchdogs, sandbox-valid regular script files and a single Hermes scheduler owner.
