@@ -29,7 +29,7 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Monero GUI/CLI, Feather and Eigenwallet are first-class privacy tools. Cuprate remains opt-in/experimental and must not replace `monerod` silently.
 - Keep the system Tor client available separately from Tor Browser's bundled Tor.
 - Do not auto-enable blockchain nodes, mining or P2Pool.
-- Podman and Distrobox are the container stack. Do not reintroduce libvirt/virt-manager unless explicitly requested.
+- Podman and Distrobox are the container stack; libvirt + virt-manager provide local virtual machines.
 - Bottles is a Windows-compatibility utility, not permission to restore a gaming stack.
 - Do not add gaming packages unless explicitly requested.
 - Do not re-add a night-light daemon unless explicitly requested.
