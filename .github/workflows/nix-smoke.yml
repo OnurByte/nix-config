@@ -52,7 +52,25 @@ jobs:
         run: nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath' >/dev/null
 
       - name: Build complete Vesper system
-        run: nix build --no-link '.#nixosConfigurations.vesper.config.system.build.toplevel'
+        shell: bash
+        run: |
+          set +e
+          nix build --no-link --print-build-logs \
+            '.#nixosConfigurations.vesper.config.system.build.toplevel' \
+            >vesper-system-build.log 2>&1
+          status=$?
+
+          cat vesper-system-build.log
+
+          if [ "$status" -ne 0 ]; then
+            message="$(tail -n 80 vesper-system-build.log)"
+            message="${message//'%'/'%25'}"
+            message="${message//$'\r'/'%0D'}"
+            message="${message//$'\n'/'%0A'}"
+            echo "::error title=Vesper full system build failed::$message"
+          fi
+
+          exit "$status"
 
       - name: Build T3 Code Nightly package
         run: nix build --no-link .#t3code-nightly
