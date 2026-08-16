@@ -111,7 +111,7 @@ def gh_search(endpoint: str, query: str) -> tuple[str, Any]:
             "-f",
             "order=desc",
             "-f",
-            "per_page=50",
+            "per_page=100",
         ],
         text=True,
         stdout=subprocess.PIPE,
@@ -151,13 +151,17 @@ def github_collect() -> None:
         f'inference llm updated:>{since} is:issue',
     ]
 
-    for query in seeds.get("githubQueries", []):
+    for query in seeds.get("githubQueries", [])[:8]:
         repo_queries.append(f'{query} created:>{since} stars:<250')
-    for query in seeds.get("githubIssueQueries", []):
+    for query in seeds.get("githubIssueQueries", [])[:4]:
         issue_queries.append(f'{query} updated:>{since} is:issue')
 
-    repo_queries = list(dict.fromkeys(repo_queries))[:28]
-    issue_queries = list(dict.fromkeys(issue_queries))[:20]
+    # Keep the Search API fan-out comfortably below its separate per-minute
+    # quota while asking for the maximum 100 items per request. Breadth comes
+    # from result depth + later graph expansion, not dozens of near-duplicate
+    # query calls fired in one burst.
+    repo_queries = list(dict.fromkeys(repo_queries))[:16]
+    issue_queries = list(dict.fromkeys(issue_queries))[:8]
 
     repos: dict[str, dict[str, Any]] = {}
     issues: dict[str, dict[str, Any]] = {}
@@ -222,8 +226,8 @@ def github_collect() -> None:
                 "source": "github",
                 "generatedAt": datetime.now(timezone.utc).isoformat(),
                 "learnedQueriesUsed": {
-                    "repositories": seeds.get("githubQueries", []),
-                    "issues": seeds.get("githubIssueQueries", []),
+                    "repositories": seeds.get("githubQueries", [])[:8],
+                    "issues": seeds.get("githubIssueQueries", [])[:4],
                 },
                 "repoCandidates": ordered_repos,
                 "issueCandidates": ordered_issues,
