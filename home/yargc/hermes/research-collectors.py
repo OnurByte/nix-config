@@ -4,11 +4,18 @@
 This module is copied inside ~/.hermes/scripts and invoked by bounded-collector.py.
 It deliberately keeps network fan-out below Hermes' default pre-run script timeout
 so the agent window is reserved for verification rather than mechanical polling.
+
+The collectors also consume a small learned discovery-seed file written by the
+Unknown Frontier synthesis job. This closes the loop between useful discoveries
+and the next day's deterministic breadth without allowing one agent run to
+rewrite the active skill tree or scheduler.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,10 +29,59 @@ from typing import Any
 HTTP_TIMEOUT = 8
 GH_TIMEOUT = 12
 MAX_WORKERS = 8
+MAX_LEARNED_PER_KIND = 20
+
+HOME = Path.home()
+STATE_ROOT = Path(
+    os.environ.get("VESPER_RESEARCH_STATE_DIR", HOME / ".local/state/vesper/research")
+).expanduser()
+DISCOVERY_SEEDS = STATE_ROOT / "frontier-discovery-seeds.json"
 
 
 def compact(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def learned_seeds() -> dict[str, list[str]]:
+    """Load bounded agent-learned search seeds as inert strings.
+
+    The file is data only. Every consumer passes values as argv/URL parameters,
+    never through a shell. Invalid or oversized values are ignored.
+    """
+    try:
+        raw = json.loads(DISCOVERY_SEEDS.read_text())
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+
+    result: dict[str, list[str]] = {}
+    for key in (
+        "githubQueries",
+        "githubIssueQueries",
+        "redditQueries",
+        "redditSubreddits",
+        "linuxdoQueries",
+        "xQueries",
+    ):
+        values = raw.get(key)
+        if not isinstance(values, list):
+            continue
+        cleaned: list[str] = []
+        for value in values:
+            if not isinstance(value, str):
+                continue
+            value = value.strip()
+            if not value or len(value) > 200 or value in cleaned:
+                continue
+            if key == "redditSubreddits" and not re.fullmatch(r"[A-Za-z0-9_]{2,50}", value):
+                continue
+            cleaned.append(value)
+            if len(cleaned) >= MAX_LEARNED_PER_KIND:
+                break
+        if cleaned:
+            result[key] = cleaned
+    return result
 
 
 def read_json_url(url: str) -> Any:
@@ -77,6 +133,7 @@ def github_collect() -> None:
         return
 
     since = (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
+    seeds = learned_seeds()
     repo_queries = [
         f'agent llm created:>{since} stars:<150',
         f'coding agent created:>{since} stars:<150',
@@ -93,6 +150,14 @@ def github_collect() -> None:
         f'coding agent updated:>{since} is:issue',
         f'inference llm updated:>{since} is:issue',
     ]
+
+    for query in seeds.get("githubQueries", []):
+        repo_queries.append(f'{query} created:>{since} stars:<250')
+    for query in seeds.get("githubIssueQueries", []):
+        issue_queries.append(f'{query} updated:>{since} is:issue')
+
+    repo_queries = list(dict.fromkeys(repo_queries))[:28]
+    issue_queries = list(dict.fromkeys(issue_queries))[:20]
 
     repos: dict[str, dict[str, Any]] = {}
     issues: dict[str, dict[str, Any]] = {}
@@ -147,31 +212,43 @@ def github_collect() -> None:
     ordered_repos = sorted(
         repos.values(),
         key=lambda item: (item.get("stars") or 0, item.get("updated") or ""),
-    )[:350]
+    )[:500]
     ordered_issues = sorted(
         issues.values(), key=lambda item: item.get("updated") or "", reverse=True
-    )[:200]
+    )[:300]
     print(
         compact(
             {
                 "source": "github",
                 "generatedAt": datetime.now(timezone.utc).isoformat(),
+                "learnedQueriesUsed": {
+                    "repositories": seeds.get("githubQueries", []),
+                    "issues": seeds.get("githubIssueQueries", []),
+                },
                 "repoCandidates": ordered_repos,
                 "issueCandidates": ordered_issues,
-                "errors": errors[:8],
+                "errors": errors[:12],
             }
         )
     )
 
 
-def reddit_query(query: str) -> tuple[str, Any]:
+def reddit_query(query: str) -> tuple[str, str, Any]:
     params = urllib.parse.urlencode(
         {"q": query, "sort": "new", "t": "week", "limit": 100, "raw_json": 1}
     )
-    return query, read_json_url(f"https://www.reddit.com/search.json?{params}")
+    return "query", query, read_json_url(f"https://www.reddit.com/search.json?{params}")
+
+
+def reddit_subreddit(subreddit: str) -> tuple[str, str, Any]:
+    params = urllib.parse.urlencode({"limit": 100, "raw_json": 1})
+    return "subreddit", subreddit, read_json_url(
+        f"https://www.reddit.com/r/{urllib.parse.quote(subreddit)}/new.json?{params}"
+    )
 
 
 def reddit_collect() -> None:
+    seeds = learned_seeds()
     queries = [
         "AI agent",
         "coding agent",
@@ -182,14 +259,19 @@ def reddit_collect() -> None:
         "inference server",
         "LLM CLI",
         "agent harness",
+        *seeds.get("redditQueries", []),
     ]
+    queries = list(dict.fromkeys(queries))[:30]
+    subreddits = list(dict.fromkeys(seeds.get("redditSubreddits", [])))[:20]
+
     items: dict[str, dict[str, Any]] = {}
     errors: list[str] = []
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = [pool.submit(reddit_query, query) for query in queries]
+        futures.extend(pool.submit(reddit_subreddit, subreddit) for subreddit in subreddits)
         for future in as_completed(futures):
             try:
-                query, data = future.result()
+                source_kind, source_value, data = future.result()
             except Exception as exc:
                 errors.append(f"{type(exc).__name__}: {exc}")
                 continue
@@ -200,7 +282,7 @@ def reddit_collect() -> None:
                     continue
                 url = "https://www.reddit.com" + permalink
                 items[url] = {
-                    "query": query,
+                    "discoveredBy": f"{source_kind}:{source_value}",
                     "title": post.get("title"),
                     "url": url,
                     "externalUrl": post.get("url_overridden_by_dest") or post.get("url"),
@@ -213,14 +295,16 @@ def reddit_collect() -> None:
                 }
     ordered = sorted(
         items.values(), key=lambda item: item.get("createdUtc") or 0, reverse=True
-    )[:400]
+    )[:600]
     print(
         compact(
             {
                 "source": "reddit",
                 "generatedAt": datetime.now(timezone.utc).isoformat(),
+                "learnedQueriesUsed": seeds.get("redditQueries", []),
+                "learnedSubredditsUsed": subreddits,
                 "candidates": ordered,
-                "errors": errors[:8],
+                "errors": errors[:12],
             }
         )
     )
@@ -235,6 +319,7 @@ def linuxdo_request(kind: str, value: str) -> tuple[str, str, Any]:
 
 
 def linuxdo_collect() -> None:
+    seeds = learned_seeds()
     topics: dict[int, dict[str, Any]] = {}
     posts: dict[int, dict[str, Any]] = {}
     errors: list[str] = []
@@ -249,8 +334,10 @@ def linuxdo_collect() -> None:
         "开源 AI",
         "free tier",
         "API 中转",
+        *seeds.get("linuxdoQueries", []),
     ]
-    requests = [("latest", str(page)) for page in range(3)] + [
+    search_terms = list(dict.fromkeys(search_terms))[:30]
+    requests = [("latest", str(page)) for page in range(5)] + [
         ("search", term) for term in search_terms
     ]
 
@@ -307,18 +394,19 @@ def linuxdo_collect() -> None:
     ordered_topics = sorted(
         topics.values(),
         key=lambda item: (item.get("views") or 0, item.get("created") or ""),
-    )[:350]
+    )[:500]
     ordered_posts = sorted(
         posts.values(), key=lambda item: item.get("created") or "", reverse=True
-    )[:250]
+    )[:350]
     print(
         compact(
             {
                 "source": "linux.do",
                 "generatedAt": datetime.now(timezone.utc).isoformat(),
+                "learnedQueriesUsed": seeds.get("linuxdoQueries", []),
                 "topics": ordered_topics,
                 "posts": ordered_posts,
-                "errors": errors[:10],
+                "errors": errors[:12],
             }
         )
     )
