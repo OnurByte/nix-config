@@ -40,12 +40,18 @@
       testnix = "nh os test";
       nixup = "cd ~/nix-config && nix flake update && nh os switch";
       nixclean = "nh clean all --keep 5";
+      doctor = "vesper-doctor";
 
-      # Native Apache + MariaDB development stack; these are not XAMPP.
-      web-start = "sudo systemctl start httpd mysql";
-      web-stop = "sudo systemctl stop httpd mysql";
-      web-restart = "sudo systemctl restart httpd mysql";
-      web-status = "systemctl status httpd mysql";
+      # Native Apache + MariaDB development stack. The target is intentionally
+      # not wanted by multi-user.target, so it only runs when requested.
+      web-start = "sudo systemctl start vesper-web.target";
+      web-stop = "sudo systemctl stop vesper-web.target";
+      web-restart = "sudo systemctl restart vesper-web.target";
+      web-status = "systemctl status vesper-web.target httpd mysql";
+
+      backup = "sudo systemctl start vesper-backup.service";
+      backup-status = "systemctl status vesper-backup.service";
+      backup-check = "sudo systemctl start vesper-backup-check.service";
     };
 
     # Ctrl-G opens Navi and inserts the chosen curated command into the current
