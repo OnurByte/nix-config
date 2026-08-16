@@ -5,6 +5,15 @@
 This repository defines **Vesper**, a personal NixOS/Hyprland workstation.
 Prefer small declarative changes over installer scripts, duplicated desktop layers or hidden mutable state.
 
+## Writing contract
+
+- Write like a maintainer, not a product page. Keep prose short, concrete and specific to the current repository.
+- Document the current state. Do not mention removed, rejected, abandoned or intentionally absent features unless that absence is operationally important or the user explicitly asks for history.
+- Avoid filler, marketing copy, self-congratulatory language and stock AI phrasing. Do not pad documentation with explanations of obvious choices.
+- Prefer exact package names, paths, commands and behavior over adjectives or vague claims.
+- README describes what exists now. Git history carries old decisions; do not turn README into a changelog.
+- Keep negative guardrails in `AGENTS.md` only when they prevent a real regression or protect an operational constraint.
+
 ## UX contract
 
 - Caelestia is the only shell/bar and owns network, Bluetooth, audio, notifications, idle/lock, clipboard, capture, launcher and wallpaper UI.
@@ -24,7 +33,6 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Do not add Ollama, LM Studio or another local-model daemon unless requested.
 - `bb` is the primary multi-agent control plane. T3 Code Nightly is the GUI coding surface.
 - Keep T3 Code on an official pinned nightly AppImage and expose Codex, Claude Code and OpenCode to its PATH.
-- ZCode is intentionally removed. Do not restore it unless explicitly requested.
 - TurnLens, ccusage and CodexBar have different jobs; keep them distinct.
 - Monero GUI/CLI, Feather and Eigenwallet are first-class privacy tools. Cuprate remains opt-in/experimental and must not replace `monerod` silently.
 - Keep the system Tor client available separately from Tor Browser's bundled Tor.
