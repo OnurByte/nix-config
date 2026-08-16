@@ -63,7 +63,6 @@ def bounded_payload(payload: dict[str, Any], pool_path: Path) -> str:
         encoded = encode()
 
     if len(encoded) > MAX_PROMPT_CHARS:
-        # Last-resort valid JSON. The full pool remains available on disk.
         result = {
             "source": payload.get("source"),
             "generatedAt": payload.get("generatedAt"),
@@ -79,16 +78,15 @@ def bounded_payload(payload: dict[str, Any], pool_path: Path) -> str:
 
 def main() -> int:
     mode = Path(sys.argv[0]).stem
-    support = Path(__file__).with_name("_vesper-automation-support.py")
+    support = Path(__file__).with_name("_vesper-research-collectors.py")
     if not support.exists():
-        print(json.dumps({"error": f"collector support missing: {support}"}))
+        print(json.dumps({"error": f"research collector support missing: {support}"}))
         return 1
 
     buffer = io.StringIO()
     original_argv = list(sys.argv)
     exit_code = 0
     try:
-        # automation-support chooses its handler from argv[0].
         sys.argv = [mode]
         with contextlib.redirect_stdout(buffer):
             try:
