@@ -41,11 +41,11 @@ This keeps the agent's bounded cron turn focused on verification, ranking and sy
 | 08:30 | Unknown Frontier AI — Reddit Scout | local | low-score posts/comments and niche technical findings |
 | 08:40 | Unknown Frontier AI — X Scout | local | low-engagement builder/researcher signals |
 | 08:55 | Free AI Radar | local | Linux.do-first legitimate free AI discovery |
-| 09:05 | Unknown Frontier AI — Synthesis | local | fan-in of three frontier scouts |
+| 09:05 | Unknown Frontier AI — Synthesis | local | fan-in of three frontier scouts + learned discovery seeds |
 | 09:20 | Daily Agenda | local | important current developments, independent of obscurity |
 | 10:00 | Morning Check | notify | final daily briefing: projects, todos, agenda, frontier, free AI |
 | 19:15 | Upstream Edge Radar | notify on material change | native `monitor_script` gate, then PR/issue/commit analysis only after snapshot changes |
-| 23:30 | Second Brain Reflection | local | Obsidian consolidation and research-derived skill candidates |
+| 23:30 | Second Brain Reflection | local | direct daily fan-in + Obsidian consolidation + research-derived skill candidates |
 
 `Vesper Health Watch` runs every three hours as a no-agent watchdog and emits only on a state transition. `Hermes Cron Retention` runs Monday at 03:15 and prunes ended cron-source sessions, cron output and saved candidate pools older than 30 days.
 
@@ -76,6 +76,46 @@ what useful AI thing exists outside the current knowledge map?
 GitHub, Reddit and X are separate scouts so one platform's ranking/popularity bias does not dominate the result. GitHub and Reddit have broad deterministic pre-collectors. X uses Hermes `x_search` directly.
 
 The frontier score rewards unknown-to-user value, utility, novelty, evidence, technical density, early-signal value and information gain while penalizing hype and duplication.
+
+### Adaptive discovery loop
+
+Unknown Frontier is not limited to a permanently hard-coded query list. The synthesis job maintains a bounded learned-search file:
+
+```text
+$VESPER_RESEARCH_STATE_DIR/frontier-discovery-seeds.json
+```
+
+It may contain compact lists such as:
+
+```json
+{
+  "githubQueries": [],
+  "githubIssueQueries": [],
+  "redditQueries": [],
+  "redditSubreddits": [],
+  "linuxdoQueries": [],
+  "xQueries": [],
+  "updatedAt": "..."
+}
+```
+
+Only search routes that produced real downstream value or expose a promising adjacent frontier should survive. Strong existing seeds are retained, duplicate/low-signal routes decay, and each list stays bounded. This file is inert research state, not executable code, cron state, or an active skill.
+
+The next day's GitHub, Reddit and Linux.do collectors consume the relevant learned seeds automatically. X uses `xQueries` as optional expansion hints while preserving explicit exploration budget for completely new vocabulary/authors/communities.
+
+```text
+useful discovery
+      ↓
+learned query/source edge
+      ↓
+bounded seed state
+      ↓
+wider next-day collector
+      ↓
+measured downstream value
+```
+
+GitHub search breadth is deliberately rate-limit aware: use fewer high-yield searches with up to 100 results each, then spend agent budget on graph expansion and verification instead of firing dozens of near-duplicate Search API calls.
 
 ### Daily Agenda
 
@@ -195,11 +235,13 @@ Cron sessions must not rely on conversational memory from earlier runs.
 
 Use:
 
-- Vesper research state for deduplication/source/heuristic state
+- Vesper research state for deduplication/source/heuristic/adaptive-search state
 - Hermes cron output for immediate pipeline fan-in
 - Obsidian for durable long-form knowledge and relationships
 - Hermes normal memory for small cross-session facts outside cron
 - skill drafts for reusable procedures awaiting review
+
+`Second Brain Reflection` receives the latest Frontier synthesis, Free AI Radar, Daily Agenda, Morning Check and Upstream Edge output directly via `context_from`. This avoids asking an isolated nightly cron session to rediscover its own daily inputs from conversational memory.
 
 Hermes' bundled `obsidian` skill and Vesper's `vesper-obsidian-second-brain` skill are loaded together for nightly consolidation.
 
@@ -212,6 +254,7 @@ Hermes' bundled `obsidian` skill and Vesper's `vesper-obsidian-second-brain` ski
 - Source-specific `enabled_toolsets` avoid loading every tool schema into every cron turn.
 - Parallel collectors front-load breadth while bounded prompt samples protect the reasoning context.
 - Full candidate pools, old cron sessions and cron output are pruned after 30 days.
+- Adaptive seeds stay bounded so discovery can evolve without turning the crawler into an unbounded self-expanding query storm.
 
 ## Validation
 
