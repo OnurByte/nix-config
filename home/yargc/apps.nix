@@ -3,6 +3,9 @@
   pkgs,
   ...
 }:
+let
+  sessionDesktop = pkgs.callPackage ./packages/session-desktop.nix { };
+in
 {
   programs.vesktop = {
     enable = true;
@@ -35,7 +38,7 @@
     inputs.chatgpt-desktop.packages.${pkgs.system}.default
     inputs.claude-desktop.packages.${pkgs.system}.claude-desktop-with-fhs
 
-    session-desktop
+    sessionDesktop
     telegram-desktop
 
     ghostty
