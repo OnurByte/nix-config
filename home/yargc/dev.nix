@@ -9,8 +9,21 @@ let
   plannotatorBin = "${plannotator}/bin/plannotator";
   helium = inputs.helium.packages.${pkgs.system}.default;
   zen = inputs.zen-browser.packages.${pkgs.system}.default;
-  npx = "${pkgs.nodejs_24}/bin/npx";
-  mcpCache = "${config.home.homeDirectory}/.cache/vesper-mcp/npm";
+  bunx = "${pkgs.bun}/bin/bunx";
+  mcpCache = "${config.home.homeDirectory}/.cache/vesper-mcp/bun";
+
+  # GCC is the global system toolchain. Keep Clang's compiler frontends
+  # available without adding Clang's entire wrapper output to Home Manager:
+  # the full wrapper also exports linker shims such as ld.gold that collide
+  # with GCC's wrapper in buildEnv.
+  clangFrontends = pkgs.runCommand "clang-frontends" { } ''
+    mkdir -p "$out/bin"
+    for tool in clang clang++ clang-cpp clang-cl; do
+      if [ -e "${pkgs.clang}/bin/$tool" ]; then
+        ln -s "${pkgs.clang}/bin/$tool" "$out/bin/$tool"
+      fi
+    done
+  '';
 
   githubMcpArchive = pkgs.fetchurl {
     url = "https://github.com/github/github-mcp-server/releases/download/v1.9.0/github-mcp-server_Linux_x86_64.tar.gz";
@@ -53,14 +66,12 @@ in
         };
 
         context7 = {
-          command = npx;
+          command = bunx;
           args = [
-            "-y"
             "@upstash/context7-mcp@4.0.2"
           ];
           env = {
-            NPM_CONFIG_CACHE = mcpCache;
-            NPM_CONFIG_UPDATE_NOTIFIER = "false";
+            BUN_INSTALL_CACHE_DIR = mcpCache;
           };
         };
 
@@ -69,9 +80,8 @@ in
         };
 
         "helium-devtools" = {
-          command = npx;
+          command = bunx;
           args = [
-            "-y"
             "chrome-devtools-mcp@1.7.0"
             "--executable-path=${helium}/bin/helium"
             "--user-data-dir=${config.home.homeDirectory}/.local/share/vesper/helium-mcp"
@@ -79,16 +89,14 @@ in
             "--performance-crux=false"
           ];
           env = {
+            BUN_INSTALL_CACHE_DIR = mcpCache;
             CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS = "1";
-            NPM_CONFIG_CACHE = mcpCache;
-            NPM_CONFIG_UPDATE_NOTIFIER = "false";
           };
         };
 
         "zen-devtools" = {
-          command = npx;
+          command = bunx;
           args = [
-            "-y"
             "@mozilla/firefox-devtools-mcp@0.9.15"
             "--firefox-path"
             "${zen}/bin/zen-beta"
@@ -98,8 +106,7 @@ in
             "developer"
           ];
           env = {
-            NPM_CONFIG_CACHE = mcpCache;
-            NPM_CONFIG_UPDATE_NOTIFIER = "false";
+            BUN_INSTALL_CACHE_DIR = mcpCache;
           };
         };
       };
@@ -181,9 +188,7 @@ in
       shellcheck
       shfmt
       gcc
-      # Keep both compiler frontends available without making their bundled
-      # linker wrappers compete for the same Home Manager buildEnv paths.
-      (lib.lowPrio clang)
+      clangFrontends
       gdb
       cmake
       gnumake

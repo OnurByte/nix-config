@@ -23,7 +23,7 @@
 
     shellAliases = {
       nvim = "pycho";
-      zed = "zed-preview";
+      zed = "zeditor";
 
       aipanel = "codexbar-popup";
       aicockpit = "bb-app";

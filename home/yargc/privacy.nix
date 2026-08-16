@@ -4,14 +4,24 @@
   ...
 }:
 let
+  # nixpkgs fixed mat2's FFmpeg 9 regression upstream by pinning mat2 to
+  # FFmpeg 8. The top-level pkgs.mat2 is only a toPythonApplication wrapper,
+  # so apply the override to the underlying Python package and wrap it again.
+  # This keeps mat2's test suite enabled instead of globally disabling checks.
+  mat2Fixed = pkgs.python3Packages.toPythonApplication (
+    pkgs.python3Packages.mat2.override {
+      ffmpeg = pkgs.ffmpeg_8;
+    }
+  );
+
   onionShareSafe = pkgs.writeShellApplication {
     name = "onionshare-safe";
-    runtimeInputs = with pkgs; [
-      coreutils
-      file
-      findutils
-      mat2
-      onionshare
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.file
+      pkgs.findutils
+      mat2Fixed
+      pkgs.onionshare
     ];
     text = ''
       set -euo pipefail
@@ -98,7 +108,8 @@ in
     # before the onion service starts.
     onionshare
     onionshare-gui
-    mat2
     onionShareSafe
+  ] ++ [
+    mat2Fixed
   ];
 }
