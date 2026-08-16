@@ -4,14 +4,20 @@
   ...
 }:
 let
+  # nixpkgs fixed mat2's FFmpeg 9 regression upstream by pinning mat2 to
+  # FFmpeg 8. Keep the workaround narrow so mat2's own test suite remains on.
+  mat2Fixed = pkgs.mat2.override {
+    ffmpeg = pkgs.ffmpeg_8;
+  };
+
   onionShareSafe = pkgs.writeShellApplication {
     name = "onionshare-safe";
-    runtimeInputs = with pkgs; [
-      coreutils
-      file
-      findutils
-      mat2
-      onionshare
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.file
+      pkgs.findutils
+      mat2Fixed
+      pkgs.onionshare
     ];
     text = ''
       set -euo pipefail
@@ -98,7 +104,8 @@ in
     # before the onion service starts.
     onionshare
     onionshare-gui
-    mat2
     onionShareSafe
+  ] ++ [
+    mat2Fixed
   ];
 }
