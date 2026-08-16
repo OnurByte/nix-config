@@ -119,54 +119,86 @@ there is no local model service running by default
 
 active agent skills have one canonical home at `~/.agents/skills`
 Codex Claude and OpenCode skill paths link back to that tree instead of maintaining separate copies
+Vesper workflow skills are also exposed to Hermes without replacing Hermes' bundled skills
 
-### hermes cron
+### hermes automation
 
-Hermes uses its own cron / scheduled automation layer for recurring research
-there is no second GitHub Actions or systemd timer trying to run the same jobs
-cron is only the heartbeat: every run resumes persistent research state instead of starting from zero or creating more cron jobs
+Hermes cron is the single scheduler for recurring agent research and watchdog work
+Vesper keeps the desired automation fleet in Nix while Hermes keeps mutable run state in its own cron store
+`~/.hermes/cron/jobs.json` is never Home Manager owned
 
-| job | behavior |
-|---|---|
-| `briefing` | recurring concise digest such as a daily research/news briefing |
-| `research` | deeper bounded investigation into one question |
-| `watch` | check a condition and only surface something when it meaningfully changes |
-
-The research loop is adaptive
-user supplied RSS feeds subreddits repositories channels and sites are starting seeds rather than a permanent allowlist
-Hermes can expand through links authors crossposts GitHub docs/issues/PRs citations transcripts curated lists and generated queries then learn which sources and methods keep producing signal
-
-A normal run follows roughly this shape
+The expensive research path is deliberately split instead of asking one agent turn to crawl the internet sequentially
 
 ```text
-persistent state
-      ↓
-orient → cheap intake → expand → verify → rank → deliver → learn
-             ↑                                      ↓
-       rss/atom first                    source + heuristic state
+wide deterministic collectors
+        ↓
+GitHub / Reddit / X / Linux.do scouts
+        ↓
+verification + ranking
+        ↓
+context_from fan-in
+        ↓
+Morning Check
+        ↓
+Obsidian second brain
 ```
 
-The default balance is roughly 80% exploitation and 20% exploration
-exploration can rise when findings repeat source overlap grows novelty drops a topic moves quickly or results cluster inside one source graph
+Daily jobs keep different objectives separate:
 
-Reusable behavior is learned gradually
+| job | purpose |
+|---|---|
+| `Unknown Frontier AI` | find useful AI projects techniques posts issues and tools that have not broken through yet |
+| `Daily Agenda` | capture important current developments even when they are mainstream |
+| `Free AI Radar` | find legitimate usable free AI tiers tools APIs and self-hosted alternatives with their catches |
+| `Morning Check` | combine project/todo state with the three intelligence lanes into one final daily briefing |
+| `Upstream Edge Radar` | watch early PR issue commit and breaking-change signals in the Vesper stack |
+| `Second Brain Reflection` | consolidate durable research into Obsidian and stage reusable procedures as skill drafts |
+
+Unknown Frontier uses independent GitHub Reddit and X scouts
+GitHub and Reddit get large cheap candidate funnels before the agent spends its bounded turn on deep verification
+Linux.do is a first-class discovery source for Free AI Radar
+raw scouts stay local so Telegram is not flooded with intermediate reports
+
+No-agent jobs handle deterministic checks without spending model tokens:
+
+- Vesper Health Watch every three hours
+- Hermes Skill Integrity Watch daily
+- Hermes Cron Retention weekly
+
+Weekly intelligence adds User Pain Miner Project Archaeologist AI Usage Economist Skill Evolution Review and a final Weekly Intelligence Review
+
+Cron sessions do not depend on previous conversation context
+research state lives under `~/.local/state/vesper/research/`
+full reports live under `~/.local/share/vesper/briefings/`
+Obsidian is the durable knowledge graph and `~/.local/share/vesper/skill-drafts/` is the staging area for procedures that may become active skills after review
+
+The fleet is reconciled through Hermes' own cron API rather than by editing its runtime JSON directly:
+
+```bash
+nh os switch
+vesper-hermes-cron-sync          # dry run
+vesper-hermes-cron-sync --apply  # reconcile
+hermes cron list
+hermes cron status
+```
+
+The reconciler recognizes the old `Sabah check` job and migrates it in place to `Morning Check` while preserving its existing job ID and locally discovered notification destination
+personal chat IDs stay outside this public repository
+
+Full architecture schedules collectors and operations are in [`docs/HERMES_AUTOMATION.md`](docs/HERMES_AUTOMATION.md)
+skill ownership and promotion rules are in [`docs/SKILLS.md`](docs/SKILLS.md)
+
+Reusable research behavior still learns gradually:
 
 ```text
 observation
   → candidate heuristic
   → repeated trials
   → active heuristic
-  → decay / review
-  → retained scoped or retired
+  → skill draft
+  → review
+  → promotion or retirement
 ```
-
-Hermes writes durable briefing output under `~/.local/share/vesper/briefings/`
-reports can keep Markdown for reading and JSON for shell/UI integration with fields such as title summary body type priority sources createdAt job and unread
-short notifications are for the interrupt while the full report stays in the briefing inbox
-`watch` jobs stay quiet when there is no meaningful change
-
-Potential reusable skills go to `~/.local/share/vesper/skill-drafts/`
-those drafts are deliberately not active until reviewed and promoted into `~/.agents/skills`
 
 ## apps
 
@@ -263,7 +295,9 @@ if the disk or subvolume layout changes those values need to be captured again b
 ├── flake.lock
 ├── docs/
 │   ├── INSTALL.md
-│   └── BACKUP.md
+│   ├── BACKUP.md
+│   ├── HERMES_AUTOMATION.md
+│   └── SKILLS.md
 ├── hosts/
 │   └── vesper/
 ├── modules/
@@ -272,6 +306,7 @@ if the disk or subvolume layout changes those values need to be captured again b
 │   ├── development/
 │   └── privacy/
 └── home/yargc/
+    ├── hermes/
     ├── hypr/
     ├── packages/
     ├── skills/
@@ -279,6 +314,8 @@ if the disk or subvolume layout changes those values need to be captured again b
     ├── command-memory.nix
     ├── dev.nix
     ├── doctor.nix
+    ├── hermes.nix
+    ├── hermes-automation.nix
     ├── skills.nix
     └── privacy.nix
 ```
@@ -292,6 +329,14 @@ nh os test
 vesper-doctor
 vesper-doctor --json
 nh os switch
+```
+
+reconcile Hermes automations after the Home Manager files are active
+
+```bash
+vesper-hermes-cron-sync
+vesper-hermes-cron-sync --apply
+hermes cron list
 ```
 
 update the flake when i want to
