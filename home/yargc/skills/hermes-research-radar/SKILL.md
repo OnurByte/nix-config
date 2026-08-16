@@ -2,9 +2,43 @@
 
 Run Hermes scheduled research as a persistent, adaptive research system rather than a stateless feed reader.
 
+## core philosophy — know the unknown
+
+The primary purpose of research is to expand the user's knowledge frontier.
+
+Do not optimize for summarizing what is already popular, already known or repeatedly discussed. Optimize for discovering useful things the user probably does not know yet, especially things that the wider community has also not noticed.
+
+The guiding question is:
+
+`what useful thing exists outside the user's current map of the world?`
+
+Treat every research run as an attempt to move that boundary outward. A successful run should ideally produce at least one of these:
+
+- a genuinely new tool, project, technique, source, person, community or idea
+- a surprising connection between things that were previously separate
+- an early signal of something likely to matter later
+- a useful contradiction to an existing assumption
+- a previously unknown implementation detail, workaround or capability
+- a new source path that can produce future discoveries
+- evidence that something believed to be true has changed or stopped being true
+
+Novelty must be useful, not random. Do not reward obscurity for its own sake. The target is useful unknowns.
+
+Prefer discovery over repetition. When a candidate is substantially similar to something already delivered, known or stored in persistent state, lower its priority unless it adds meaningful new evidence, capability, consequences or connections.
+
+Maintain an implicit knowledge frontier with three rough states:
+
+- `known` — already delivered, explicitly known or repeatedly observed
+- `adjacent` — related to known topics but contains a potentially new angle
+- `unknown` — new source, concept, tool, technique, capability or relationship not represented in current research state
+
+Spend most research effort near the `adjacent -> unknown` boundary because that is where useful discoveries are most likely to emerge.
+
+The quality of the research system is measured by information gain, downstream usefulness and durable new knowledge — not by number of links, number of sources scanned or popularity of the findings.
+
 ## primary objective
 
-The radar is not a popularity feed. Its main job is to surface useful things before they become widely known.
+The radar is not a popularity feed. Its main job is to surface useful things before they become widely known and before they enter the user's existing knowledge map.
 
 Actively hunt low-attention, high-signal findings on X/Twitter, Reddit, GitHub and Linux.do: posts, comments, repositories, issues, pull requests, commits, experiments, techniques and tools that have little engagement but unusually high practical or technical value.
 
@@ -24,7 +58,7 @@ Do not fill the briefing with merely unpopular content. The target is obscurity 
 
 A useful mental ranking model is:
 
-`hidden-gem score = relevance + utility + novelty + evidence + technical density + early-signal value + independence - hype - duplication - popularity bias`
+`discovery score = unknown-to-user + relevance + utility + novelty + evidence + technical density + early-signal value + independence + information gain - hype - duplication - popularity bias`
 
 Do not use fixed star/upvote/like thresholds across platforms. Normalize attention relative to the age of the item, the size of its community/account and the normal engagement level of that niche. A 20-star repository in a tiny new ecosystem can be more meaningful than a 2,000-star generic project.
 
@@ -66,12 +100,13 @@ The schedule decides when to wake up, not what to relearn from scratch.
 Read and update durable state before and after each run. At minimum retain:
 
 - recent runs and delivered findings
-- unresolved candidates
+- a compact representation of what is already known so novelty can be estimated
+- unresolved candidates and adjacent topics that may lead beyond the current knowledge frontier
 - source registry and source graph
 - per-source/method signal and failure history
 - active heuristics and their evidence
 - freshness window, research budget and exploration rate
-- previously seen URLs, repositories, authors and claims for deduplication
+- previously seen URLs, repositories, authors, concepts and claims for deduplication
 - per-source hit rate for hidden-gem discoveries rather than raw traffic
 - free-AI opportunities already reported and their current status so expired or dead tricks are not repeatedly resurfaced
 
@@ -79,18 +114,22 @@ User-provided feeds, subreddits, repositories, accounts, channels and sites are 
 
 ## research loop
 
-1. orient from persistent state and the current job
-2. intake cheaply: RSS/Atom and APIs/search metadata first, then extraction, discussion, browser or video only when useful
-3. deliberately inspect low-ranking and low-engagement result tails instead of only top/hot/trending results
-4. expand through links, crossposts, authors, followers/following when useful, GitHub docs/issues/PRs/commits, Linux.do related threads, blogrolls, citations, transcripts, curated lists and generated queries
-5. verify important findings against code, primary sources or independent evidence
-6. rank for hidden-gem value, novelty, usefulness, evidence, independence, information density, non-obvious discovery and low duplication
-7. deliver only findings worth the user's attention
-8. learn from which sources and methods produced signal
+1. orient from persistent state, the current job and the current knowledge frontier
+2. identify what is already known, what is merely adjacent and where genuine unknown space begins
+3. intake cheaply: RSS/Atom and APIs/search metadata first, then extraction, discussion, browser or video only when useful
+4. deliberately inspect low-ranking and low-engagement result tails instead of only top/hot/trending results
+5. expand through links, crossposts, authors, followers/following when useful, GitHub docs/issues/PRs/commits, Linux.do related threads, blogrolls, citations, transcripts, curated lists and generated queries
+6. follow surprising edges into unfamiliar sources/topics when they remain relevant; do not stop just because the trail leaves the original seed community
+7. verify important findings against code, primary sources or independent evidence
+8. rank for information gain, unknown-to-user value, hidden-gem value, novelty, usefulness, evidence, independence, technical density, non-obvious discovery and low duplication
+9. deliver only findings that meaningfully move the knowledge frontier or update an important existing belief
+10. learn from which sources, query forms and traversal paths produced real discoveries
 
 Search strategies should intentionally escape popularity ranking. Examples include newest/recent result views, small subreddits, comment trees below top-level posts, low-view Linux.do threads/comments, GitHub repositories with low star counts, recently-created repositories, recently-active issues/PRs, niche topic queries and author/source expansion from previously successful discoveries.
 
-Start around 80% exploitation / 20% exploration. Increase exploration when findings repeat, source overlap rises, novelty falls, a topic shifts quickly or results cluster inside one social/source graph.
+Do not repeatedly search only inside known categories. Reserve budget for lateral exploration: unfamiliar vocabulary, adjacent ecosystems, new authors, small communities, repo dependencies, forks, issue participants, cited projects and sources one or two hops away from a useful finding.
+
+Start around 75% exploitation / 25% exploration. Increase exploration when findings repeat, source overlap rises, novelty falls, a topic shifts quickly, results cluster inside one social/source graph or the last several runs fail to produce meaningful information gain.
 
 Keep some exploration budget reserved for completely new accounts, subreddits, Linux.do authors/topics, repositories, organizations and query patterns so the system does not become trapped in its own successful source bubble.
 
@@ -102,7 +141,9 @@ A new rule must move through:
 
 Track scope, evidence, successes, failures, confidence, timestamps and last successful use. Do not promote a one-off trick directly into permanent behavior.
 
-Learn discovery heuristics such as which small communities, Linux.do topics/authors, maintainers, repository neighborhoods, issue labels, query forms or cross-source paths repeatedly produce useful obscure findings. Reward heuristics for downstream usefulness, not for producing a high volume of links.
+Learn discovery heuristics such as which small communities, Linux.do topics/authors, maintainers, repository neighborhoods, issue labels, query forms, vocabulary shifts or cross-source paths repeatedly produce useful obscure findings. Reward heuristics for downstream usefulness and information gain, not for producing a high volume of links.
+
+Also learn negative heuristics: sources, query forms or traversal paths that repeatedly produce duplicates, hype or already-known information should receive less budget over time.
 
 Potential reusable skills go to `$VESPER_SKILL_DRAFT_DIR` (default `~/.local/share/vesper/skill-drafts/`). Drafts stay inactive until reviewed and promoted into the canonical `~/.agents/skills` tree.
 
@@ -124,10 +165,14 @@ A briefing record should carry:
 - `visibility` or comparable attention estimate
 - `whyHidden`
 - `whyUseful`
+- `whyNew` — what makes this new relative to existing research state
+- `informationGain` — low/medium/high or comparable score
 - `confidence`
 - `freeTier` / `limits` / `expiresAt` when relevant to a free-AI finding
 
-For each hidden-gem item explain briefly why it was probably missed and why it is useful. Include the engagement/visibility context when available, but do not confuse those metrics with truth or quality.
+For each hidden-gem item explain briefly why it was probably missed, why it is useful and what is genuinely new about it. Include the engagement/visibility context when available, but do not confuse those metrics with truth or quality.
+
+A briefing should prefer a few high-information-gain discoveries over a long list of familiar news. If a run finds nothing meaningfully new, say so or remain quiet rather than padding the report with already-known material.
 
 For free-AI discoveries, explicitly state the catch: quota, model limits, region/account requirements, expiration, self-hosting cost or uncertainty. If a previously reported opportunity materially changes or dies, a `watch` job may notify about that change.
 
