@@ -26,29 +26,6 @@ let
   hermesDesktop = agents.hermes-desktop.override {
     hermes-agent = hermesAgent;
   };
-
-  zedPreview = pkgs.writeShellApplication {
-    name = "zed-preview";
-    runtimeInputs = with pkgs; [
-      curl
-      coreutils
-      gnutar
-      gzip
-      xz
-      gnused
-    ];
-    text = ''
-      set -euo pipefail
-
-      zed="$HOME/.local/zed-preview.app/bin/zed"
-      if [ ! -x "$zed" ]; then
-        echo "Installing Zed Preview from the official Zed installer..." >&2
-        curl -fsSL https://zed.dev/install.sh | ZED_CHANNEL=preview sh
-      fi
-
-      exec "$zed" "$@"
-    '';
-  };
 in
 {
   home.packages = [
@@ -70,7 +47,9 @@ in
     agents.ccusage
     inputs.self.packages.${pkgs.system}.turnlens
 
-    zedPreview
+    # Stable Zed from the locked nixpkgs revision. The FHS wrapper keeps Zed's
+    # downloadable extensions and language-server binaries usable on NixOS.
+    pkgs.zed-editor.fhs
   ];
 
   # Use store-qualified commands so desktop launch does not depend on whatever
