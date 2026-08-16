@@ -1,4 +1,5 @@
 {
+  config,
   inputs,
   pkgs,
   ...
@@ -6,10 +7,56 @@
 let
   plannotator = inputs.llm-agents.packages.${pkgs.system}.plannotator;
   plannotatorBin = "${plannotator}/bin/plannotator";
+  helium = inputs.helium.packages.${pkgs.system}.default;
+  zen = inputs.zen-browser.packages.${pkgs.system}.default;
+  npx = "${pkgs.nodejs_24}/bin/npx";
+  mcpCache = "${config.home.homeDirectory}/.cache/vesper-mcp/npm";
 in
 {
   programs = {
-    mcp.enable = true;
+    mcp = {
+      enable = true;
+      servers = {
+        nixos = {
+          command = "${pkgs.mcp-nixos}/bin/mcp-nixos";
+        };
+
+        "helium-devtools" = {
+          command = npx;
+          args = [
+            "-y"
+            "chrome-devtools-mcp@1.7.0"
+            "--executable-path=${helium}/bin/helium"
+            "--user-data-dir=${config.home.homeDirectory}/.local/share/vesper/helium-mcp"
+            "--usage-statistics=false"
+            "--performance-crux=false"
+          ];
+          env = {
+            CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS = "1";
+            NPM_CONFIG_CACHE = mcpCache;
+            NPM_CONFIG_UPDATE_NOTIFIER = "false";
+          };
+        };
+
+        "zen-devtools" = {
+          command = npx;
+          args = [
+            "-y"
+            "@mozilla/firefox-devtools-mcp@0.9.15"
+            "--firefox-path"
+            "${zen}/bin/zen-beta"
+            "--profile-path"
+            "${config.home.homeDirectory}/.local/share/vesper/zen-mcp"
+            "--tool-preset"
+            "developer"
+          ];
+          env = {
+            NPM_CONFIG_CACHE = mcpCache;
+            NPM_CONFIG_UPDATE_NOTIFIER = "false";
+          };
+        };
+      };
+    };
 
     codex = {
       enable = true;
@@ -81,6 +128,7 @@ in
       # Nix
       nixd
       nixfmt-rfc-style
+      mcp-nixos
 
       # Shell / systems
       shellcheck
