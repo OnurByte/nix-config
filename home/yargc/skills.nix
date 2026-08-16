@@ -21,6 +21,7 @@ let
 
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
+    hermes-automation-fleet = ./skills/hermes-automation-fleet;
     vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
   };
 
@@ -37,6 +38,7 @@ let
   # its native bundled skills while these shared definitions stay Nix-owned.
   hermesSkillNames = [
     "hermes-research-radar"
+    "hermes-automation-fleet"
     "vesper-obsidian-second-brain"
     "vesper-maintainer"
   ];
