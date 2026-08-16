@@ -40,15 +40,17 @@ in
     systemd.enable = false;
 
     settings = {
+      # Shell surfaces follow the Vesper glass contract: layered translucency,
+      # readable backdrop blur, calm spacing and larger continuous rounding.
       appearance = {
-        rounding.scale = 1.1;
-        spacing.scale = 1.0;
-        padding.scale = 1.0;
-        anim.durations.scale = 0.9;
+        rounding.scale = 1.25;
+        spacing.scale = 1.05;
+        padding.scale = 1.05;
+        anim.durations.scale = 0.85;
         transparency = {
           enabled = true;
-          base = 0.82;
-          layers = 0.46;
+          base = 0.68;
+          layers = 0.34;
         };
       };
 

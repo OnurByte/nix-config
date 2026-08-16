@@ -29,8 +29,8 @@
     homeDirectory = "/home/${username}";
     stateVersion = "26.05";
 
-    # PSYCHOVIM and Zed Preview intentionally retain their upstream-managed
-    # user-space launchers. Agent tooling is declarative through Nix.
+    # PychoVIM intentionally keeps its own updater and mutable config checkout.
+    # Zed is Nix-managed from the locked stable nixpkgs package.
     sessionPath = [ "$HOME/.local/bin" ];
 
     sessionVariables = {
@@ -39,6 +39,15 @@
       GIT_EDITOR = "pycho";
       TERMINAL = "ghostty";
       BROWSER = "zen-beta";
+
+      # bb stays the control plane without sending its optional telemetry.
+      BB_TELEMETRY = "false";
+
+      # Use absolute paths here: Home Manager session variables are shell-escaped
+      # values, so a literal $HOME would not be expanded a second time.
+      VESPER_AGENT_STATE_DIR = "/home/${username}/.local/state/vesper/agents";
+      VESPER_BRIEFING_DIR = "/home/${username}/.local/share/vesper/briefings";
+      VESPER_SKILL_DRAFT_DIR = "/home/${username}/.local/share/vesper/skill-drafts";
     };
   };
 

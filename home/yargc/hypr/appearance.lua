@@ -3,7 +3,6 @@ local schemePath = home .. "/.config/hypr/scheme/current.lua"
 
 local fallback = {
     primary = "89b4fa",
-    secondary = "cba6f7",
     surface = "111318",
 }
 
@@ -18,7 +17,6 @@ local function colour(name, default)
 end
 
 local primary = colour("primary", fallback.primary)
-local secondary = colour("secondary", fallback.secondary)
 local surface = colour("surface", fallback.surface)
 
 hl.monitor({
@@ -30,33 +28,32 @@ hl.monitor({
 
 hl.config({
     general = {
-        gaps_in = 6,
-        gaps_out = 10,
+        gaps_in = 8,
+        gaps_out = 14,
         border_size = 1,
         col = {
-            active_border = {
-                colors = { "rgba(" .. primary .. "cc)", "rgba(" .. secondary .. "aa)" },
-                angle = 45,
-            },
-            inactive_border = "rgba(" .. surface .. "66)",
+            -- Keep the frame quiet and luminous rather than using a neon
+            -- multi-colour gradient. The shell itself carries the glass depth.
+            active_border = "rgba(" .. primary .. "66)",
+            inactive_border = "rgba(" .. surface .. "4d)",
         },
         layout = "dwindle",
         resize_on_border = true,
     },
     decoration = {
-        rounding = 16,
+        rounding = 22,
         blur = {
             enabled = true,
-            size = 8,
-            passes = 3,
+            size = 12,
+            passes = 4,
             new_optimizations = true,
             ignore_opacity = true,
         },
         shadow = {
             enabled = true,
-            range = 18,
-            render_power = 3,
-            color = "rgba(00000055)",
+            range = 24,
+            render_power = 2,
+            color = "rgba(00000040)",
         },
     },
     animations = {
@@ -76,7 +73,7 @@ hl.curve("vesper", {
     points = { { 0.16, 1.0 }, { 0.3, 1.0 } },
 })
 
-hl.animation({ leaf = "windows", enabled = true, speed = 6, bezier = "vesper" })
-hl.animation({ leaf = "windowsOut", enabled = true, speed = 6, bezier = "default" })
-hl.animation({ leaf = "fade", enabled = true, speed = 6, bezier = "default" })
+hl.animation({ leaf = "windows", enabled = true, speed = 5, bezier = "vesper" })
+hl.animation({ leaf = "windowsOut", enabled = true, speed = 5, bezier = "default" })
+hl.animation({ leaf = "fade", enabled = true, speed = 5, bezier = "default" })
 hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "vesper" })

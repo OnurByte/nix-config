@@ -43,7 +43,7 @@ let
       Super + Shift + H     Hermes Desktop
       Super + U             CodexBar
       Super + N             PychoVIM
-      Super + Z             Zed Preview
+      Super + Z             Zed
       Super + B             Zen Browser
       Super + Shift + B     Helium
       KEYS
