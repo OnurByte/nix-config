@@ -5,6 +5,8 @@ Vesper keeps one Home Manager MCP registry and feeds it to Codex, Claude Code an
 Configured servers:
 
 - `nixos` — NixOS, nixpkgs and Home Manager package/option lookup through `mcp-nixos`
+- `context7` — current library and API documentation through Context7
+- `github` — GitHub repositories, issues, pull requests and Actions through GitHub's official MCP server
 - `helium-devtools` — Chrome DevTools MCP pointed at the Nix-managed Helium binary
 - `zen-devtools` — Mozilla Firefox DevTools MCP pointed at the Nix-managed Zen beta binary
 
@@ -16,15 +18,45 @@ After a switch:
 nh os switch
 ```
 
-Codex, Claude Code and OpenCode pick the servers up from Home Manager automatically. There is no separate per-agent setup.
+Codex, Claude Code and OpenCode pick the servers up from Home Manager automatically. There is no separate per-agent MCP setup.
 
-Useful requests are ordinary agent requests, for example:
+Useful requests are ordinary agent requests:
 
 ```text
 use the nixos MCP to find the correct Home Manager option for this
+use context7 for the current Next.js API before changing this code
+use the github MCP to inspect the failing Actions run and related pull request
 use helium-devtools to inspect this page's network requests and console
 use zen-devtools to open this site and reproduce the Firefox-side bug
 ```
+
+## GitHub
+
+Vesper pins GitHub MCP Server `1.9.0` and enables the `context`, `repos`, `issues`, `pull_requests` and `actions` toolsets.
+
+The wrapper first reuses the current GitHub CLI login:
+
+```bash
+gh auth status
+```
+
+If `gh auth token` is available, that token is passed to the MCP process without writing it into Nix or Git. If there is no GitHub CLI login, the official release can fall back to its browser OAuth flow.
+
+For manual diagnostics:
+
+```bash
+vesper-github-mcp
+```
+
+The command is normally started by the agent and speaks MCP over stdio, so running it manually is only useful for startup/auth errors.
+
+## Context7
+
+Context7 is pinned to `@upstash/context7-mcp@4.0.2`.
+
+Basic use does not require an API key. Ask the agent to `use context7` when a task depends on current framework or library documentation.
+
+An API key is optional for higher limits and private repositories. If one is added later, keep it in sops rather than the repository.
 
 ## Helium
 
@@ -63,7 +95,7 @@ rm -rf ~/.local/share/vesper/helium-mcp
 rm -rf ~/.local/share/vesper/zen-mcp
 ```
 
-The MCP npm packages are version-pinned but fetched by `npx` on first use because they are not currently part of the Vesper Nix package set. Their npm cache is isolated under:
+The browser and Context7 npm packages are version-pinned but fetched by `npx` on first use because they are not currently part of the Vesper Nix package set. Their npm cache is isolated under:
 
 ```text
 ~/.cache/vesper-mcp/npm
