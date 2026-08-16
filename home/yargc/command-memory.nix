@@ -90,6 +90,12 @@ in
     # Start OpenCode
     opencode
 
+    # Start Grok Build
+    grok
+
+    # Check Grok Build for an upstream update
+    grok update --check
+
     # Start Hermes agent
     hermes
 
