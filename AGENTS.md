@@ -20,7 +20,7 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Spotify uses Spicetify and remains Caelestia's default player. MPV is the local audio/video player and exposes MPRIS rather than adding another media shell.
 - Discord uses Vesktop + system Vencord.
 - Bun is the user-facing JavaScript package manager; do not add pnpm/yarn globally.
-- Cloud/provider agents are first class. Grok Build is the official xAI CLI entry point; do not substitute the unrelated nixpkgs `grok-cli` package.
+- Cloud/provider agents are first class. Grok Build is the official xAI CLI entry point; use nixpkgs `grok-build`, not the unrelated `grok-cli` package or a mutable installer wrapper.
 - Do not add Ollama, LM Studio or another local-model daemon unless requested.
 - `bb` is the primary multi-agent control plane. T3 Code Nightly is the GUI coding surface.
 - Keep T3 Code on an official pinned nightly AppImage and expose Codex, Claude Code and OpenCode to its PATH.
@@ -29,6 +29,7 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Monero GUI/CLI, Feather and Eigenwallet are first-class privacy tools. Cuprate remains opt-in/experimental and must not replace `monerod` silently.
 - Keep the system Tor client available separately from Tor Browser's bundled Tor.
 - Do not auto-enable blockchain nodes, mining or P2Pool.
+- Podman and Distrobox are the container stack. Do not reintroduce libvirt/virt-manager unless explicitly requested.
 - Bottles is a Windows-compatibility utility, not permission to restore a gaming stack.
 - Do not add gaming packages unless explicitly requested.
 - Do not re-add a night-light daemon unless explicitly requested.
@@ -38,7 +39,7 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Never guess filesystem UUIDs or partition topology. `hosts/vesper/hardware-configuration.nix` stays a placeholder until generated on the machine.
 - Prefer NixOS/Home Manager modules and pinned packages over `curl | sh`.
 - Check nixpkgs and upstream Nix support before writing a custom derivation.
-- Grok Build is an intentional mutable exception: the Nix-managed `grok` wrapper bootstraps only xAI's official installer into `~/.grok`, and upstream `grok update` owns that binary afterwards.
+- Grok Build must come from `pkgs.grok-build` so its version follows the pinned nixpkgs input.
 - Preserve `flake.lock`; update pins only intentionally.
 - Keep unfree packages deliberate.
 - Keep Apache/PHP/MariaDB local-only unless asked otherwise.
