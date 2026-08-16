@@ -11,6 +11,7 @@
     ./cli.nix
     ./command-memory.nix
     ./dev.nix
+    ./doctor.nix
     ./git.nix
     ./hyprland.nix
     ./lazy-tools.nix

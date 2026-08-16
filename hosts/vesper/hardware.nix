@@ -1,14 +1,12 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 {
-  # Current CachyOS machine runs a very recent kernel; keep NixOS similarly fresh
-  # without pulling in a third-party kernel patchset.
-  boot.kernelPackages = pkgs.linuxPackages_latest;
-
+  # Follow the kernel line selected by pinned nixpkgs. Vesper's Ryzen 6000 +
+  # Ampere hardware does not need linuxPackages_latest, and avoiding the extra
+  # moving edge reduces NVIDIA breakage on an unstable workstation.
   boot.kernelParams = [
     "amd_pstate=active"
     "nvidia.NVreg_TemporaryFilePath=/var/tmp"
