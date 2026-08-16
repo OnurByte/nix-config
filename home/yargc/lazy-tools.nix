@@ -6,6 +6,27 @@
 let
   agents = inputs.llm-agents.packages.${pkgs.system};
 
+  # llm-agents already disables slack-bolt's Pyramid adapter tests for Python
+  # 3.14, but the pinned slack-bolt 1.29.0 test suite still fails in this
+  # interpreter even though the package builds and imports correctly. Keep the
+  # workaround scoped to Hermes' private Python package set: only slack-bolt's
+  # upstream test phase is skipped, while the rest of the system keeps checks.
+  hermesAgent = agents.hermes-agent.override (old: {
+    python3 = old.python3.override {
+      packageOverrides = _final: prev: {
+        slack-bolt = prev.slack-bolt.overridePythonAttrs (_: {
+          doCheck = false;
+        });
+      };
+    };
+  });
+
+  # hermes-desktop wraps hermes-agent, so point it at the same fixed derivation
+  # rather than silently pulling the original broken Hermes closure back in.
+  hermesDesktop = agents.hermes-desktop.override {
+    hermes-agent = hermesAgent;
+  };
+
   zedPreview = pkgs.writeShellApplication {
     name = "zed-preview";
     runtimeInputs = with pkgs; [
@@ -41,8 +62,8 @@ in
     pkgs.grok-build
 
     # Hermes is fully declarative: CLI, native desktop shell and optional HUD.
-    agents.hermes-agent
-    agents.hermes-desktop
+    hermesAgent
+    hermesDesktop
     agents.hermes-hud
 
     # Broad historical accounting plus per-turn Codex/Claude measurement.

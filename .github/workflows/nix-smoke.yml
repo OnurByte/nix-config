@@ -51,6 +51,27 @@ jobs:
       - name: Evaluate Home Manager activation
         run: nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath' >/dev/null
 
+      - name: Build complete Vesper system
+        shell: bash
+        run: |
+          set +e
+          nix build --no-link --print-build-logs \
+            '.#nixosConfigurations.vesper.config.system.build.toplevel' \
+            >vesper-system-build.log 2>&1
+          status=$?
+
+          cat vesper-system-build.log
+
+          if [ "$status" -ne 0 ]; then
+            message="$(tail -n 80 vesper-system-build.log)"
+            message="${message//'%'/'%25'}"
+            message="${message//$'\r'/'%0D'}"
+            message="${message//$'\n'/'%0A'}"
+            echo "::error title=Vesper full system build failed::$message"
+          fi
+
+          exit "$status"
+
       - name: Build T3 Code Nightly package
         run: nix build --no-link .#t3code-nightly
 
@@ -62,14 +83,3 @@ jobs:
 
       - name: Build Caelestia surface
         run: nix build --no-link '.#nixosConfigurations.vesper.config.home-manager.users.yargc.programs.caelestia.package'
-
-      - name: Build complete Vesper system
-        shell: bash
-        run: |
-          set -euo pipefail
-          if grep -q 'Replace this file with the hardware configuration generated on the machine' hosts/vesper/hardware-configuration.nix; then
-            echo 'hardware-configuration.nix is still the intentional placeholder; skipping the deployable system closure.'
-            exit 0
-          fi
-
-          nix build --no-link '.#nixosConfigurations.vesper.config.system.build.toplevel'

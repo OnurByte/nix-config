@@ -25,9 +25,8 @@ let
   };
 in
 {
-  # Vesper is expected to live on Btrfs, but the real filesystem topology stays
-  # in the installer-generated hardware-configuration.nix. Everything below is
-  # conditional so the repository keeps evaluating while that file is a placeholder.
+  # Vesper's real root is Btrfs. Keep these checks conditional anyway so this
+  # module remains honest if the storage topology is deliberately changed later.
   boot.supportedFilesystems = [ "btrfs" ];
 
   services.btrfs.autoScrub = lib.mkIf hasBtrfs {
@@ -35,9 +34,9 @@ in
     interval = "monthly";
   };
 
-  # Snapper only activates once the generated hardware config proves that / is
-  # actually Btrfs. A separately mounted Btrfs /home gets its own snapshot set;
-  # otherwise home remains part of the root snapshot boundary.
+  # The verified machine mounts / and /home as distinct Btrfs subvolumes.
+  # Root keeps the existing /.snapshots subvolume/history; Home gets its own
+  # Snapper namespace without changing the @home mount itself.
   services.snapper = lib.mkIf rootIsBtrfs {
     persistentTimer = true;
     snapshotInterval = "hourly";
@@ -55,8 +54,8 @@ in
     };
   };
 
-  # systemd-tmpfiles type `v` creates a Btrfs subvolume when possible. Snapper
-  # requires .snapshots to be a subvolume rather than an ordinary directory.
+  # systemd-tmpfiles type `v` creates a Btrfs subvolume only when the path does
+  # not already exist. Existing root Snapper history is therefore preserved.
   systemd.tmpfiles.rules =
     lib.optionals rootIsBtrfs [
       "v /.snapshots 0750 root root - -"
