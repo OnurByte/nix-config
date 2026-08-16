@@ -1,55 +1,10 @@
 {
   inputs,
-  lib,
   pkgs,
   ...
 }:
 let
   agents = inputs.llm-agents.packages.${pkgs.system};
-
-  grokBootstrapPath = lib.makeBinPath (with pkgs; [
-    bash
-    coreutils
-    curl
-    gawk
-    gnugrep
-    gnused
-  ]);
-
-  grokBuild = pkgs.writeShellApplication {
-    name = "grok";
-    runtimeInputs = with pkgs; [
-      bash
-      coreutils
-      curl
-      gawk
-      gnugrep
-      gnused
-    ];
-    text = ''
-      set -euo pipefail
-
-      grok_bin="$HOME/.grok/bin/grok"
-      if [ ! -x "$grok_bin" ]; then
-        echo "Installing Grok Build from xAI's official stable channel..." >&2
-        installer="$(mktemp)"
-        trap 'rm -f "$installer"' EXIT
-        curl -fsSL https://x.ai/cli/install.sh -o "$installer"
-
-        env \
-          HOME="$HOME" \
-          SHELL=/bin/false \
-          PATH="${grokBootstrapPath}" \
-          GROK_BIN_DIR="$HOME/.grok/bin" \
-          ${pkgs.bash}/bin/bash "$installer"
-
-        rm -f "$installer"
-        trap - EXIT
-      fi
-
-      exec "$grok_bin" "$@"
-    '';
-  };
 
   zedPreview = pkgs.writeShellApplication {
     name = "zed-preview";
@@ -82,9 +37,8 @@ in
     agents.bb-app
     agents.agent-browser
 
-    # xAI's official Grok Build CLI bootstraps into ~/.grok on first launch.
-    # The Nix wrapper remains the stable entry point; `grok update` owns updates.
-    grokBuild
+    # Official xAI Grok Build package from nixpkgs.
+    pkgs.grok-build
 
     # Hermes is fully declarative: CLI, native desktop shell and optional HUD.
     agents.hermes-agent
