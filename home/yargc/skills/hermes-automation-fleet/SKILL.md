@@ -1,6 +1,6 @@
 ---
 name: hermes-automation-fleet
-description: Operate and evolve Vesper's Hermes cron fleet: multi-stage research, cheap collectors, watchdogs, synthesis, second-brain consolidation and safe reconciliation.
+description: Operate and evolve Vesper's Hermes cron fleet: multi-stage research, cheap collectors, watchdogs, synthesis, adaptive discovery, second-brain consolidation and safe reconciliation.
 platforms: [linux]
 metadata:
   hermes:
@@ -17,6 +17,7 @@ Use the right execution mode for the job:
 
 - deterministic polling/health checks -> `no_agent` script jobs
 - broad discovery -> cheap script collection first, then a bounded agent triage
+- changing upstream snapshots -> native `monitor_script` so unchanged ticks never start the agent
 - sources that need native Hermes search tools -> dedicated agent scouts
 - multi-source reports -> `context_from` fan-in after upstream jobs finish
 - long-term knowledge -> Obsidian / Vesper research state, not cron conversation memory
@@ -35,6 +36,8 @@ The daily pipeline intentionally separates objectives:
 5. `Unknown Frontier AI — Synthesis`
 6. `Daily Agenda`
 7. `Morning Check`
+8. `Upstream Edge Radar`
+9. `Second Brain Reflection`
 
 Unknown Frontier answers: **what useful AI thing exists outside the current knowledge map?**
 
@@ -57,9 +60,23 @@ Vesper pre-run collectors create large candidate funnels for GitHub, Reddit and 
 - ranking
 - synthesis
 
-X/Twitter remains a native `x_search` scout because a reliable unauthenticated bulk collector is not assumed.
+Full candidate pools stay on disk while only a bounded valid-JSON sample is injected into the agent prompt. X/Twitter remains a native `x_search` scout because a reliable unauthenticated bulk collector is not assumed.
 
 Collector output is input, never truth. Verify important claims against primary sources.
+
+### Adaptive exploration
+
+Unknown Frontier synthesis maintains:
+
+```text
+$VESPER_RESEARCH_STATE_DIR/frontier-discovery-seeds.json
+```
+
+This is bounded inert search state, not executable code and not an active skill. It may hold useful `githubQueries`, `githubIssueQueries`, `redditQueries`, `redditSubreddits`, `linuxdoQueries` and `xQueries` learned from previous high-value runs.
+
+Keep strong routes, decay duplicate/hype-heavy routes and preserve explicit exploration budget for completely new vocabulary, authors, communities and repository neighborhoods. The collectors consume the relevant learned seeds on the next run.
+
+Never let adaptive discovery mutate cron jobs, active skills or credentials.
 
 ## Notification policy
 
@@ -70,7 +87,7 @@ Avoid notification spam.
 - Morning Check: notification target
 - Weekly Intelligence Review: notification target
 - health / skill-integrity watchdogs: notification only on state change
-- Upstream Edge Radar: `[SILENT]` when nothing material changed
+- Upstream Edge Radar: native `monitor_script` suppresses the agent when the tracked snapshot is unchanged; `[SILENT]` may still suppress routine changed heads
 - second-brain reflection: local and `[SILENT]` when no synthesis exists
 
 The notification target is resolved locally from `VESPER_HERMES_DELIVER` or an existing Morning Check origin. Never commit personal chat IDs into the public Nix repository.
@@ -90,6 +107,8 @@ Curator still owns generic Hermes skill maintenance. Skill Evolution Review only
 ## Second brain
 
 Use `vesper-obsidian-second-brain` together with Hermes' bundled `obsidian` skill.
+
+`Second Brain Reflection` receives the latest daily Frontier synthesis, Free AI Radar, Daily Agenda, Morning Check and Upstream Edge output through `context_from`; do not make the isolated nightly session rediscover those inputs from conversational memory.
 
 Promote only durable knowledge:
 
@@ -123,9 +142,10 @@ Do not patch `~/.hermes/cron/jobs.json` directly.
 - A failed scout must not prevent unrelated lanes from running.
 - Watchdogs must deduplicate unchanged alarms.
 - Free AI research must exclude stolen/shared credentials, leaked keys, account theft, abusive mass-account creation, payment bypass, and service-restriction evasion.
-- Retention may delete old cron outputs and old cron-source sessions, but never active jobs or current research state.
+- Retention may delete old cron outputs, candidate pools and old cron-source sessions, but never active jobs or current research state.
 - Do not create a second scheduler with systemd timers or GitHub Actions for these jobs; Hermes cron is the scheduling owner.
 - Keep schedules staggered. `context_from` consumes the latest completed upstream output and does not wait for jobs running in the same scheduler tick.
+- Keep adaptive seed lists bounded so discovery can learn without becoming a self-expanding query storm.
 
 ## Verification
 
@@ -137,5 +157,7 @@ A healthy fleet has:
 - scout jobs delivering locally
 - synthesis jobs referencing canonical upstream IDs
 - health/integrity jobs running in `no_agent` mode
+- Upstream Edge Radar using native `monitor_script`
 - Morning Check and weekly review using the resolved notification target
+- bounded learned discovery state feeding later collectors
 - durable research and second-brain state outside cron conversation memory
