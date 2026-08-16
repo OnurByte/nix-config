@@ -166,8 +166,6 @@ The underlying rule is simple: reduce unnecessary trust, keep fund-moving softwa
 - T3 Code Nightly
 - Grok Build
 
-ZCode is intentionally not part of Vesper.
-
 ## Packaging
 
 Preference order:
