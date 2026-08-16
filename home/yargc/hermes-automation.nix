@@ -7,6 +7,7 @@
 let
   home = config.home.homeDirectory;
   support = ./hermes/automation-support.py;
+  researchCollectors = ./hermes/research-collectors.py;
   boundedCollector = ./hermes/bounded-collector.py;
   fleet = ./hermes/automation-fleet.py;
   upstreamMonitor = ./hermes/upstream-edge-monitor.py;
@@ -73,12 +74,17 @@ in
     scripts_dir="${home}/.hermes/scripts"
     ${pkgs.coreutils}/bin/mkdir -p "$scripts_dir"
 
-    # Shared implementation is kept inside Hermes' sandbox as a private helper.
-    ${pkgs.coreutils}/bin/rm -f "$scripts_dir/_vesper-automation-support.py"
+    # Private implementations stay inside Hermes' sandbox as regular files.
+    ${pkgs.coreutils}/bin/rm -f \
+      "$scripts_dir/_vesper-automation-support.py" \
+      "$scripts_dir/_vesper-research-collectors.py"
     ${pkgs.coreutils}/bin/install -m 0644 ${support} "$scripts_dir/_vesper-automation-support.py"
+    ${pkgs.coreutils}/bin/install -m 0644 ${researchCollectors} "$scripts_dir/_vesper-research-collectors.py"
 
     # High-volume discovery collectors persist their full candidate corpus and
-    # emit a bounded valid-JSON sample into the agent prompt.
+    # emit a bounded valid-JSON sample into the agent prompt. Their network
+    # fan-out is parallel and individually bounded so pre-run work stays well
+    # below Hermes' normal script deadline in degraded network conditions.
     for name in \
       frontier-github-collect.py \
       frontier-reddit-collect.py \
