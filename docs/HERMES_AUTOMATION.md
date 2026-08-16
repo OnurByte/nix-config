@@ -11,7 +11,11 @@ Hermes cron agent runs are isolated sessions and do not receive normal built-in 
 Vesper uses this pattern instead:
 
 ```text
-cheap deterministic collection
+parallel deterministic collection
+        ↓
+full candidate pool on disk
+        ↓
+bounded prompt sample
         ↓
 source-specific agent triage
         ↓
@@ -24,7 +28,9 @@ Morning Check / Weekly Review
 Obsidian second-brain consolidation
 ```
 
-The collectors can inspect hundreds of candidates cheaply. The agent spends its time on verification, ranking and synthesis.
+GitHub, Reddit and Linux.do collectors fan out network requests in parallel with short per-request deadlines. They may inspect hundreds of candidates while emitting at most roughly 80k characters of valid JSON into the agent prompt. The complete pool remains under `$VESPER_RESEARCH_STATE_DIR/candidate-pools/` for deeper inspection when necessary.
+
+This keeps the agent's bounded cron turn focused on verification, ranking and synthesis rather than mechanical enumeration or oversized context.
 
 ## Daily schedule
 
@@ -41,7 +47,7 @@ The collectors can inspect hundreds of candidates cheaply. The agent spends its 
 | 19:15 | Upstream Edge Radar | notify on material change | cheap upstream-head gate, then PR/issue/commit analysis only after a change |
 | 23:30 | Second Brain Reflection | local | Obsidian consolidation and research-derived skill candidates |
 
-`Vesper Health Watch` runs every three hours as a no-agent watchdog and emits only on a state transition. `Hermes Cron Retention` runs Monday at 03:15 and prunes ended cron-source sessions and cron output older than 30 days.
+`Vesper Health Watch` runs every three hours as a no-agent watchdog and emits only on a state transition. `Hermes Cron Retention` runs Monday at 03:15 and prunes ended cron-source sessions, cron output and saved candidate pools older than 30 days.
 
 ## Weekly schedule
 
@@ -89,13 +95,22 @@ Unauthorized access, stolen/shared credentials, leaked keys, payment bypass, abu
 
 ## Deterministic collectors and gates
 
-`home/yargc/hermes/automation-support.py` is copied under several script names. Its behavior is selected from its filename.
+High-volume research uses three layers:
 
-Shared support modes:
+- `research-collectors.py` — parallel source-specific fan-out for GitHub, Reddit and Linux.do
+- `bounded-collector.py` — saves the full JSON pool and emits a bounded sample plus `fullPoolPath`
+- the Hermes scout agent — filters, opens, verifies and ranks the strongest candidates
+
+Low-volume deterministic jobs continue to use `automation-support.py` directly.
+
+Installed high-volume entrypoints:
 
 - `frontier-github-collect.py`
 - `frontier-reddit-collect.py`
 - `free-ai-linuxdo-collect.py`
+
+Low-volume modes:
+
 - `vesper-health-watch.py`
 - `vesper-skill-integrity-watch.py`
 - `project-inventory.py`
@@ -104,7 +119,7 @@ Shared support modes:
 Dedicated scripts:
 
 - `upstream-edge-monitor.py` — stores the last tracked upstream-head snapshot and emits `wakeAgent=false` when nothing changed, so the Upstream Edge Radar spends no model tokens on unchanged ticks
-- `vesper-cron-retention.py` — deletes old cron output and runs `hermes sessions prune --older-than 30 --source cron --yes`
+- `vesper-cron-retention.py` — deletes cron output and candidate-pool JSON older than 30 days, then runs `hermes sessions prune --older-than 30 --source cron --yes`
 
 Watchdogs keep small state under `$VESPER_RESEARCH_STATE_DIR` so unchanged failures do not repeatedly notify.
 
@@ -195,8 +210,8 @@ Hermes' bundled `obsidian` skill and Vesper's `vesper-obsidian-second-brain` ski
 - No-agent watchdogs consume zero model tokens.
 - Upstream Edge Radar uses a `wakeAgent` pre-run gate and spends zero model tokens when tracked upstream heads are unchanged.
 - Source-specific `enabled_toolsets` avoid loading every tool schema into every cron turn.
-- Collector scripts front-load breadth so the agent does not waste the bounded reasoning window on mechanical enumeration.
-- Old cron sessions and output are pruned after 30 days.
+- Parallel collectors front-load breadth while bounded prompt samples protect the reasoning context.
+- Full candidate pools, old cron sessions and cron output are pruned after 30 days.
 
 ## Validation
 
