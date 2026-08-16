@@ -6,6 +6,19 @@
 let
   plannotator = inputs.llm-agents.packages.${pkgs.system}.plannotator;
   plannotatorBin = "${plannotator}/bin/plannotator";
+
+  # GCC is the global system toolchain. Keep the wrapped Clang compiler
+  # frontends available too, but do not add Clang's entire wrapper output to
+  # Home Manager: it also exports linker shims such as ld.gold that collide
+  # with GCC's wrapper in buildEnv.
+  clangFrontends = pkgs.runCommand "clang-frontends" { } ''
+    mkdir -p "$out/bin"
+    for tool in clang clang++ clang-cpp clang-cl; do
+      if [ -e "${pkgs.clang}/bin/$tool" ]; then
+        ln -s "${pkgs.clang}/bin/$tool" "$out/bin/$tool"
+      fi
+    done
+  '';
 in
 {
   programs = {
@@ -86,9 +99,7 @@ in
       shellcheck
       shfmt
       gcc
-      # Keep both compiler frontends available without making their bundled
-      # linker wrappers compete for the same Home Manager buildEnv paths.
-      (lib.lowPrio clang)
+      clangFrontends
       gdb
       cmake
       gnumake
