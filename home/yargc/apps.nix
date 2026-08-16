@@ -3,13 +3,6 @@
   pkgs,
   ...
 }:
-let
-  agenticT3Code = pkgs.t3code.override {
-    enableClaude = true;
-    enableCodex = true;
-    enableOpencode = true;
-  };
-in
 {
   programs.vesktop = {
     enable = true;
@@ -49,13 +42,12 @@ in
     thunar
     tumbler
     file-roller
-    mpv
     imv
 
     bottles
 
     obsidian
-    agenticT3Code
+    inputs.self.packages.${pkgs.system}.t3code-nightly
   ];
 
   xdg.mimeApps = {
@@ -65,6 +57,14 @@ in
       "application/xhtml+xml" = [ "zen-beta.desktop" ];
       "x-scheme-handler/http" = [ "zen-beta.desktop" ];
       "x-scheme-handler/https" = [ "zen-beta.desktop" ];
+
+      "audio/mpeg" = [ "mpv.desktop" ];
+      "audio/flac" = [ "mpv.desktop" ];
+      "audio/ogg" = [ "mpv.desktop" ];
+      "audio/x-wav" = [ "mpv.desktop" ];
+      "video/mp4" = [ "mpv.desktop" ];
+      "video/webm" = [ "mpv.desktop" ];
+      "video/x-matroska" = [ "mpv.desktop" ];
     };
   };
 }
