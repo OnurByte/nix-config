@@ -86,7 +86,9 @@ in
       shellcheck
       shfmt
       gcc
-      clang
+      # Keep both compiler frontends available without making their bundled
+      # linker wrappers compete for the same Home Manager buildEnv paths.
+      (lib.lowPrio clang)
       gdb
       cmake
       gnumake
