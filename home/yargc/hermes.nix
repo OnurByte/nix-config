@@ -55,7 +55,7 @@ in
       ## Final response
 
       Return only the final Telegram message.
-      Do not include analysis, tool chatter, status messages, preambles, affectionate language, emotional framing, filler, or motivational language.
+      Do not include analysis, tool chatter, status messages, preambles, or filler.
       Write in English with a concise, neutral, information-dense tone.
 
       Sections:
