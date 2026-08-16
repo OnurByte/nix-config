@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 let
   fetchPinned =
     {
@@ -8,6 +8,18 @@ let
     builtins.fetchGit {
       inherit url rev;
       ref = "main";
+    };
+
+  fetchSkill =
+    {
+      url,
+      rev,
+      rootDir,
+      hash,
+    }:
+    pkgs.fetchgit {
+      inherit url rev rootDir hash;
+      fetchSubmodules = false;
     };
 
   anthropicSkills = fetchPinned {
@@ -20,9 +32,11 @@ let
     rev = "c6f69c631292444cc541ac6d91e2226b0ff247da";
   };
 
-  shadcnSkills = fetchPinned {
+  shadcnSkill = fetchSkill {
     url = "https://github.com/shadcn-ui/ui.git";
     rev = "d4fc45b1fbabfccb7a6a4333d8004cf19481caa9";
+    rootDir = "skills/shadcn";
+    hash = pkgs.lib.fakeHash;
   };
 
   laravelBoost = fetchPinned {
@@ -35,9 +49,11 @@ let
     rev = "05a71308897983093248d719a2ffa1bca61d0768";
   };
 
-  impeccableSkills = fetchPinned {
+  impeccableSkill = fetchSkill {
     url = "https://github.com/pbakaus/impeccable.git";
     rev = "9ce0350054b0199bfd0ebbde95d9fd70c7c91741";
+    rootDir = ".agents/skills/impeccable";
+    hash = pkgs.lib.fakeHash;
   };
 
   skillSources = {
@@ -52,8 +68,8 @@ let
     pptx = "${anthropicSkills.outPath}/skills/pptx";
 
     "find-skills" = "${vercelSkills.outPath}/skills/find-skills";
-    shadcn = "${shadcnSkills.outPath}/skills/shadcn";
-    impeccable = "${impeccableSkills.outPath}/.agents/skills/impeccable";
+    shadcn = shadcnSkill;
+    impeccable = impeccableSkill;
 
     "laravel-best-practices" = "${laravelBoost.outPath}/.ai/laravel/skill/laravel-best-practices";
     "tailwindcss-development" = "${laravelBoost.outPath}/.ai/tailwindcss/4/skill/tailwindcss-development";
