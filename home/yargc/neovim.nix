@@ -56,7 +56,7 @@ restore_backup() {
 if [[ ! -d "$config_dir/.git" || ! -x "$config_dir/bin/pycho" ]]; then
   stamp="$(date +%Y%m%d-%H%M%S)"
   if [[ -e "$config_dir" || -L "$config_dir" ]]; then
-    backup="${config_dir}.backup-${stamp}"
+    backup="''${config_dir}.backup-''${stamp}"
     mv "$config_dir" "$backup"
     printf 'PychoVIM: existing config moved to %s\n' "$backup" >&2
   fi
