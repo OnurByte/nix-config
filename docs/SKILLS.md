@@ -1,14 +1,12 @@
 # agent skills
 
-Vesper keeps one pinned skill source and exposes the same skills to Codex, Claude Code and OpenCode through Home Manager.
+Vesper keeps a small pinned skill catalog and exposes the same skills globally through Home Manager.
 
-The source is Anthropic's public `anthropics/skills` repository pinned to commit:
+The catalog uses immutable commits from maintained upstream repositories rather than mutable installers.
 
-```text
-f6656c1256d5a8adfa37db9110046ef20bac644c
-```
+## installed
 
-Installed skills:
+General agent work from `anthropics/skills`:
 
 - `frontend-design`
 - `webapp-testing`
@@ -20,36 +18,56 @@ Installed skills:
 - `xlsx`
 - `pptx`
 
-Home Manager exposes each skill under:
+Discovery and frontend stack:
+
+- `find-skills` — Vercel Labs skill discovery through the open skills ecosystem
+- `shadcn` — official shadcn skill including CLI, registry and customization guidance
+- `impeccable` — design review and UI quality workflow
+- `tailwindcss-development` — Laravel Boost's Tailwind CSS 4 skill
+
+PHP and Laravel stack:
+
+- `laravel-best-practices` — Laravel Boost's Laravel workflow and conventions
+- `php-development` — modern PHP and PSR-oriented development guidance
+- `mysql-best-practices` — schema, indexing, EXPLAIN and MySQL operational guidance
+
+## global paths
+
+Home Manager exposes every skill under the ecosystem-standard path plus explicit agent compatibility paths:
 
 ```text
+~/.agents/skills/<skill>
 ~/.codex/skills/<skill>
 ~/.claude/skills/<skill>
 ~/.config/opencode/skills/<skill>
 ```
 
-These are links to the same immutable Nix store source. Do not edit the generated paths directly.
+These are links into immutable Nix store sources. Do not edit the generated paths directly.
 
 ## use them
 
-Agents discover skills automatically. You can also name one explicitly when you want to force the workflow:
+Agents discover skills automatically. You can name one when you want a specific workflow:
 
 ```text
-use frontend-design for this page
-use webapp-testing to test the local app
-use mcp-builder to design this MCP server
-use skill-creator to turn this repeated workflow into a skill
-use pdf to inspect and modify this PDF
+find a maintained skill for Redis
+use shadcn to build this settings form
+use impeccable to review and improve this UI
+use tailwindcss-development for these Tailwind v4 styles
+use laravel-best-practices for this Laravel change
+use php-development to refactor this PHP service
+use mysql-best-practices to review this schema and query plan
 ```
+
+`find-skills` can search the public skill ecosystem when the installed catalog does not cover a task. Installing a discovered skill manually is not persistent Vesper state; add useful long-term skills to `home/yargc/skills.nix` and rebuild instead.
 
 ## update
 
-The pin lives in `home/yargc/skills.nix`.
+Pins and source paths live in `home/yargc/skills.nix`.
 
-To update the skill set, change the pinned commit there and rebuild:
+After changing them:
 
 ```bash
 nh os switch
 ```
 
-Keep the list small. Add a skill when it provides a reusable workflow that the agents do not already get from shell access, MCP tools or `AGENTS.md`.
+Keep the catalog selective. MCPs handle live services and current documentation; skills should add reusable workflows or domain judgment rather than duplicate shell access.
