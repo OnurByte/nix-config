@@ -69,8 +69,9 @@ let
 in
 {
   home.file = canonicalLinks // agentLinks // hermesLinks // {
-    # Hermes scheduled research writes durable output and proposed reusable
-    # skills here. Drafts are intentionally separate from the active skill tree.
+    # Cron sessions are isolated and do not receive built-in Hermes memory by
+    # default, so lane state must remain durable outside the agent session.
+    ".local/state/vesper/research/.keep".text = "";
     ".local/share/vesper/briefings/.keep".text = "";
     ".local/share/vesper/skill-drafts/.keep".text = "";
   };
