@@ -1,26 +1,17 @@
 #!/usr/bin/env python3
-"""Cheap pre-run gate for the Upstream Edge Radar.
+"""Emit a stable upstream snapshot for Hermes `monitor_script` mode.
 
-Track upstream repository heads in Vesper research state. Unchanged state emits
-wakeAgent=false, so Hermes spends zero model tokens for that tick. Changed
-state is passed as structured context to the agent for deeper PR/issue/release
-research.
+Hermes hashes this script's exact stdout. Byte-identical output suppresses the
+agent run; changed output is diffed and injected automatically by the scheduler.
+No timestamps or local state are included here on purpose.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
-from pathlib import Path
-
-HOME = Path.home()
-STATE_ROOT = Path(
-    os.environ.get("VESPER_RESEARCH_STATE_DIR", HOME / ".local/state/vesper/research")
-).expanduser()
-STATE_ROOT.mkdir(parents=True, exist_ok=True)
-STATE_FILE = STATE_ROOT / "upstream-edge-snapshot.json"
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 REPOSITORIES = [
     "NousResearch/hermes-agent",
@@ -43,7 +34,7 @@ def gh_api(path: str) -> dict:
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        timeout=20,
+        timeout=10,
         check=False,
     )
     if proc.returncode != 0:
@@ -54,78 +45,45 @@ def gh_api(path: str) -> dict:
         return {"error": f"invalid JSON: {type(exc).__name__}: {exc}"}
 
 
-def build_snapshot() -> dict[str, dict]:
-    snapshot: dict[str, dict] = {}
-    for repository in REPOSITORIES:
-        meta = gh_api(f"repos/{repository}")
-        if meta.get("error"):
-            snapshot[repository] = meta
-            continue
+def repository_snapshot(repository: str) -> tuple[str, dict]:
+    meta = gh_api(f"repos/{repository}")
+    if meta.get("error"):
+        return repository, meta
 
-        branch = meta.get("default_branch") or "main"
-        ref = gh_api(f"repos/{repository}/commits/{branch}")
-        if ref.get("error"):
-            snapshot[repository] = {"defaultBranch": branch, **ref}
-            continue
+    branch = meta.get("default_branch") or "main"
+    ref = gh_api(f"repos/{repository}/commits/{branch}")
+    if ref.get("error"):
+        return repository, {"defaultBranch": branch, **ref}
 
-        commit = ref.get("commit") or {}
-        author = commit.get("author") or {}
-        snapshot[repository] = {
-            "defaultBranch": branch,
-            "sha": ref.get("sha"),
-            "date": author.get("date"),
-            "message": str(commit.get("message") or "").splitlines()[0][:180],
-        }
-    return snapshot
+    commit = ref.get("commit") or {}
+    author = commit.get("author") or {}
+    return repository, {
+        "defaultBranch": branch,
+        "sha": ref.get("sha"),
+        "date": author.get("date"),
+        "message": str(commit.get("message") or "").splitlines()[0][:180],
+    }
 
 
 def main() -> int:
     if not shutil.which("gh"):
-        # A broken gate must wake the agent rather than silently hide changes.
-        print(
-            json.dumps(
-                {
-                    "wakeAgent": True,
-                    "context": {"monitorError": "gh executable not found"},
-                },
-                sort_keys=True,
-            )
-        )
+        # Stable error output means Hermes wakes once when this condition begins,
+        # then remains quiet until the monitor state changes again.
+        print('{"error":"gh executable not found"}')
         return 0
 
-    current = build_snapshot()
-    previous: dict[str, dict] = {}
-    try:
-        previous = json.loads(STATE_FILE.read_text())
-    except Exception:
-        pass
+    snapshot: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(repository_snapshot, repository) for repository in REPOSITORIES]
+        for future in as_completed(futures):
+            try:
+                repository, value = future.result()
+            except Exception as exc:
+                repository = "collector-error"
+                value = {"error": f"{type(exc).__name__}: {exc}"}
+            snapshot[repository] = value
 
-    if current == previous:
-        print('{"wakeAgent":false}')
-        return 0
-
-    changed: dict[str, dict] = {}
-    for repository in sorted(set(previous) | set(current)):
-        before = previous.get(repository)
-        after = current.get(repository)
-        if before != after:
-            changed[repository] = {"before": before, "after": after}
-
-    STATE_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2, sort_keys=True))
-    print(
-        json.dumps(
-            {
-                "wakeAgent": True,
-                "context": {
-                    "changed": changed,
-                    "current": current,
-                },
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-    )
+    print(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     return 0
 
 
