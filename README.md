@@ -191,7 +191,7 @@ Snapper         -> short-term Btrfs filesystem snapshots
 Restic          -> encrypted backup outside the laptop
 ```
 
-Btrfs scrub runs monthly whenever the real hardware configuration reports Btrfs. Snapper activates conditionally on a real Btrfs root, with a separate Home timeline when `/home` is a distinct Btrfs mount.
+Btrfs scrub runs monthly. Snapper covers the verified Btrfs root and Home subvolumes; the existing root `/.snapshots` subvolume/history is preserved.
 
 Restic is configured as a daily systemd job with 7 daily, 4 weekly and 12 monthly snapshots plus a monthly repository check. Repository credentials stay out of the Nix store in `/etc/vesper/restic.env`; a missing removable backup disk produces a clean skip rather than a failed timer.
 
@@ -236,15 +236,16 @@ See [`docs/INSTALL.md`](docs/INSTALL.md) for the verified disk inventory and Nix
 - 1 TB NVMe
 - 4 GiB FAT32 EFI system partition
 - LUKS2-encrypted Btrfs root
-- zstd compression + noatime
+- Btrfs subvolumes: `@`, `@home`, `@root`, `@srv`, `@cache`, `@tmp`, `@log`
+- zstd:1 compression + noatime
 - zram swap
 
 AMD drives the desktop. NVIDIA is PRIME offload only. The machine follows the kernel line selected by the pinned NixOS unstable revision instead of forcing `linuxPackages_latest`.
 
-The verified current storage UUIDs and subvolume-capture procedure live in `docs/INSTALL.md`.
+The storage topology is now concrete in `hosts/vesper/hardware-configuration.nix`, using UUIDs captured from the real machine. It preserves the existing encrypted filesystem; it is not a partitioning or formatting recipe.
 
 > [!CAUTION]
-> `hosts/vesper/hardware-configuration.nix` remains a placeholder until the complete current Btrfs subvolume map is captured or NixOS generates the real file. The root `@`, EFI UUID, LUKS UUID and Btrfs UUID are known, but the other mounted subvolume names must not be guessed.
+> If the NVMe is reformatted or the subvolume layout changes, recapture UUIDs and mounts before changing the hardware file. Do not reuse stale identifiers after a destructive disk operation.
 
 Once the machine is on NixOS:
 
