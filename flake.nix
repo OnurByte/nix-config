@@ -30,14 +30,6 @@
       inputs.home-manager.follows = "home-manager";
     };
 
-    zed = {
-      # Pin Zed to the current stable release instead of a preview installer or
-      # the lagging nixpkgs package. Zed's official flake also publishes a
-      # Cachix binary cache, wired in modules/core/nix.nix.
-      url = "github:zed-industries/zed/v1.15.0";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     spicetify-nix = {
       url = "github:Gerg-L/spicetify-nix";
       inputs.nixpkgs.follows = "nixpkgs";
