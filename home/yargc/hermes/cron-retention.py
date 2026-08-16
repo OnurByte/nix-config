@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prune old Hermes cron outputs and ended cron-source sessions.
+"""Prune old Hermes cron outputs, candidate pools and ended cron sessions.
 
 Silent on success so the no-agent cron job only notifies on an error.
 """
@@ -14,32 +14,41 @@ from pathlib import Path
 
 HOME = Path.home()
 HERMES_HOME = Path(os.environ.get("HERMES_HOME", HOME / ".hermes")).expanduser()
+RESEARCH_ROOT = Path(
+    os.environ.get("VESPER_RESEARCH_STATE_DIR", HOME / ".local/state/vesper/research")
+).expanduser()
 CUTOFF = time.time() - 30 * 86400
+
+
+def prune_files(root: Path, pattern: str, errors: list[str]) -> int:
+    removed = 0
+    if not root.exists():
+        return removed
+    for path in root.rglob(pattern):
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_mtime < CUTOFF:
+                path.unlink()
+                removed += 1
+        except Exception as exc:
+            errors.append(f"{path}: {exc}")
+    for directory in sorted(
+        (path for path in root.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    ):
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+    return removed
 
 
 def main() -> int:
     errors: list[str] = []
-    removed = 0
-    output_root = HERMES_HOME / "cron" / "output"
-
-    if output_root.exists():
-        for path in output_root.rglob("*.md"):
-            try:
-                if path.stat().st_mtime < CUTOFF:
-                    path.unlink()
-                    removed += 1
-            except Exception as exc:
-                errors.append(f"{path}: {exc}")
-
-        for directory in sorted(
-            (path for path in output_root.rglob("*") if path.is_dir()),
-            key=lambda path: len(path.parts),
-            reverse=True,
-        ):
-            try:
-                directory.rmdir()
-            except OSError:
-                pass
+    removed_outputs = prune_files(HERMES_HOME / "cron" / "output", "*.md", errors)
+    removed_pools = prune_files(RESEARCH_ROOT / "candidate-pools", "*.json", errors)
 
     hermes = shutil.which("hermes")
     if not hermes:
@@ -70,7 +79,7 @@ def main() -> int:
 
     if errors:
         print("Hermes Cron Retention encountered errors:")
-        print(f"removed old output files before failure: {removed}")
+        print(f"removed outputs: {removed_outputs}; removed candidate pools: {removed_pools}")
         for error in errors[:8]:
             print(f"- {error}")
         return 1
