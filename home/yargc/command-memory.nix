@@ -102,6 +102,23 @@ in
     # Start the bb multi-agent control plane
     bb-app
 
+    % agents, hermes, automation
+
+    # Preview Vesper-managed Hermes cron changes
+    vesper-hermes-cron-sync
+
+    # Apply the Vesper Hermes automation fleet
+    vesper-hermes-cron-sync --apply
+
+    # List Hermes scheduled jobs
+    hermes cron list
+
+    # Check Hermes cron scheduler health
+    hermes cron status
+
+    # List installed Hermes skills
+    hermes skills list
+
     % vesper, nixos
 
     # Test the configured Vesper NixOS generation
