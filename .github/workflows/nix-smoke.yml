@@ -31,6 +31,12 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
+      - name: Compile Hermes automation Python
+        run: |
+          python -m py_compile \
+            home/yargc/hermes/automation-support.py \
+            home/yargc/hermes/automation-fleet.py
+
       - name: Parse Hyprland Lua
         shell: bash
         run: |
