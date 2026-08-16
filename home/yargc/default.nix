@@ -6,6 +6,7 @@
 {
   imports = [
     inputs.spicetify-nix.homeManagerModules.spicetify
+    inputs.sops-nix.homeManagerModules.sops
     ./apps.nix
     ./caelestia.nix
     ./cli.nix
@@ -18,6 +19,7 @@
     ./media.nix
     ./neovim.nix
     ./privacy.nix
+    ./secrets.nix
     ./zsh.nix
   ];
 
