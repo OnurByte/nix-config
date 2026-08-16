@@ -35,7 +35,9 @@ jobs:
         run: |
           python -m py_compile \
             home/yargc/hermes/automation-support.py \
-            home/yargc/hermes/automation-fleet.py
+            home/yargc/hermes/automation-fleet.py \
+            home/yargc/hermes/upstream-edge-monitor.py \
+            home/yargc/hermes/cron-retention.py
 
       - name: Parse Hyprland Lua
         shell: bash
