@@ -4,7 +4,7 @@
 
 ### personal NixOS workstation
 
-**NixOS · Hyprland · Caelestia · Ghostty · PychoVIM · Codex · Claude · OpenCode · Hermes**
+**NixOS · Hyprland · Caelestia · Ghostty · PychoVIM · Codex · Claude · OpenCode · Grok Build · Hermes**
 
 ![NixOS](https://img.shields.io/badge/NixOS-unstable-5277C3?style=flat-square&logo=nixos&logoColor=white)
 ![Hyprland](https://img.shields.io/badge/Hyprland-Wayland-58E1FF?style=flat-square)
@@ -20,7 +20,7 @@ It is a personal config, not a framework. The point is to keep the machine repro
 
 - **Nix owns the stable system.** Prefer nixpkgs, then maintained upstream flakes, then pinned custom packaging.
 - **One desktop shell.** Hyprland handles windows; Caelestia handles the bar, launcher, control center, notifications, lock/idle, clipboard and capture UI.
-- **Agents stay reviewable.** Codex, Claude Code, OpenCode and Hermes can do the mechanical work; `bb`, Plannotator, TurnLens and CodexBar keep the workflow visible.
+- **Agents stay reviewable.** Codex, Claude Code, OpenCode, Grok Build and Hermes can do the mechanical work; `bb`, Plannotator, TurnLens and CodexBar keep the workflow visible.
 - **Privacy is normal configuration, not a special mode.** Tor and Monero tooling are available, Atuin stays local, and expensive background services are opt-in.
 - **No duplicate surface for the same job.** A new daemon, tray app or launcher needs a reason to exist.
 
@@ -43,11 +43,12 @@ The intended palette is cold and dark rather than neon-heavy: black, graphite, b
 | shell prompt | Zsh + minimal Oh My Zsh + Starship |
 | editor | PychoVIM + Zed Preview |
 | browsers | Zen + Helium + Tor Browser |
-| coding agents | Codex · Claude Code · OpenCode · Hermes |
+| coding agents | Codex · Claude Code · OpenCode · Grok Build · Hermes |
 | agent control | bb |
-| agent GUI | T3 Code |
+| agent GUI | T3 Code Nightly |
 | desktop AI | ChatGPT Desktop · Claude Desktop |
 | command memory | Navi + local Atuin |
+| media | Spotify + Spicetify · MPV + MPRIS |
 | privacy | Tor · Zapret2 · Monero GUI/CLI · Feather · Eigenwallet · Cuprate |
 | containers / VMs | Podman · Distrobox · libvirt |
 | Windows compatibility | Bottles |
@@ -82,8 +83,9 @@ Useful keys:
 | `Ctrl + R` | Atuin history |
 | `Super + A` | ChatGPT |
 | `Super + Shift + A` | Claude Desktop |
+| `Super + G` | Grok Build |
 | `Super + Shift + D` | bb |
-| `Super + T` | T3 Code |
+| `Super + T` | T3 Code Nightly |
 | `Super + U` | CodexBar |
 
 ## Agent workflow
@@ -91,6 +93,7 @@ Useful keys:
 ```mermaid
 flowchart LR
     Human[Intent] --> BB[bb]
+    Human --> Grok[Grok Build]
     BB --> Codex[Codex]
     BB --> Claude[Claude Code]
     BB --> OpenCode[OpenCode]
@@ -99,11 +102,14 @@ flowchart LR
     Claude --> Repo
     OpenCode --> Repo
     Hermes --> Repo
+    Grok --> Repo
     Repo --> Review[Review]
     Review --> Ship[Ship]
     Review --> BB
     Usage[CodexBar · TurnLens · ccusage] --> Human
 ```
+
+Grok Build is xAI's official terminal coding agent. The Nix-managed `grok` command is a small first-run wrapper around xAI's official installer; the installed binary lives under `~/.grok` and can update itself with `grok update`.
 
 No local LLM runtime is enabled by default.
 
@@ -123,6 +129,12 @@ The local web stack is Nix-native:
 - localhost-oriented defaults
 - `web-start`, `web-stop`, `web-restart`, `web-status`
 
+## Media
+
+Spotify remains the default streaming player through Spicetify and Caelestia MPRIS.
+
+MPV is the local audio/video player. Home Manager configures PipeWire output, hardware decoding and the MPV MPRIS script, and common audio/video MIME types open in MPV by default. This keeps local playback integrated with the same desktop media controls instead of adding another standalone music shell.
+
 ## Privacy and Monero
 
 Tor provides a system SOCKS endpoint for software that explicitly supports it. Tor Browser keeps its own Tor integration separate. Zapret2 is configured with a narrow TCP/443 baseline.
@@ -140,12 +152,14 @@ The underlying rule is simple: reduce unnecessary trust, keep fund-moving softwa
 - Claude Desktop
 - Vesktop + system Vencord
 - Spotify + Spicetify-Nix
+- MPV + MPRIS
 - Session
 - Telegram
 - Obsidian
 - Thunar
 - Bottles
-- T3 Code
+- T3 Code Nightly
+- Grok Build
 
 ZCode is intentionally not part of Vesper.
 
@@ -158,7 +172,9 @@ Preference order:
 3. pinned source derivation
 4. pinned binary derivation when there is no better option
 
-Current intentional mutable exceptions are PychoVIM's upstream-managed config and Zed Preview's official Preview installer.
+T3 Code Nightly uses an official pinned upstream AppImage because nixpkgs tracks the stable channel rather than the requested nightly channel.
+
+Current intentional mutable exceptions are PychoVIM's upstream-managed config, Zed Preview's official Preview installer and Grok Build's official xAI-managed binary under `~/.grok`.
 
 ## Layout
 
