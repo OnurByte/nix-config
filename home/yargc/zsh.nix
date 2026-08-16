@@ -24,7 +24,6 @@
     shellAliases = {
       nvim = "pycho";
       zed = "zed-preview";
-      glm = "zcode";
 
       aipanel = "codexbar-popup";
       aicockpit = "bb-app";

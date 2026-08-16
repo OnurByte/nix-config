@@ -17,11 +17,13 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Zsh stays minimal: Home Manager features + small Oh My Zsh layer + Starship.
 - Command memory is Navi + local Atuin. `Super + /` copies from the desktop palette; `Ctrl + G` inserts into the current prompt; `Ctrl + R` searches history.
 - Keep Atuin local unless sync is explicitly requested.
-- Spotify uses Spicetify + Caelestia MPRIS.
+- Spotify uses Spicetify and remains Caelestia's default player. MPV is the local audio/video player and exposes MPRIS rather than adding another media shell.
 - Discord uses Vesktop + system Vencord.
 - Bun is the user-facing JavaScript package manager; do not add pnpm/yarn globally.
-- Cloud/provider agents are first class. Do not add Ollama, LM Studio or another local-model daemon unless requested.
-- `bb` is the primary multi-agent control plane. T3 Code is the GUI coding surface.
+- Cloud/provider agents are first class. Grok Build is the official xAI CLI entry point; do not substitute the unrelated nixpkgs `grok-cli` package.
+- Do not add Ollama, LM Studio or another local-model daemon unless requested.
+- `bb` is the primary multi-agent control plane. T3 Code Nightly is the GUI coding surface.
+- Keep T3 Code on an official pinned nightly AppImage and expose Codex, Claude Code and OpenCode to its PATH.
 - ZCode is intentionally removed. Do not restore it unless explicitly requested.
 - TurnLens, ccusage and CodexBar have different jobs; keep them distinct.
 - Monero GUI/CLI, Feather and Eigenwallet are first-class privacy tools. Cuprate remains opt-in/experimental and must not replace `monerod` silently.
@@ -36,6 +38,7 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 - Never guess filesystem UUIDs or partition topology. `hosts/vesper/hardware-configuration.nix` stays a placeholder until generated on the machine.
 - Prefer NixOS/Home Manager modules and pinned packages over `curl | sh`.
 - Check nixpkgs and upstream Nix support before writing a custom derivation.
+- Grok Build is an intentional mutable exception: the Nix-managed `grok` wrapper bootstraps only xAI's official installer into `~/.grok`, and upstream `grok update` owns that binary afterwards.
 - Preserve `flake.lock`; update pins only intentionally.
 - Keep unfree packages deliberate.
 - Keep Apache/PHP/MariaDB local-only unless asked otherwise.
@@ -49,7 +52,9 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 2. Parse every Hyprland Lua file with `luac -p`.
 3. Run `nix flake metadata --no-write-lock-file`.
 4. Evaluate `.#nixosConfigurations.vesper.config.networking.hostName` and expect `vesper`.
-5. If touching TurnLens, build `.#turnlens`.
-6. If touching Cuprate, build `.#cuprated`.
-7. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
-8. Keep README user-facing; implementation guardrails belong here.
+5. Evaluate the complete Home Manager activation derivation with `nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath'`.
+6. If touching T3 Code Nightly, build `.#t3code-nightly`.
+7. If touching TurnLens, build `.#turnlens`.
+8. If touching Cuprate, build `.#cuprated`.
+9. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
+10. Keep README user-facing; implementation guardrails belong here.

@@ -48,6 +48,12 @@ jobs:
       - name: Evaluate Vesper module graph
         run: test "$(nix eval --raw .#nixosConfigurations.vesper.config.networking.hostName)" = vesper
 
+      - name: Evaluate Home Manager activation
+        run: nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath' >/dev/null
+
+      - name: Build T3 Code Nightly package
+        run: nix build --no-link .#t3code-nightly
+
       - name: Build TurnLens package
         run: nix build --no-link .#turnlens
 
