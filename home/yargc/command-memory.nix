@@ -93,8 +93,8 @@ in
     # Start Grok Build
     grok
 
-    # Check Grok Build for an upstream update
-    grok update --check
+    # Show the Nix-managed Grok Build version
+    grok --version
 
     # Start Hermes agent
     hermes
