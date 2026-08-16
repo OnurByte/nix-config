@@ -70,6 +70,7 @@
 
       packages.${system} = {
         cuprated = pkgs.callPackage ./home/yargc/packages/cuprated.nix { };
+        t3code-nightly = pkgs.callPackage ./home/yargc/packages/t3code-nightly.nix { };
         turnlens = pkgs.callPackage ./home/yargc/packages/turnlens.nix { };
       };
 
