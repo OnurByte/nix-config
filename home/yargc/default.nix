@@ -46,6 +46,7 @@
       # Use absolute paths here: Home Manager session variables are shell-escaped
       # values, so a literal $HOME would not be expanded a second time.
       VESPER_AGENT_STATE_DIR = "/home/${username}/.local/state/vesper/agents";
+      VESPER_RESEARCH_STATE_DIR = "/home/${username}/.local/state/vesper/research";
       VESPER_BRIEFING_DIR = "/home/${username}/.local/share/vesper/briefings";
       VESPER_SKILL_DRAFT_DIR = "/home/${username}/.local/share/vesper/skill-drafts";
     };
