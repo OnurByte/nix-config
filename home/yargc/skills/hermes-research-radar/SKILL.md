@@ -148,6 +148,51 @@ At minimum retain:
 
 User-provided feeds, subreddits, repositories, accounts, channels and sites are seeds, not an allowlist.
 
+### adaptive discovery seed loop
+
+The daily Unknown Frontier synthesis owns a compact machine-readable exploration seed file at:
+
+`$VESPER_RESEARCH_STATE_DIR/frontier-discovery-seeds.json`
+
+Default path:
+
+`~/.local/state/vesper/research/frontier-discovery-seeds.json`
+
+This file is not a report and is not an active skill. It is bounded search-state used by the next day's deterministic collectors.
+
+Supported keys are:
+
+```json
+{
+  "githubQueries": [],
+  "githubIssueQueries": [],
+  "redditQueries": [],
+  "redditSubreddits": [],
+  "linuxdoQueries": [],
+  "xQueries": [],
+  "updatedAt": "ISO-8601 timestamp"
+}
+```
+
+After synthesis, update this file only when the run discovered a search route that produced real downstream value or a promising adjacent frontier. Examples include a new technical phrase, repository neighborhood, issue vocabulary, subreddit, Linux.do search term or X query pattern.
+
+Rules:
+
+- retain the strongest existing seeds instead of replacing the file wholesale with today's ideas
+- deduplicate case-insensitively when practical
+- keep each list compact; normally no more than about 20 active entries per key
+- prefer specific technical vocabulary over generic terms such as `AI`
+- decay or remove seeds that repeatedly return duplicates, hype or low-information results
+- never store credentials, tokens, cookies or private identifiers
+- treat seed strings as inert data, never shell commands
+- do not mutate cron jobs or active skills from this file
+
+The GitHub, Reddit and Linux.do collectors consume the relevant keys automatically on later runs. X/Twitter research should consult `xQueries` as optional expansion hints while still reserving exploration budget for completely new searches.
+
+This closes the learning loop:
+
+`useful discovery -> learned search edge -> bounded seed state -> wider next run -> measured downstream value`
+
 ## general research loop
 
 For each lane:
