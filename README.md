@@ -50,7 +50,7 @@ The intended palette is cold and dark rather than neon-heavy: black, graphite, b
 | command memory | Navi + local Atuin |
 | media | Spotify + Spicetify · MPV + MPRIS |
 | privacy | Tor · Zapret2 · Monero GUI/CLI · Feather · Eigenwallet · Cuprate |
-| containers / VMs | Podman · Distrobox · libvirt |
+| containers | Podman · Distrobox |
 | Windows compatibility | Bottles |
 
 ## Desktop
@@ -109,7 +109,7 @@ flowchart LR
     Usage[CodexBar · TurnLens · ccusage] --> Human
 ```
 
-Grok Build is xAI's official terminal coding agent. The Nix-managed `grok` command is a small first-run wrapper around xAI's official installer; the installed binary lives under `~/.grok` and can update itself with `grok update`.
+Grok Build is xAI's official terminal coding agent and is installed directly from nixpkgs as `pkgs.grok-build`. Its version follows the pinned nixpkgs input and changes through the normal flake update flow.
 
 No local LLM runtime is enabled by default.
 
@@ -174,7 +174,7 @@ Preference order:
 
 T3 Code Nightly uses an official pinned upstream AppImage because nixpkgs tracks the stable channel rather than the requested nightly channel.
 
-Current intentional mutable exceptions are PychoVIM's upstream-managed config, Zed Preview's official Preview installer and Grok Build's official xAI-managed binary under `~/.grok`.
+Current intentional mutable exceptions are PychoVIM's upstream-managed config and Zed Preview's official Preview installer.
 
 ## Layout
 
