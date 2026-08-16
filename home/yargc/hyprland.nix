@@ -37,8 +37,9 @@ let
       Super + D             Vesktop
       Super + A             ChatGPT
       Super + Shift + A     Claude Desktop
+      Super + G             Grok Build
       Super + Shift + D     bb
-      Super + T             T3 Code
+      Super + T             T3 Code Nightly
       Super + Shift + H     Hermes Desktop
       Super + U             CodexBar
       Super + N             PychoVIM
