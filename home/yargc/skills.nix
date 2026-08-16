@@ -21,6 +21,7 @@ let
 
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
+    vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
   };
 
   skillNames = builtins.attrNames skillSources;
@@ -29,6 +30,15 @@ let
     ".codex/skills"
     ".claude/skills"
     ".config/opencode/skills"
+  ];
+
+  # Hermes keeps its own bundled/agent-created skill tree. Expose only Vesper's
+  # local workflow skills there, under a category directory, so Hermes retains
+  # its native bundled skills while these shared definitions stay Nix-owned.
+  hermesSkillNames = [
+    "hermes-research-radar"
+    "vesper-obsidian-second-brain"
+    "vesper-maintainer"
   ];
 
   canonicalLinks = builtins.listToAttrs (
@@ -49,9 +59,16 @@ let
       ) agentRoots
     )
   );
+
+  hermesLinks = builtins.listToAttrs (
+    map (skill: {
+      name = ".hermes/skills/vesper/${skill}";
+      value.source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/${canonicalRoot}/${skill}";
+    }) hermesSkillNames
+  );
 in
 {
-  home.file = canonicalLinks // agentLinks // {
+  home.file = canonicalLinks // agentLinks // hermesLinks // {
     # Hermes scheduled research writes durable output and proposed reusable
     # skills here. Drafts are intentionally separate from the active skill tree.
     ".local/share/vesper/briefings/.keep".text = "";
