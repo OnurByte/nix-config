@@ -7,7 +7,10 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 
 ## Writing contract
 
-- Write like a maintainer, not a product page. Keep prose short, concrete and specific to the current repository.
+- Write like the person maintaining the machine, not like a product page or generated project summary.
+- Keep README prose short and plain. Prefer lowercase section headings and avoid unnecessary capitalization outside real product names, commands and paths.
+- Use punctuation lightly. Avoid semicolons, em dashes, stacked parentheticals and polished marketing-style sentence rhythm when a simpler line works.
+- The README opening should keep two short lines that explain the actual Vesper niche: Tor and Monero privacy tooling plus an AI-heavy coding workflow, with no gaming setup.
 - Document the current state. Do not mention removed, rejected, abandoned or intentionally absent features unless that absence is operationally important or the user explicitly asks for history.
 - Avoid filler, marketing copy, self-congratulatory language and stock AI phrasing. Do not pad documentation with explanations of obvious choices.
 - Prefer exact package names, paths, commands and behavior over adjectives or vague claims.
