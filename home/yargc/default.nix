@@ -43,10 +43,11 @@
       # bb stays the control plane without sending its optional telemetry.
       BB_TELEMETRY = "false";
 
-      # Shared Vesper state paths used by the cockpit and Hermes workflows.
-      VESPER_AGENT_STATE_DIR = "$HOME/.local/state/vesper/agents";
-      VESPER_BRIEFING_DIR = "$HOME/.local/share/vesper/briefings";
-      VESPER_SKILL_DRAFT_DIR = "$HOME/.local/share/vesper/skill-drafts";
+      # Use absolute paths here: Home Manager session variables are shell-escaped
+      # values, so a literal $HOME would not be expanded a second time.
+      VESPER_AGENT_STATE_DIR = "/home/${username}/.local/state/vesper/agents";
+      VESPER_BRIEFING_DIR = "/home/${username}/.local/share/vesper/briefings";
+      VESPER_SKILL_DRAFT_DIR = "/home/${username}/.local/share/vesper/skill-drafts";
     };
   };
 
