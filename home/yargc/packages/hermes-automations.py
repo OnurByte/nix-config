@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
 
-from hermes_automation_common import load_registry, now
+from hermes_automation_common import STATE_ROOT, atomic_json, load_json, load_registry, now
 from hermes_automation_scheduler import dispatch_job, job_lock, record_run, run_watchdog, sync_cron
 from hermes_automation_tasks import TASKS, run_task
 
@@ -32,6 +33,21 @@ def parser() -> argparse.ArgumentParser:
 
     sub.add_parser("jobs")
     return p
+
+
+def edge_watch(name: str, output: str) -> str:
+    path = STATE_ROOT / "watches" / f"{name}.json"
+    previous = load_json(path, {})
+    previous_text = str(previous.get("output") or "") if isinstance(previous, dict) else ""
+    current = (output or "").strip()
+    fingerprint = hashlib.sha256(current.encode()).hexdigest() if current else ""
+    previous_fingerprint = str(previous.get("fingerprint") or "") if isinstance(previous, dict) else ""
+    atomic_json(path, {"fingerprint": fingerprint, "output": current, "checkedAt": now().isoformat(timespec="seconds")})
+    if fingerprint == previous_fingerprint:
+        return ""
+    if not current and previous_text:
+        return f"[Hermes watch] {name} recovered"
+    return current
 
 
 def failure_notice(name: str, message: str) -> None:
@@ -67,7 +83,7 @@ def main() -> int:
         return 0 if result.get("ok") else 2
 
     if args.command == "watch":
-        output = run_watchdog(args.job)
+        output = edge_watch(args.job, run_watchdog(args.job))
         if output:
             print(output)
         return 0
@@ -84,7 +100,7 @@ def main() -> int:
         mode = str(spec.get("mode") or "dispatch")
         task = str(spec.get("task") or args.job)
         if mode == "watchdog":
-            output = run_watchdog(task)
+            output = edge_watch(task, run_watchdog(task))
             if output:
                 print(output)
             return 0
