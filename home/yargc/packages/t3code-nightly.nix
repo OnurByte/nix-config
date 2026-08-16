@@ -1,14 +1,11 @@
 {
   appimageTools,
-  claude-code,
-  codex,
   fetchurl,
   gh,
   git,
   lib,
   makeDesktopItem,
   makeWrapper,
-  opencode,
 }:
 let
   pname = "t3code-nightly";
@@ -41,11 +38,11 @@ appimageTools.wrapType2 {
       ${desktopItem}/share/applications/t3code.desktop \
       $out/share/applications/t3code.desktop
 
+    # Coding-agent CLIs are already provided by the Home Manager profile.
+    # Preserve the user's PATH so T3 discovers Codex, Claude Code and OpenCode
+    # without coupling this standalone nightly package to unfree agent derivations.
     wrapProgram $out/bin/${pname} \
       --prefix PATH : ${lib.makeBinPath [
-        claude-code
-        codex
-        opencode
         gh
         git
       ]}
