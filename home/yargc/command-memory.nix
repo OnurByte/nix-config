@@ -110,6 +110,9 @@ in
     # Build and activate the configured Vesper NixOS generation
     nh os switch
 
+    # Inspect Vesper hardware, storage, backup and failed units
+    vesper-doctor
+
     # Inspect locked flake inputs
     cd ~/nix-config && nix flake metadata --no-write-lock-file
 
@@ -118,6 +121,26 @@ in
 
     # Clean old Nix generations while keeping recent ones
     nh clean all --keep 5
+
+    % vesper, recovery
+
+    # Show Btrfs filesystems and scrub state
+    sudo btrfs filesystem show && sudo btrfs scrub status /
+
+    # Show Snapper snapshots for the root filesystem
+    sudo snapper -c root list
+
+    # Run the configured Restic backup now
+    backup
+
+    # Inspect the last/current Restic backup service
+    backup-status
+
+    # Verify the Restic repository
+    backup-check
+
+    # Show backup and repository-check timers
+    systemctl list-timers 'vesper-backup*'
 
     % vesper, web
 
