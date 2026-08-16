@@ -10,7 +10,6 @@ let
     "free-ai-linuxdo-collect.py"
     "vesper-health-watch.py"
     "vesper-skill-integrity-watch.py"
-    "vesper-cron-retention.py"
     "project-inventory.py"
     "ai-usage-snapshot.py"
   ];
@@ -73,6 +72,14 @@ EOF
 in
 {
   home.file = supportFiles // {
+    ".hermes/scripts/upstream-edge-monitor.py" = {
+      source = ./hermes/upstream-edge-monitor.py;
+      executable = true;
+    };
+    ".hermes/scripts/vesper-cron-retention.py" = {
+      source = ./hermes/cron-retention.py;
+      executable = true;
+    };
     ".config/vesper/hermes/automation-fleet.py" = {
       source = fleet;
       executable = false;
