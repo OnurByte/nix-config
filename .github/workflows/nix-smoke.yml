@@ -41,6 +41,73 @@ jobs:
             home/yargc/hermes/upstream-edge-monitor.py \
             home/yargc/hermes/cron-retention.py
 
+      - name: Validate Hermes cron fleet graph
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import sys
+          import types
+          from pathlib import Path
+
+          cron_pkg = types.ModuleType("cron")
+          jobs_mod = types.ModuleType("cron.jobs")
+          jobs_mod.create_job = lambda **kwargs: kwargs
+          jobs_mod.list_jobs = lambda **kwargs: []
+          jobs_mod.update_job = lambda *args, **kwargs: None
+          sys.modules["cron"] = cron_pkg
+          sys.modules["cron.jobs"] = jobs_mod
+
+          path = Path("home/yargc/hermes/automation-fleet.py")
+          spec = importlib.util.spec_from_file_location("vesper_hermes_fleet", path)
+          module = importlib.util.module_from_spec(spec)
+          assert spec and spec.loader
+          spec.loader.exec_module(module)
+
+          fleet = module.jobs()
+          names = [job["name"] for job in fleet]
+          assert len(names) == len(set(names)), "duplicate Hermes cron job names"
+          known = set(names)
+
+          edges = {}
+          for job in fleet:
+              name = job["name"]
+              assert job.get("schedule"), f"{name}: missing schedule"
+              assert isinstance(job.get("skills", []), list), f"{name}: skills must be a list"
+
+              if job.get("no_agent"):
+                  assert job.get("script"), f"{name}: no_agent requires a script"
+                  assert not job.get("monitor_script"), f"{name}: no_agent cannot use monitor_script"
+
+              if job.get("monitor_script"):
+                  assert not job.get("script"), f"{name}: monitor and pre-run script must stay separate"
+                  assert not job.get("no_agent"), f"{name}: monitor_script requires an agent"
+
+              sources = list(job.get("context_from") or [])
+              unknown = [source for source in sources if source not in known]
+              assert not unknown, f"{name}: unknown context_from jobs: {unknown}"
+              assert name not in sources, f"{name}: self-referential context_from"
+              edges[name] = sources
+
+          visiting = set()
+          visited = set()
+
+          def visit(name):
+              if name in visiting:
+                  raise AssertionError(f"context_from cycle detected at {name}")
+              if name in visited:
+                  return
+              visiting.add(name)
+              for source in edges[name]:
+                  visit(source)
+              visiting.remove(name)
+              visited.add(name)
+
+          for name in names:
+              visit(name)
+
+          print(f"validated {len(fleet)} Hermes cron jobs")
+          PY
+
       - name: Parse Hyprland Lua
         shell: bash
         run: |
