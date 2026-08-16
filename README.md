@@ -2,7 +2,7 @@
 
 # VESPER
 
-### personal NixOS workstation
+### NixOS config for my daily workstation
 
 **NixOS · Hyprland · Caelestia · Ghostty · PychoVIM · Codex · Claude · OpenCode · Grok Build · Hermes**
 
@@ -12,76 +12,48 @@
 
 </div>
 
-Vesper is the configuration for `yargc@vesper`, a Lenovo IdeaPad Gaming 3 running NixOS unstable.
+This is the NixOS configuration for `yargc@vesper`, my Lenovo IdeaPad Gaming 3.
 
-It is a personal config, not a framework. The point is to keep the machine reproducible without turning the desktop into a pile of overlapping utilities.
-
-## Principles
-
-- **Nix owns the stable system.** Prefer nixpkgs, then maintained upstream flakes, then pinned custom packaging.
-- **One desktop shell.** Hyprland handles windows; Caelestia handles the bar, launcher, control center, notifications, lock/idle, clipboard and capture UI.
-- **Agents stay reviewable.** Codex, Claude Code, OpenCode, Grok Build and Hermes can do the mechanical work; `bb`, Plannotator, TurnLens and CodexBar keep the workflow visible.
-- **Privacy is normal configuration, not a special mode.** Tor and Monero tooling are available, Atuin stays local, and expensive background services are opt-in.
-- **Recovery is part of the workstation.** Nix generations handle system rollback, Snapper handles short-term Btrfs recovery and Restic handles real backups.
-- **No duplicate surface for the same job.** A new daemon, tray app or launcher needs a reason to exist.
-
-## Look
-
-The desktop uses a restrained glass style: translucent Caelestia surfaces, stronger Hyprland blur, soft shadows, thin borders and rounded corners. The reference is modern glass UI, but readability wins over transparency.
-
-The default wallpaper is the dark Dracula Nix wallpaper from the NixOS artwork package. A Solarized Dark Nix wallpaper is installed beside it and both appear in Caelestia's wallpaper picker. They come from nixpkgs; no generated wallpaper is stored in this repo.
-
-The intended palette is cold and dark rather than neon-heavy: black, graphite, blue and muted violet. It works with the clean corporate/night-city mood without making the whole desktop a movie theme.
+Most of the machine is managed through NixOS and Home Manager. Hyprland is the compositor, Caelestia provides the desktop shell, and the rest of the repo is split between system modules, user config and a small set of custom packages.
 
 ## Stack
 
-| Layer | Choice |
+| | |
 |---|---|
-| system | NixOS unstable + Home Manager |
-| compositor | Hyprland, modular Lua config |
-| shell | Caelestia / Quickshell |
+| Nix | NixOS unstable + Home Manager |
+| compositor | Hyprland |
+| desktop shell | Caelestia / Quickshell |
 | terminal | Ghostty |
-| shell prompt | Zsh + minimal Oh My Zsh + Starship |
-| editor | PychoVIM + Zed Preview |
+| shell | Zsh + Oh My Zsh + Starship |
+| editors | PychoVIM + Zed Preview |
 | browsers | Zen + Helium + Tor Browser |
 | coding agents | Codex · Claude Code · OpenCode · Grok Build · Hermes |
 | agent control | bb |
 | agent GUI | T3 Code Nightly |
 | desktop AI | ChatGPT Desktop · Claude Desktop |
-| command memory | Navi + local Atuin |
+| command history | Navi + local Atuin |
 | media | Spotify + Spicetify · MPV + MPRIS |
 | privacy | Tor · Zapret2 · Monero GUI/CLI · Feather · Eigenwallet · Cuprate |
-| containers / VMs | Podman · Distrobox · libvirt · virt-manager |
+| containers | Podman · Distrobox |
+| virtual machines | libvirt · virt-manager |
 | recovery | Btrfs scrub · Snapper · Restic |
-| Windows compatibility | Bottles |
+| Windows apps | Bottles |
 
 ## Desktop
 
-```text
-Hyprland
-└── Caelestia
-    ├── bar + launcher
-    ├── control center
-    ├── notifications + DND
-    ├── Wi-Fi / Bluetooth / audio
-    ├── lock + idle
-    ├── clipboard
-    ├── screenshots / recording
-    ├── wallpaper-driven palette
-    └── CodexBar usage delegate
-```
+Hyprland config lives in Lua under `home/yargc/hypr/`. Caelestia handles the bar, launcher, control center, notifications, lock screen, idle handling, clipboard, screenshots and recording.
 
-There is no Waybar, `nm-applet`, Blueman tray UI, parallel lock/idle stack or night-light daemon.
+The desktop is dark with translucent Caelestia surfaces, Hyprland blur, soft shadows and thin borders. The default wallpaper is the Dracula Nix wallpaper from `nixos-artwork`; Solarized Dark is installed as an alternative.
 
-Useful keys:
+### Keys
 
 | Key | Action |
 |---|---|
-| `Super + Space` | Caelestia launcher |
+| `Super + Space` | launcher |
 | `Super + C` | control center |
-| `Super + /` | Vesper command palette |
+| `Super + /` | command palette |
 | `Super + Shift + /` | keybind sheet |
-| `Ctrl + G` | Navi into current prompt |
+| `Ctrl + G` | Navi |
 | `Ctrl + R` | Atuin history |
 | `Super + A` | ChatGPT |
 | `Super + Shift + A` | Claude Desktop |
@@ -90,63 +62,44 @@ Useful keys:
 | `Super + T` | T3 Code Nightly |
 | `Super + U` | CodexBar |
 
-## Agent workflow
+## Coding setup
 
-```mermaid
-flowchart LR
-    Human[Intent] --> BB[bb]
-    Human --> Grok[Grok Build]
-    BB --> Codex[Codex]
-    BB --> Claude[Claude Code]
-    BB --> OpenCode[OpenCode]
-    BB --> Hermes[Hermes]
-    Codex --> Repo[Repository]
-    Claude --> Repo
-    OpenCode --> Repo
-    Hermes --> Repo
-    Grok --> Repo
-    Repo --> Review[Review]
-    Review --> Ship[Ship]
-    Review --> BB
-    Usage[CodexBar · TurnLens · ccusage] --> Human
+The base toolchain is installed with Nix:
+
+```text
+Git / gh
+Rust
+Go
+Python / uv / ruff
+Node 24 / Bun / TypeScript
+PHP / Composer
+Java 21
+Lua
+nixd / nixfmt
+GCC / Clang
+CMake / GDB
+Lazygit
+mise
 ```
 
-Grok Build is xAI's official terminal coding agent and is installed directly from nixpkgs as `pkgs.grok-build`. Its version follows the pinned nixpkgs input and changes through the normal flake update flow.
+Bun is my default JS package manager. Project-specific versions can still live in `mise` or `nix develop`.
 
-No local LLM runtime is enabled by default.
+The local web stack is Apache + PHP + MariaDB. It is installed declaratively but stays off until `vesper-web.target` is started.
 
-## Development
+```bash
+web-start
+web-stop
+web-restart
+web-status
+```
 
-Toolchains:
+### Agents
 
-**Git · gh · Rust · Go · Python/uv · Node 24 · Bun · TypeScript · PHP/Composer · Java 21 · Lua · nixd · GCC/Clang · CMake · GDB · Lazygit · mise**
+`bb` is the main control surface for Codex, Claude Code, OpenCode and Hermes. Grok Build is installed from nixpkgs. T3 Code Nightly provides the GUI side of the same setup.
 
-Bun is the user-facing JavaScript package manager. Node stays for runtimes and language servers. Nix supplies the workstation baseline; per-project versions can still be owned by `mise` or `nix develop` without adding more global package managers.
+CodexBar, TurnLens and `ccusage` are used for usage/status visibility.
 
-The local web stack is Nix-native:
-
-- Apache
-- PHP
-- MariaDB
-- localhost-only HTTP listener
-- installed declaratively but stopped at boot
-- `web-start`, `web-stop`, `web-restart`, `web-status`
-
-`vesper-web.target` is the only switch for that stack, so the database and web server do not become permanent background services just because development support is installed.
-
-## Media
-
-Spotify remains the default streaming player through Spicetify and Caelestia MPRIS.
-
-MPV is the local audio/video player. Home Manager configures PipeWire output, hardware decoding and the MPV MPRIS script, and common audio/video MIME types open in MPV by default. This keeps local playback integrated with the same desktop media controls instead of adding another standalone music shell.
-
-## Privacy and Monero
-
-Tor provides a system SOCKS endpoint for software that explicitly supports it. Tor Browser keeps its own Tor integration separate. Zapret2 is configured with a narrow TCP/443 baseline.
-
-Monero is one part of the workstation, not its identity. The config includes Monero GUI/CLI, Feather, Eigenwallet and the experimental Rust node implementation Cuprate. Neither `monerod` nor `cuprated` starts automatically.
-
-The underlying rule is simple: reduce unnecessary trust, keep fund-moving software sourced carefully, and do not start storage/bandwidth-heavy services without asking.
+There is no local model service running by default.
 
 ## Applications
 
@@ -155,9 +108,9 @@ The underlying rule is simple: reduce unnecessary trust, keep fund-moving softwa
 - Tor Browser
 - ChatGPT Desktop
 - Claude Desktop
-- Vesktop + system Vencord
-- Spotify + Spicetify-Nix
-- MPV + MPRIS
+- Vesktop + Vencord
+- Spotify + Spicetify
+- MPV
 - Session
 - Telegram
 - Obsidian
@@ -166,38 +119,70 @@ The underlying rule is simple: reduce unnecessary trust, keep fund-moving softwa
 - T3 Code Nightly
 - Grok Build
 
+## Privacy
+
+A system Tor client is available for applications that support SOCKS. Tor Browser keeps using its own bundled Tor instance.
+
+The Monero setup includes Monero GUI/CLI, Feather, Eigenwallet and Cuprate. Node services do not start automatically.
+
+Atuin stays local. Services with noticeable storage, bandwidth or background cost are opt-in.
+
 ## Packaging
 
-Preference order:
+Packages are taken from nixpkgs when possible. For software that is not available there in the required form, the repo uses upstream flakes or pinned source/binary derivations.
 
-1. nixpkgs
-2. official/upstream flake
-3. pinned source derivation
-4. pinned binary derivation when there is no better option
-
-T3 Code Nightly uses an official pinned upstream AppImage because nixpkgs tracks the stable channel rather than the requested nightly channel.
-
-PychoVIM is Onur's own editor project and intentionally owns its mutable user configuration/updater. Zed Preview intentionally uses the official Preview installer. They are explicit workstation choices, not accidental reproducibility leaks.
+T3 Code Nightly is packaged from the official nightly AppImage. PychoVIM keeps its own updater/config ownership, while Zed Preview uses the upstream Preview installer.
 
 ## Recovery
 
-The storage/recovery layers have separate jobs:
+There are three separate recovery layers:
 
 ```text
-Nix generations -> roll back NixOS configuration
-Snapper         -> short-term Btrfs filesystem snapshots
-Restic          -> encrypted backup outside the laptop
+Nix generations   system rollback
+Snapper           short-term Btrfs snapshots
+Restic            encrypted backups
 ```
 
-Btrfs scrub runs monthly. Snapper covers the verified Btrfs root and Home subvolumes; the existing root `/.snapshots` subvolume/history is preserved.
+Btrfs scrub runs monthly. Snapper covers `/` and `/home` and keeps the existing root snapshot history under `/.snapshots`.
 
-Restic is configured as a daily systemd job with 7 daily, 4 weekly and 12 monthly snapshots plus a monthly repository check. Repository credentials stay out of the Nix store in `/etc/vesper/restic.env`; a missing removable backup disk produces a clean skip rather than a failed timer.
+Restic runs daily with 7 daily, 4 weekly and 12 monthly snapshots, plus a monthly repository check. Credentials live outside the Nix store in `/etc/vesper/restic.env`.
 
-`vesper-doctor` checks the live filesystem, scrub timer, AMD pstate, NVIDIA/PRIME visibility, Hyprland refresh rate, Tor, web target, backup configuration and failed systemd units.
+`vesper-doctor` checks the filesystem, Btrfs scrub timer, AMD pstate, NVIDIA/PRIME, display refresh rate, Tor, the local web stack, backups and failed systemd units.
 
-See [`docs/INSTALL.md`](docs/INSTALL.md) for the verified disk inventory and NixOS migration rules, and [`docs/BACKUP.md`](docs/BACKUP.md) for Restic setup and restore testing.
+See [`docs/BACKUP.md`](docs/BACKUP.md) for backup setup and restore testing.
 
-## Layout
+## Host
+
+`vesper` is a Lenovo IdeaPad Gaming 3 16ARH7 (82SC):
+
+- Ryzen 5 6600H
+- Radeon 660M
+- RTX 3050 Mobile
+- 1920×1200 / 165 Hz display
+- 1 TB NVMe
+- 4 GiB EFI partition
+- LUKS2-encrypted Btrfs root
+- zram swap
+
+Btrfs subvolumes:
+
+```text
+@       /
+@home   /home
+@root   /root
+@srv    /srv
+@cache  /var/cache
+@tmp    /var/tmp
+@log    /var/log
+```
+
+The Btrfs mounts use `compress=zstd:1` and `noatime`. AMD drives the desktop; the RTX 3050 is configured for PRIME offload.
+
+The current storage UUIDs and mount layout are recorded in `hosts/vesper/hardware-configuration.nix` and [`docs/INSTALL.md`](docs/INSTALL.md).
+
+If the disk is reformatted or the subvolume layout changes, those values need to be captured again before switching the configuration.
+
+## Repo layout
 
 ```text
 .
@@ -216,48 +201,35 @@ See [`docs/INSTALL.md`](docs/INSTALL.md) for the verified disk inventory and Nix
 └── home/yargc/
     ├── hypr/
     ├── packages/
-    ├── command-memory.nix
-    ├── doctor.nix
     ├── caelestia.nix
+    ├── command-memory.nix
     ├── dev.nix
+    ├── doctor.nix
     └── privacy.nix
 ```
 
-## Host
+## Using it
 
-`vesper` targets a Lenovo IdeaPad Gaming 3 16ARH7 (82SC):
-
-- Ryzen 5 6600H
-- Radeon 660M iGPU
-- RTX 3050 Mobile
-- 1920×1200 / 165 Hz panel
-- 1 TB NVMe
-- 4 GiB FAT32 EFI system partition
-- LUKS2-encrypted Btrfs root
-- Btrfs subvolumes: `@`, `@home`, `@root`, `@srv`, `@cache`, `@tmp`, `@log`
-- zstd:1 compression + noatime
-- zram swap
-
-AMD drives the desktop. NVIDIA is PRIME offload only. The machine follows the kernel line selected by the pinned NixOS unstable revision instead of forcing `linuxPackages_latest`.
-
-The storage topology is now concrete in `hosts/vesper/hardware-configuration.nix`, using UUIDs captured from the real machine. It preserves the existing encrypted filesystem; it is not a partitioning or formatting recipe.
-
-> [!CAUTION]
-> If the NVMe is reformatted or the subvolume layout changes, recapture UUIDs and mounts before changing the hardware file. Do not reuse stale identifiers after a destructive disk operation.
-
-Once the machine is on NixOS:
+After NixOS is installed and the hardware config matches the machine:
 
 ```bash
 nh os test
 vesper-doctor
 nh os switch
-nh clean all --keep 5
 ```
 
-Flake updates remain explicit:
+Update the flake explicitly:
 
 ```bash
 cd ~/nix-config
 nix flake update
 nh os switch
 ```
+
+Old generations can be cleaned with:
+
+```bash
+nh clean all --keep 5
+```
+
+Installation and storage notes are in [`docs/INSTALL.md`](docs/INSTALL.md).
