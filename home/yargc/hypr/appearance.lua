@@ -2,9 +2,9 @@ local home = os.getenv("HOME")
 local schemePath = home .. "/.config/hypr/scheme/current.lua"
 
 local fallback = {
-    primary = "33ccff",
-    secondary = "00ff99",
-    surface = "11111b",
+    primary = "89b4fa",
+    secondary = "cba6f7",
+    surface = "111318",
 }
 
 local ok, scheme = pcall(dofile, schemePath)
@@ -30,26 +30,33 @@ hl.monitor({
 
 hl.config({
     general = {
-        gaps_in = 5,
+        gaps_in = 6,
         gaps_out = 10,
-        border_size = 2,
+        border_size = 1,
         col = {
             active_border = {
-                colors = { "rgba(" .. primary .. "ee)", "rgba(" .. secondary .. "ee)" },
+                colors = { "rgba(" .. primary .. "cc)", "rgba(" .. secondary .. "aa)" },
                 angle = 45,
             },
-            inactive_border = "rgba(" .. surface .. "aa)",
+            inactive_border = "rgba(" .. surface .. "66)",
         },
         layout = "dwindle",
         resize_on_border = true,
     },
     decoration = {
-        rounding = 10,
+        rounding = 16,
         blur = {
             enabled = true,
-            size = 3,
-            passes = 1,
+            size = 8,
+            passes = 3,
             new_optimizations = true,
+            ignore_opacity = true,
+        },
+        shadow = {
+            enabled = true,
+            range = 18,
+            render_power = 3,
+            color = "rgba(00000055)",
         },
     },
     animations = {
@@ -64,12 +71,12 @@ hl.config({
     },
 })
 
-hl.curve("work", {
+hl.curve("vesper", {
     type = "bezier",
-    points = { { 0.05, 0.9 }, { 0.1, 1.05 } },
+    points = { { 0.16, 1.0 }, { 0.3, 1.0 } },
 })
 
-hl.animation({ leaf = "windows", enabled = true, speed = 6, bezier = "work" })
+hl.animation({ leaf = "windows", enabled = true, speed = 6, bezier = "vesper" })
 hl.animation({ leaf = "windowsOut", enabled = true, speed = 6, bezier = "default" })
 hl.animation({ leaf = "fade", enabled = true, speed = 6, bezier = "default" })
-hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "work" })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 5, bezier = "vesper" })

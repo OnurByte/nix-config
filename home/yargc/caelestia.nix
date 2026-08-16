@@ -19,6 +19,9 @@ let
         --subst-var-by codexbarPopup ${codexbarUi}/bin/codexbar-popup
     '';
   });
+
+  nixDracula = pkgs.nixos-artwork.wallpapers.dracula;
+  nixSolarized = pkgs.nixos-artwork.wallpapers.nineish-solarized-dark;
 in
 {
   imports = [
@@ -28,12 +31,23 @@ in
   programs.caelestia = {
     enable = true;
     package = agenticCaelestia;
-
-    # Hyprland starts the shell directly so all compositor-bound services come
-    # up in one predictable session path.
     systemd.enable = false;
 
     settings = {
+      appearance = {
+        rounding.scale = 1.1;
+        spacing.scale = 1.0;
+        padding.scale = 1.0;
+        anim.durations.scale = 0.9;
+        transparency = {
+          enabled = true;
+          base = 0.82;
+          layers = 0.46;
+        };
+      };
+
+      paths.wallpaperDir = "~/Pictures/Wallpapers";
+
       general = {
         apps = {
           terminal = [ "ghostty" ];
@@ -46,8 +60,6 @@ in
           ];
         };
 
-        # Caelestia owns idle/lock state. This preserves the old Kraken timing
-        # while removing the parallel hypridle + hyprlock stack.
         idle = {
           lockBeforeSleep = true;
           inhibitWhenAudio = true;
@@ -83,9 +95,6 @@ in
         };
       };
 
-      # Keep Kraken's control center focused on daily-driver controls. Caelestia
-      # ships gameMode enabled in its default quick-toggle list; explicitly
-      # hide that and VPN until either workflow is requested.
       utilities = {
         quickToggles = [
           { id = "wifi"; enabled = true; }
@@ -99,8 +108,6 @@ in
         toasts.gameModeChanged = false;
       };
 
-      # The stock Caelestia list accepts arbitrary entry IDs; the patched shell
-      # gives aiUsage a native QML delegate backed by CodexBar.
       bar.entries = [
         { id = "logo"; enabled = true; }
         { id = "workspaces"; enabled = true; }
@@ -118,9 +125,6 @@ in
     cli = {
       enable = true;
       settings.theme = {
-        # Whitelist only surfaces Kraken actually uses. Caelestia treats an
-        # omitted enable* key as true, so explicit false values prevent theme
-        # hooks from touching unrelated applications.
         enableTerm = true;
         enableHypr = true;
         enableDiscord = false;
@@ -136,21 +140,19 @@ in
         enableChromium = false;
         enableZed = false;
         enableCava = false;
-
-        # enableHypr writes scheme/current.lua; reload so the modular Lua
-        # compositor config immediately picks up the wallpaper palette.
         postHook = "hyprctl reload";
       };
     };
   };
 
-  # Caelestia's GTK theme hook selects these names through dconf. Install the
-  # actual theme/icon assets declaratively instead of leaving dangling names.
   home.packages = [
     codexbarUi
     pkgs.adw-gtk3
     pkgs.papirus-icon-theme
   ];
+
+  home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
+  home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;
 
   xdg.dataFile."codexbar-waybar/icons".source = "${codexbarUi}/share/codexbar-waybar/icons";
 }

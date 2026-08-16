@@ -1,7 +1,7 @@
 { pkgs, ... }:
 let
-  krakenCommandPicker = pkgs.writeShellApplication {
-    name = "kraken-command-picker";
+  vesperCommandPicker = pkgs.writeShellApplication {
+    name = "vesper-command-picker";
     runtimeInputs = [
       pkgs.libnotify
       pkgs.navi
@@ -12,22 +12,20 @@ let
       [[ -n "$command" ]] || exit 0
 
       printf '%s' "$command" | wl-copy
-      notify-send "Kraken Commands" "Command copied to clipboard"
+      notify-send "Vesper Commands" "Command copied to clipboard"
       printf '\nCopied to clipboard:\n%s\n' "$command"
     '';
   };
 
-  krakenCommands = pkgs.writeShellApplication {
-    name = "kraken-commands";
+  vesperCommands = pkgs.writeShellApplication {
+    name = "vesper-commands";
     runtimeInputs = [ pkgs.ghostty ];
     text = ''
-      exec ghostty -e ${krakenCommandPicker}/bin/kraken-command-picker
+      exec ghostty -e ${vesperCommandPicker}/bin/vesper-command-picker
     '';
   };
 in
 {
-  # Ctrl-R becomes a contextual local command-memory database. Keep it offline:
-  # no account, sync or update checks are needed on this single-user workstation.
   programs.atuin = {
     enable = true;
     enableZshIntegration = true;
@@ -48,13 +46,10 @@ in
 
   home.packages = [
     pkgs.navi
-    krakenCommands
+    vesperCommands
   ];
 
-  # Curated commands live in one searchable source instead of scattered aliases
-  # or README snippets. The Zsh Navi widget inserts a selection for editing;
-  # the desktop palette copies it so a launcher cannot execute it accidentally.
-  xdg.dataFile."navi/cheats/kraken.cheat".text = ''
+  xdg.dataFile."navi/cheats/vesper.cheat".text = ''
     % agents, usage, turnlens
 
     # Watch a Codex session turn-by-turn
@@ -101,12 +96,12 @@ in
     # Start the bb multi-agent control plane
     bb-app
 
-    % kraken, nixos
+    % vesper, nixos
 
-    # Test the configured Kraken NixOS generation
+    # Test the configured Vesper NixOS generation
     nh os test
 
-    # Build and activate the configured Kraken NixOS generation
+    # Build and activate the configured Vesper NixOS generation
     nh os switch
 
     # Inspect locked flake inputs
@@ -118,7 +113,7 @@ in
     # Clean old Nix generations while keeping recent ones
     nh clean all --keep 5
 
-    % kraken, web
+    % vesper, web
 
     # Start local Apache + PHP + MariaDB development stack
     web-start
@@ -160,11 +155,11 @@ in
     atuin search -i
   '';
 
-  xdg.desktopEntries.kraken-commands = {
-    name = "Kraken Commands";
+  xdg.desktopEntries.vesper-commands = {
+    name = "Vesper Commands";
     genericName = "Command Palette";
     comment = "Search curated commands and copy one to the clipboard";
-    exec = "${krakenCommands}/bin/kraken-commands";
+    exec = "${vesperCommands}/bin/vesper-commands";
     icon = "utilities-terminal";
     terminal = false;
     categories = [

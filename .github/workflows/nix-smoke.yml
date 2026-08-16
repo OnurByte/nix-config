@@ -45,8 +45,8 @@ jobs:
       - name: Resolve locked flake inputs
         run: nix flake metadata --no-write-lock-file
 
-      - name: Evaluate kraken module graph
-        run: test "$(nix eval --raw .#nixosConfigurations.kraken.config.networking.hostName)" = kraken
+      - name: Evaluate Vesper module graph
+        run: test "$(nix eval --raw .#nixosConfigurations.vesper.config.networking.hostName)" = vesper
 
       - name: Build TurnLens package
         run: nix build --no-link .#turnlens
@@ -54,10 +54,5 @@ jobs:
       - name: Build Cuprate package
         run: nix build --no-link .#cuprated
 
-      # ZCode is proprietary upstream software; the system config allows
-      # unfree packages, while a standalone CI package build must opt in.
-      - name: Build ZCode package
-        run: NIXPKGS_ALLOW_UNFREE=1 nix build --impure --no-link .#zcode
-
-      - name: Build agentic Caelestia surface
-        run: nix build --no-link '.#nixosConfigurations.kraken.config.home-manager.users.yargc.programs.caelestia.package'
+      - name: Build Caelestia surface
+        run: nix build --no-link '.#nixosConfigurations.vesper.config.home-manager.users.yargc.programs.caelestia.package'

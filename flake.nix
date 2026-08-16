@@ -1,5 +1,5 @@
 {
-  description = "Kraken — an agentic NixOS rice";
+  description = "Vesper — personal NixOS workstation";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -30,7 +30,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Native vendor desktop applications packaged for NixOS.
     chatgpt-desktop = {
       url = "github:poeck/chatgpt-desktop-app-nix-flake";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -41,7 +40,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # CodexBar's upstream Linux CLI plus the Wayland GTK usage surface source.
     codexbar = {
       url = "github:alioguzhan/codexbar-flake";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -52,8 +50,6 @@
       flake = false;
     };
 
-    # Daily-updated Nix packages for coding agents, agent control planes and
-    # agent-native tooling. Keep its own tested nixpkgs pin for cache hits.
     llm-agents.url = "github:numtide/llm-agents.nix";
   };
 
@@ -66,14 +62,13 @@
     let
       system = "x86_64-linux";
       username = "yargc";
-      hostname = "kraken";
+      hostname = "vesper";
       pkgs = nixpkgs.legacyPackages.${system};
     in
     {
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
       packages.${system} = {
-        zcode = pkgs.callPackage ./home/yargc/packages/zcode.nix { };
         cuprated = pkgs.callPackage ./home/yargc/packages/cuprated.nix { };
         turnlens = pkgs.callPackage ./home/yargc/packages/turnlens.nix { };
       };
