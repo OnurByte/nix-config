@@ -31,10 +31,21 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
+      - name: Parse Hermes automation Python
+        run: |
+          python3 -m py_compile \
+            home/yargc/packages/hermes-runtime.py \
+            home/yargc/packages/hermes_automation_common.py \
+            home/yargc/packages/hermes_automation_reports.py \
+            home/yargc/packages/hermes_automation_scheduler.py \
+            home/yargc/packages/hermes_tasks_daily.py \
+            home/yargc/packages/hermes_tasks_weekly.py \
+            home/yargc/packages/hermes_automation_tasks.py \
+            home/yargc/packages/hermes-automations.py
+
       - name: Parse Hyprland Lua
         shell: bash
         run: |
-          set -euo pipefail
           nix shell nixpkgs#lua -c bash -c '
             for file in home/yargc/hypr/*.lua; do
               echo "parsing $file"
