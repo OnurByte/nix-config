@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-"""Emit a stable upstream snapshot for Hermes monitor_script mode.
+"""Cheap pre-run gate for the Upstream Edge Radar.
 
-Hermes hashes this exact stdout. If none of the tracked upstream heads changes,
-the Upstream Edge Radar agent is not started at all.
+Track upstream repository heads in Vesper research state. Unchanged state emits
+wakeAgent=false, so Hermes spends zero model tokens for that tick. Changed
+state is passed as structured context to the agent for deeper PR/issue/release
+research.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+from pathlib import Path
+
+HOME = Path.home()
+STATE_ROOT = Path(
+    os.environ.get("VESPER_RESEARCH_STATE_DIR", HOME / ".local/state/vesper/research")
+).expanduser()
+STATE_ROOT.mkdir(parents=True, exist_ok=True)
+STATE_FILE = STATE_ROOT / "upstream-edge-snapshot.json"
 
 REPOSITORIES = [
     "NousResearch/hermes-agent",
@@ -43,11 +54,7 @@ def gh_api(path: str) -> dict:
         return {"error": f"invalid JSON: {type(exc).__name__}: {exc}"}
 
 
-def main() -> int:
-    if not shutil.which("gh"):
-        print(json.dumps({"error": "gh executable not found"}, sort_keys=True))
-        return 0
-
+def build_snapshot() -> dict[str, dict]:
     snapshot: dict[str, dict] = {}
     for repository in REPOSITORIES:
         meta = gh_api(f"repos/{repository}")
@@ -69,9 +76,56 @@ def main() -> int:
             "date": author.get("date"),
             "message": str(commit.get("message") or "").splitlines()[0][:180],
         }
+    return snapshot
 
-    # No timestamp: unchanged upstream state must produce byte-identical stdout.
-    print(json.dumps(snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+
+def main() -> int:
+    if not shutil.which("gh"):
+        # A broken gate must wake the agent rather than silently hide changes.
+        print(
+            json.dumps(
+                {
+                    "wakeAgent": True,
+                    "context": {"monitorError": "gh executable not found"},
+                },
+                sort_keys=True,
+            )
+        )
+        return 0
+
+    current = build_snapshot()
+    previous: dict[str, dict] = {}
+    try:
+        previous = json.loads(STATE_FILE.read_text())
+    except Exception:
+        pass
+
+    if current == previous:
+        print('{"wakeAgent":false}')
+        return 0
+
+    changed: dict[str, dict] = {}
+    for repository in sorted(set(previous) | set(current)):
+        before = previous.get(repository)
+        after = current.get(repository)
+        if before != after:
+            changed[repository] = {"before": before, "after": after}
+
+    STATE_FILE.write_text(json.dumps(current, ensure_ascii=False, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            {
+                "wakeAgent": True,
+                "context": {
+                    "changed": changed,
+                    "current": current,
+                },
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
     return 0
 
 
