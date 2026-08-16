@@ -51,6 +51,9 @@ jobs:
       - name: Evaluate Home Manager activation closure
         run: nix build --dry-run --no-link '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage'
 
+      - name: Build T3 Code Nightly package
+        run: nix build --no-link .#t3code-nightly
+
       - name: Build TurnLens package
         run: nix build --no-link .#turnlens
 
