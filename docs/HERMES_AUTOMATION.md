@@ -44,7 +44,7 @@ This keeps the agent's bounded cron turn focused on verification, ranking and sy
 | 09:05 | Unknown Frontier AI — Synthesis | local | fan-in of three frontier scouts |
 | 09:20 | Daily Agenda | local | important current developments, independent of obscurity |
 | 10:00 | Morning Check | notify | final daily briefing: projects, todos, agenda, frontier, free AI |
-| 19:15 | Upstream Edge Radar | notify on material change | cheap upstream-head gate, then PR/issue/commit analysis only after a change |
+| 19:15 | Upstream Edge Radar | notify on material change | native `monitor_script` gate, then PR/issue/commit analysis only after snapshot changes |
 | 23:30 | Second Brain Reflection | local | Obsidian consolidation and research-derived skill candidates |
 
 `Vesper Health Watch` runs every three hours as a no-agent watchdog and emits only on a state transition. `Hermes Cron Retention` runs Monday at 03:15 and prunes ended cron-source sessions, cron output and saved candidate pools older than 30 days.
@@ -118,7 +118,7 @@ Low-volume modes:
 
 Dedicated scripts:
 
-- `upstream-edge-monitor.py` — stores the last tracked upstream-head snapshot and emits `wakeAgent=false` when nothing changed, so the Upstream Edge Radar spends no model tokens on unchanged ticks
+- `upstream-edge-monitor.py` — emits a stable, timestamp-free upstream-head snapshot; Hermes stores/hashes the monitor output itself and skips the agent when the exact snapshot is unchanged
 - `vesper-cron-retention.py` — deletes cron output and candidate-pool JSON older than 30 days, then runs `hermes sessions prune --older-than 30 --source cron --yes`
 
 Watchdogs keep small state under `$VESPER_RESEARCH_STATE_DIR` so unchanged failures do not repeatedly notify.
@@ -146,7 +146,7 @@ Hermes still owns mutable runtime state in:
 
 Do not make `jobs.json` a Home Manager file. Hermes updates run counters, next-run times, errors, delivery state and internal metadata there.
 
-The reconciler uses Hermes' own `cron.jobs` API so locking, schedule parsing and derived fields remain canonical.
+The reconciler uses Hermes' own `cron.jobs` API so locking, schedule parsing and derived fields remain canonical. It also uses Hermes' native `monitor_script` field instead of inventing a second change-detection protocol.
 
 ## Apply/reconcile
 
@@ -168,7 +168,7 @@ The reconciler:
 - preserves the existing job ID during that migration
 - discovers the existing notification destination without committing a Telegram chat ID to the public repository
 - creates missing jobs
-- updates changed prompts/schedules/toolsets/scripts
+- updates changed prompts/schedules/toolsets/scripts/monitor scripts
 - resolves fan-in names to canonical upstream job IDs before storing `context_from`
 - preserves an operator-paused job instead of silently re-enabling it
 
@@ -208,7 +208,7 @@ Hermes' bundled `obsidian` skill and Vesper's `vesper-obsidian-second-brain` ski
 - Raw scouts and intermediate synthesis are local-only.
 - Only final daily/weekly reports and changed alarms notify.
 - No-agent watchdogs consume zero model tokens.
-- Upstream Edge Radar uses a `wakeAgent` pre-run gate and spends zero model tokens when tracked upstream heads are unchanged.
+- Upstream Edge Radar uses Hermes' native `monitor_script` hash gate and spends zero model tokens when tracked upstream heads are byte-identical to the previous tick.
 - Source-specific `enabled_toolsets` avoid loading every tool schema into every cron turn.
 - Parallel collectors front-load breadth while bounded prompt samples protect the reasoning context.
 - Full candidate pools, old cron sessions and cron output are pruned after 30 days.
@@ -225,4 +225,4 @@ hermes skills list
 vesper-doctor --json
 ```
 
-A healthy fleet has one job per managed name, no duplicate `Sabah check`, valid skills, local scout delivery, correct fan-in IDs, silent healthy watchdogs, sandbox-valid regular script files and a single Hermes scheduler owner.
+A healthy fleet has one job per managed name, no duplicate `Sabah check`, valid skills, local scout delivery, correct fan-in IDs, silent healthy watchdogs, a native monitor-gated upstream radar, sandbox-valid regular script files and a single Hermes scheduler owner.
