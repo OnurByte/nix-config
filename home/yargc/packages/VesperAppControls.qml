@@ -12,15 +12,15 @@ ColumnLayout {
     id: root
 
     property var app
-    property var status: ({ sandbox: "native", flatpakId: "", permissions: "", todaySeconds: 0 })
+    property var status: ({ sandbox: "native", flatpakId: "", networkAllowed: false, homeAllowed: false, permissionsManageable: false, todaySeconds: 0 })
     property string message: ""
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
 
     readonly property bool flatpak: status.sandbox === "flatpak"
-    readonly property bool networkAllowed: flatpak && status.permissions.includes("shared=network")
-    readonly property bool homeAllowed: flatpak && (status.permissions.includes("filesystems=home") || status.permissions.includes(";home;") || status.permissions.includes(";home:"))
+    readonly property bool networkAllowed: status.networkAllowed === true
+    readonly property bool homeAllowed: status.homeAllowed === true
 
     function duration(seconds) {
         const minutes = Math.floor((seconds || 0) / 60);
@@ -45,6 +45,7 @@ ColumnLayout {
             onStreamFinished: {
                 try {
                     root.status = JSON.parse(text);
+                    root.message = "";
                 } catch (e) {
                     root.message = qsTr("Could not read app controls");
                 }
@@ -82,7 +83,7 @@ ColumnLayout {
     }
 
     ToggleRow {
-        visible: root.flatpak
+        visible: root.flatpak && root.status.permissionsManageable !== false
         text: qsTr("Network access")
         subtext: qsTr("Flatpak network share override")
         checked: root.networkAllowed
@@ -94,7 +95,7 @@ ColumnLayout {
     }
 
     ToggleRow {
-        visible: root.flatpak
+        visible: root.flatpak && root.status.permissionsManageable !== false
         text: qsTr("Home folder access")
         subtext: qsTr("Flatpak home filesystem override")
         checked: root.homeAllowed
@@ -106,7 +107,7 @@ ColumnLayout {
     }
 
     RowButton {
-        visible: root.flatpak
+        visible: root.flatpak && root.status.permissionsManageable !== false
         icon: "restart_alt"
         text: qsTr("Reset Flatpak overrides")
         subtext: qsTr("return this app to its packaged permissions")
@@ -124,7 +125,7 @@ ColumnLayout {
     InfoRow {
         icon: "timer"
         label: qsTr("Foreground time today")
-        subtext: qsTr("local Hyprland activity sample")
+        subtext: qsTr("local only · paused while idle or locked")
         value: root.duration(root.status.todaySeconds)
     }
 
@@ -135,7 +136,7 @@ ColumnLayout {
     RowButton {
         icon: "auto_awesome"
         text: qsTr("Queue adaptive icon")
-        subtext: qsTr("hand this app icon to the Vesper AI icon workflow for review")
+        subtext: qsTr("hand this app icon to the reviewed Vesper AI icon workflow")
         disabled: !root.app || iconRequest.running
         onClicked: {
             iconRequest.command = ["@vesperControl@", "icon", "request", root.app.id, root.app.icon || ""];
