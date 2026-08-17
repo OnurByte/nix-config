@@ -41,6 +41,7 @@ jobs:
             home/yargc/packages/hermes_research_collectors.py \
             home/yargc/packages/hermes_tasks_daily.py \
             home/yargc/packages/hermes_tasks_weekly.py \
+            home/yargc/packages/hermes_tasks_maintenance.py \
             home/yargc/packages/hermes_automation_tasks.py \
             home/yargc/packages/hermes-automations.py
 
