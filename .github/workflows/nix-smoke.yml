@@ -42,11 +42,14 @@ jobs:
             home/yargc/packages/hermes_research_intake.py \
             home/yargc/packages/hermes_research_web.py \
             home/yargc/packages/hermes_research_link_registry.py \
+            home/yargc/packages/hermes_research_adhoc.py \
             home/yargc/packages/hermes_tasks_daily.py \
             home/yargc/packages/hermes_tasks_weekly.py \
             home/yargc/packages/hermes_automation_tasks.py \
             home/yargc/packages/hermes-automations.py \
-            home/yargc/packages/test_hermes_automations.py
+            home/yargc/packages/hermes-research-cli.py \
+            home/yargc/packages/test_hermes_automations.py \
+            home/yargc/packages/test_hermes_research_adhoc.py
 
       - name: Test Hermes automation contracts
         shell: bash
@@ -57,13 +60,12 @@ jobs:
           VESPER_HERMES_JOB_REGISTRY="$registry" \
             python3 -m unittest discover \
               -s home/yargc/packages \
-              -p 'test_hermes_automations.py' \
+              -p 'test_hermes*.py' \
               -v
 
       - name: Parse Hyprland Lua
         shell: bash
         run: |
-          set -euo pipefail
           nix shell nixpkgs#lua -c bash -c '
             for file in home/yargc/hypr/*.lua; do
               echo "parsing $file"

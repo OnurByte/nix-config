@@ -13,6 +13,14 @@ let
   hermesAutomations = pkgs.callPackage ./packages/hermes-automations.nix {
     inherit hermesAgent;
   };
+  hermesResearch = pkgs.callPackage ./packages/hermes-research-cli.nix {
+    inherit hermesAgent;
+  };
+
+  researchEnv = ''
+    export VESPER_REDDIT_SEEDS="opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev"
+    export VESPER_REDDIT_COMMENT_SEEDS="MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec"
+  '';
 
   # Hermes resolves cron script paths before enforcing containment under
   # ~/.hermes/scripts. Home Manager home.file entries are symlinks into the
@@ -23,6 +31,7 @@ let
     name: _spec:
     pkgs.writeShellScript "vesper-hermes-${name}" ''
       set -euo pipefail
+      ${researchEnv}
       exec ${hermesAutomations}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
     ''
   ) jobs;
@@ -46,9 +55,18 @@ in
   home.packages = [
     hermesRuntime
     hermesAutomations
+    hermesResearch
   ];
 
-  home.sessionVariables.VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
+  home.sessionVariables = {
+    VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
+
+    # `r/opsec` is a high-signal discovery/comment seed without making it an
+    # immortal source. The existing defaults are repeated because these env
+    # variables intentionally replace, rather than append to, Python defaults.
+    VESPER_REDDIT_SEEDS = "opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev";
+    VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
+  };
 
   home.file.".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
 
