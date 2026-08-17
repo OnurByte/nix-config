@@ -17,6 +17,8 @@ HERMES_HOME = Path(os.environ.get("HERMES_HOME", "~/.hermes")).expanduser()
 MODEL = os.environ.get("HERMES_RESEARCH_MODEL", "grok-4.5")
 PROVIDER = os.environ.get("HERMES_RESEARCH_PROVIDER", "xai-oauth")
 RUN_TIMEOUT = int(os.environ.get("VESPER_HERMES_RUN_TIMEOUT", "1800"))
+RESEARCH_SKILL = "hermes-research-radar"
+SECOND_BRAIN_SKILLS = ["obsidian", "vesper-obsidian-second-brain"]
 
 
 def now() -> datetime:
@@ -91,10 +93,20 @@ def extract_json_relaxed(text: str) -> Any:
     return None
 
 
-def _invoke(prompt: str, *, web_only: bool, timeout: int) -> subprocess.CompletedProcess[str]:
+def _invoke(
+    prompt: str,
+    *,
+    web_only: bool = False,
+    toolsets: list[str] | None = None,
+    skills: list[str] | None = None,
+    timeout: int,
+) -> subprocess.CompletedProcess[str]:
     command = [hermes_bin(), "-z", prompt, "--provider", PROVIDER, "-m", MODEL, "--yolo"]
-    if web_only:
-        command.extend(["-t", "web"])
+    selected_toolsets = toolsets if toolsets is not None else (["web"] if web_only else None)
+    if selected_toolsets:
+        command.extend(["--toolsets", ",".join(dict.fromkeys(selected_toolsets))])
+    if skills:
+        command.extend(["--skills", ",".join(dict.fromkeys(skills))])
     completed = subprocess.run(command, text=True, capture_output=True, timeout=timeout, check=False)
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout)[-8000:]
@@ -102,13 +114,39 @@ def _invoke(prompt: str, *, web_only: bool, timeout: int) -> subprocess.Complete
     return completed
 
 
-def invoke_json(prompt: str, *, web_only: bool, timeout: int = RUN_TIMEOUT) -> dict[str, Any]:
-    completed = _invoke(prompt, web_only=web_only, timeout=timeout)
+def invoke_json(
+    prompt: str,
+    *,
+    web_only: bool = False,
+    toolsets: list[str] | None = None,
+    skills: list[str] | None = None,
+    timeout: int = RUN_TIMEOUT,
+) -> dict[str, Any]:
+    completed = _invoke(
+        prompt,
+        web_only=web_only,
+        toolsets=toolsets,
+        skills=skills,
+        timeout=timeout,
+    )
     return extract_object((completed.stdout or "") + "\n" + (completed.stderr or ""))
 
 
-def invoke_text(prompt: str, *, web_only: bool, timeout: int = RUN_TIMEOUT) -> str:
-    completed = _invoke(prompt, web_only=web_only, timeout=timeout)
+def invoke_text(
+    prompt: str,
+    *,
+    web_only: bool = False,
+    toolsets: list[str] | None = None,
+    skills: list[str] | None = None,
+    timeout: int = RUN_TIMEOUT,
+) -> str:
+    completed = _invoke(
+        prompt,
+        web_only=web_only,
+        toolsets=toolsets,
+        skills=skills,
+        timeout=timeout,
+    )
     text = (completed.stdout or "").strip()
     if not text:
         raise RuntimeError("Hermes returned an empty response")
