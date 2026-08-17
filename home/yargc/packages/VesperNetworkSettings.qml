@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
+import qs.services
 import qs.modules.nexus.common
 
 ColumnLayout {
@@ -82,6 +83,7 @@ ColumnLayout {
         text: qsTr("Airplane mode")
         subtext: qsTr("turn Wi-Fi and Bluetooth radios off together")
         checked: root.net.airplane
+        disabled: airplane.running
         onToggled: {
             airplane.command = ["@vesperControl@", "network", "airplane", checked ? "on" : "off"];
             airplane.running = true;
