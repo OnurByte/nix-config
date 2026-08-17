@@ -43,6 +43,20 @@ jobs:
             echo "Legacy Hub naming is forbidden; the product surface and backend are AI" >&2
             exit 1
           fi
+          if find .github/workflows -maxdepth 1 -type f -name 'one-shot-*' -print -quit | grep -q .; then
+            echo "One-shot migration workflows must not remain in the production tree" >&2
+            exit 1
+          fi
+
+      - name: Check private local-state contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'root, fs::Permissions::from_mode(0o700)' home/yargc/packages/vesper-control.rs >/dev/null
+          grep -F 'path, fs::Permissions::from_mode(0o600)' home/yargc/packages/vesper-control.rs >/dev/null
+          grep -F 'OpenOptionsExt, PermissionsExt' home/yargc/packages/ai.rs >/dev/null
+          grep -F 'mode(0o600)' home/yargc/packages/ai.rs >/dev/null
+          grep -F 'from_mode(0o700)' home/yargc/packages/ai.rs >/dev/null
 
       - name: Compile and exercise Vesper control plane
         shell: bash
