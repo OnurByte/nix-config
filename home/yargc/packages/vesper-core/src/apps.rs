@@ -29,20 +29,34 @@ const PERMISSIONS: &[PermissionDef] = &[
     PermissionDef { id: "audio", label: "PulseAudio", key: "sockets", item: "pulseaudio", kind: PermissionKind::Socket },
     PermissionDef { id: "printing", label: "CUPS printing", key: "sockets", item: "cups", kind: PermissionKind::Socket },
     PermissionDef { id: "ssh-auth", label: "SSH agent", key: "sockets", item: "ssh-auth", kind: PermissionKind::Socket },
+    PermissionDef { id: "gpg-agent", label: "GPG agent", key: "sockets", item: "gpg-agent", kind: PermissionKind::Socket },
     PermissionDef { id: "pcsc", label: "Smart cards", key: "sockets", item: "pcsc", kind: PermissionKind::Socket },
+    PermissionDef { id: "session-bus", label: "Full session bus", key: "sockets", item: "session-bus", kind: PermissionKind::Socket },
+    PermissionDef { id: "system-bus", label: "Full system bus", key: "sockets", item: "system-bus", kind: PermissionKind::Socket },
     PermissionDef { id: "bluetooth", label: "Bluetooth", key: "features", item: "bluetooth", kind: PermissionKind::Feature },
+    PermissionDef { id: "devel", label: "Development syscalls", key: "features", item: "devel", kind: PermissionKind::Feature },
+    PermissionDef { id: "multiarch", label: "Multiarch", key: "features", item: "multiarch", kind: PermissionKind::Feature },
     PermissionDef { id: "devices-all", label: "All devices", key: "devices", item: "all", kind: PermissionKind::Device },
     PermissionDef { id: "dri", label: "GPU / DRI", key: "devices", item: "dri", kind: PermissionKind::Device },
     PermissionDef { id: "kvm", label: "KVM", key: "devices", item: "kvm", kind: PermissionKind::Device },
     PermissionDef { id: "shm", label: "Shared memory device", key: "devices", item: "shm", kind: PermissionKind::Device },
+    PermissionDef { id: "input", label: "Input devices", key: "devices", item: "input", kind: PermissionKind::Device },
+    PermissionDef { id: "usb", label: "USB devices", key: "devices", item: "usb", kind: PermissionKind::Device },
     PermissionDef { id: "home", label: "Home folder", key: "filesystems", item: "home", kind: PermissionKind::Filesystem },
     PermissionDef { id: "host", label: "Host filesystem", key: "filesystems", item: "host", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "host-os", label: "Host OS files", key: "filesystems", item: "host-os", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "host-etc", label: "Host /etc", key: "filesystems", item: "host-etc", kind: PermissionKind::Filesystem },
     PermissionDef { id: "desktop", label: "Desktop folder", key: "filesystems", item: "xdg-desktop", kind: PermissionKind::Filesystem },
     PermissionDef { id: "documents", label: "Documents folder", key: "filesystems", item: "xdg-documents", kind: PermissionKind::Filesystem },
     PermissionDef { id: "downloads", label: "Downloads folder", key: "filesystems", item: "xdg-download", kind: PermissionKind::Filesystem },
     PermissionDef { id: "music", label: "Music folder", key: "filesystems", item: "xdg-music", kind: PermissionKind::Filesystem },
     PermissionDef { id: "pictures", label: "Pictures folder", key: "filesystems", item: "xdg-pictures", kind: PermissionKind::Filesystem },
     PermissionDef { id: "videos", label: "Videos folder", key: "filesystems", item: "xdg-videos", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "public-share", label: "Public share folder", key: "filesystems", item: "xdg-public-share", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "templates", label: "Templates folder", key: "filesystems", item: "xdg-templates", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "config", label: "User config", key: "filesystems", item: "xdg-config", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "cache", label: "User cache", key: "filesystems", item: "xdg-cache", kind: PermissionKind::Filesystem },
+    PermissionDef { id: "data", label: "User data", key: "filesystems", item: "xdg-data", kind: PermissionKind::Filesystem },
 ];
 
 fn flatpak_id(id: &str) -> &str {
@@ -215,6 +229,37 @@ pub fn set_dbus(id: &str, bus: &str, name: &str, access: &str) -> Result<(), Str
     output("flatpak", &["override", "--user", &flag, id]).map(|_| ())
 }
 
+fn valid_env_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value
+            .chars()
+            .enumerate()
+            .all(|(index, ch)| (ch == '_' || ch.is_ascii_alphanumeric()) && (index > 0 || ch == '_' || ch.is_ascii_alphabetic()))
+}
+
+fn valid_env_value(value: &str) -> bool {
+    value.len() <= 8192 && !value.chars().any(|ch| matches!(ch, '\0' | '\n' | '\r'))
+}
+
+pub fn set_env(id: &str, name: &str, value: &str) -> Result<(), String> {
+    let id = ensure_flatpak(id)?;
+    if !valid_env_name(name) || !valid_env_value(value) {
+        return Err("invalid Flatpak environment override".to_string());
+    }
+    let flag = format!("--env={name}={value}");
+    output("flatpak", &["override", "--user", &flag, id]).map(|_| ())
+}
+
+pub fn unset_env(id: &str, name: &str) -> Result<(), String> {
+    let id = ensure_flatpak(id)?;
+    if !valid_env_name(name) {
+        return Err("invalid Flatpak environment variable name".to_string());
+    }
+    let flag = format!("--unset-env={name}");
+    output("flatpak", &["override", "--user", &flag, id]).map(|_| ())
+}
+
 pub fn reset_all(id: &str) -> Result<(), String> {
     let id = ensure_flatpak(id)?;
     output("flatpak", &["override", "--user", "--reset", id]).map(|_| ())
@@ -240,5 +285,14 @@ mod tests {
         assert!(valid_filesystem("~/Projects"));
         assert!(valid_filesystem("xdg-download/project"));
         assert!(!valid_filesystem("relative/path"));
+    }
+
+    #[test]
+    fn validates_environment_overrides_without_shell_parsing() {
+        assert!(valid_env_name("MY_APP_MODE"));
+        assert!(!valid_env_name("1BAD"));
+        assert!(!valid_env_name("BAD-NAME"));
+        assert!(valid_env_value("value with spaces; stays one argv"));
+        assert!(!valid_env_value("line1\nline2"));
     }
 }
