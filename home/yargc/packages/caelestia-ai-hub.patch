@@ -181,7 +181,7 @@
  
      ColumnLayout {
          anchors.horizontalCenter: parent.horizontalCenter
-@@ -173,24 +173,10 @@ PageBase {
+@@ -173,23 +173,9 @@ PageBase {
              checked: Config.background.wallpaperEnabled
              onToggled: GlobalConfig.background.wallpaperEnabled = checked
          }
