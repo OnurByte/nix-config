@@ -60,40 +60,7 @@ jobs:
             export XDG_STATE_HOME="$HOME/.local/state"
             export VESPER_FAKE_SECRET_DIR="$TMPDIR/vesper-fake-secret"
             mkdir -p "$HOME" "$VESPER_FAKE_SECRET_DIR"
-
-            cat > /tmp/secret-tool <<"EOF"
-#!/usr/bin/env bash
-set -euo pipefail
-root="${VESPER_FAKE_SECRET_DIR:?}"
-command="$1"
-shift
-key=""
-if [[ "$command" == "store" && "${1:-}" == --label=* ]]; then
-  shift
-fi
-if [[ "${1:-}" == "service" && "${2:-}" == "vesper-ai" && "${3:-}" == "provider" ]]; then
-  key="default-${4:-}"
-elif [[ "${1:-}" == "service" && "${2:-}" == "vesper-ai" && "${3:-}" == "credential" && "${5:-}" == "provider" ]]; then
-  key="alias-${4:-}-${6:-}"
-else
-  exit 2
-fi
-case "$command" in
-  store)
-    cat > "$root/$key"
-    ;;
-  lookup)
-    [[ -f "$root/$key" ]]
-    cat "$root/$key"
-    ;;
-  clear)
-    rm -f "$root/$key"
-    ;;
-  *)
-    exit 2
-    ;;
-esac
-EOF
+            cp .github/scripts/fake-secret-tool /tmp/secret-tool
             chmod +x /tmp/secret-tool
             export PATH="/tmp:$PATH"
 
