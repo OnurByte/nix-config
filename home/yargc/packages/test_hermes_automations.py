@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import sys
 import unittest
@@ -16,8 +17,11 @@ import hermes_research_intake as research_intake
 from hermes_research_intake import (
     CENTRAL_REDDIT_ANCHORS,
     CENTRAL_X_ANCHORS,
+    IGNORED_REDDIT_SOURCES,
     _canonical_reddit_url,
     _canonical_x_url,
+    _pool_quotas,
+    _select_candidate_pools,
 )
 from hermes_tasks_daily import (
     FRONTIER_CANDIDATE_BUDGET,
@@ -34,10 +38,7 @@ class HermesAutomationContractTests(unittest.TestCase):
         cls.registry = load_registry()
 
     def test_registry_contract(self) -> None:
-        self.assertEqual(
-            [],
-            validate_registry(self.registry, task_names=TASKS, watchdog_names=WATCHDOG_TASKS),
-        )
+        self.assertEqual([], validate_registry(self.registry, task_names=TASKS, watchdog_names=WATCHDOG_TASKS))
 
     def test_expected_capabilities_are_declared(self) -> None:
         expected = {
@@ -75,24 +76,15 @@ class HermesAutomationContractTests(unittest.TestCase):
             self.assertGreater(FRONTIER_CANDIDATE_BUDGET[source], 0)
             self.assertGreater(FRONTIER_DEEP_READ_BUDGET[source], 0)
 
-    def test_central_sources_are_protected_by_contract(self) -> None:
-        self.assertIn("MoneroMeansMoney", CENTRAL_REDDIT_ANCHORS)
-        self.assertIn("Monero", CENTRAL_REDDIT_ANCHORS)
-        self.assertIn("LocalLLaMA", CENTRAL_REDDIT_ANCHORS)
-        for account in (
-            "Teknium",
-            "thdxr",
-            "XOpenSource",
-            "eigenwallet",
-            "SimpleXChat",
-            "akaclandestine",
-            "DailyDarkWeb",
-        ):
+    def test_interest_profile_and_central_sources(self) -> None:
+        for subreddit in ("MoneroMeansMoney", "Monero", "vibecoding", "ClaudeCode", "codex", "opencodeCLI", "cursor"):
+            self.assertIn(subreddit, CENTRAL_REDDIT_ANCHORS)
+        self.assertNotIn("LocalLLaMA", CENTRAL_REDDIT_ANCHORS)
+        self.assertIn("LocalLLaMA", IGNORED_REDDIT_SOURCES)
+        for account in ("Teknium", "thdxr", "XOpenSource", "eigenwallet", "SimpleXChat", "akaclandestine", "DailyDarkWeb"):
             self.assertIn(account, CENTRAL_X_ANCHORS)
-        self.assertGreaterEqual(len(CENTRAL_REDDIT_ANCHORS), 6)
-        self.assertGreaterEqual(len(CENTRAL_X_ANCHORS), 12)
 
-    def test_source_registry_learns_without_demoting_anchors(self) -> None:
+    def test_source_registry_learns_only_from_useful_evidence(self) -> None:
         previous_path = research_intake.SOURCE_REGISTRY_PATH
         with tempfile.TemporaryDirectory() as tmp:
             research_intake.SOURCE_REGISTRY_PATH = Path(tmp) / "source-registry.json"
@@ -101,36 +93,108 @@ class HermesAutomationContractTests(unittest.TestCase):
                 anchor = initial["sources"]["reddit:moneromeansmoney"]
                 self.assertTrue(anchor["protected"])
                 self.assertEqual("anchor", anchor["tier"])
+                self.assertNotIn("reddit:localllama", initial["sources"])
 
-                report = {
-                    "candidates": [
-                        {
-                            "title": "useful candidate",
-                            "urls": ["https://x.com/newbuilder/status/123"],
-                        }
-                    ],
+                hint_only = {
+                    "candidates": [],
+                    "sources": [],
+                    "statePatch": {"candidateSources": ["@newbuilder"]},
+                }
+                research_intake.reinforce_source_registry("x", hint_only)
+                hinted = research_intake.load_source_registry()["sources"]["x:newbuilder"]
+                self.assertEqual("probation", hinted["tier"])
+                self.assertEqual(0, hinted["hits"])
+
+                useful = {
+                    "candidates": [{"title": "useful candidate", "urls": ["https://x.com/newbuilder/status/123"]}],
                     "sources": [],
                     "statePatch": {},
                 }
-                research_intake.reinforce_source_registry("x", report)
-                research_intake.reinforce_source_registry("x", report)
+                research_intake.reinforce_source_registry("x", useful)
+                research_intake.reinforce_source_registry("x", useful)
                 learned = research_intake.load_source_registry()["sources"]["x:newbuilder"]
                 self.assertEqual("trusted", learned["tier"])
                 self.assertEqual(2, learned["hits"])
 
-                research_intake.reinforce_source_registry("x", report)
-                research_intake.reinforce_source_registry("x", report)
+                research_intake.reinforce_source_registry("x", useful)
+                research_intake.reinforce_source_registry("x", useful)
                 promoted = research_intake.load_source_registry()["sources"]["x:newbuilder"]
                 self.assertEqual("promoted", promoted["tier"])
                 self.assertEqual(4, promoted["hits"])
 
-                anchor_after = research_intake.load_source_registry()["sources"]["reddit:moneromeansmoney"]
+                research_intake.discover_source("reddit", "LocalLLaMA", origin="test")
+                after_ignore = research_intake.load_source_registry()
+                self.assertNotIn("reddit:localllama", after_ignore["sources"])
+                anchor_after = after_ignore["sources"]["reddit:moneromeansmoney"]
                 self.assertTrue(anchor_after["protected"])
                 self.assertEqual("anchor", anchor_after["tier"])
             finally:
                 research_intake.SOURCE_REGISTRY_PATH = previous_path
 
-    def test_research_skill_references_exist(self) -> None:
+    def test_old_localllama_anchor_is_retired_on_registry_migration(self) -> None:
+        previous_path = research_intake.SOURCE_REGISTRY_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "source-registry.json"
+            path.write_text(json.dumps({
+                "version": 1,
+                "updatedAt": "",
+                "sources": {
+                    "reddit:localllama": {
+                        "kind": "reddit",
+                        "name": "LocalLLaMA",
+                        "tier": "anchor",
+                        "protected": True,
+                        "score": 10.0,
+                        "hits": 3,
+                        "failures": 0,
+                        "firstSeen": "2026-01-01T00:00:00+00:00",
+                        "lastSeen": "2026-01-01T00:00:00+00:00",
+                        "lastUseful": "2026-01-01T00:00:00+00:00",
+                        "origin": "central-config"
+                    }
+                }
+            }))
+            research_intake.SOURCE_REGISTRY_PATH = path
+            try:
+                migrated = research_intake.load_source_registry()["sources"]["reddit:localllama"]
+                self.assertFalse(migrated["protected"])
+                self.assertEqual("retired", migrated["tier"])
+                self.assertEqual("user-excluded", migrated["retiredReason"])
+            finally:
+                research_intake.SOURCE_REGISTRY_PATH = previous_path
+
+    def test_candidate_pool_budget_preserves_exploration(self) -> None:
+        quotas = _pool_quotas(100)
+        self.assertEqual(100, sum(quotas.values()))
+        self.assertGreater(quotas["anchor"], quotas["explore"])
+        self.assertGreater(quotas["dynamic"], 0)
+        self.assertGreater(quotas["explore"], 0)
+
+        def item(pool: str, source: str, index: int) -> dict[str, str]:
+            return {
+                "url": f"https://example.com/{pool}/{source}/{index}",
+                "sourceName": source,
+            }
+
+        pools = {
+            "anchor": [item("anchor", "huge-anchor", i) for i in range(200)] + [item("anchor", "other-anchor", i) for i in range(10)],
+            "dynamic": [item("dynamic", "learned", i) for i in range(80)],
+            "explore": [item("explore", f"query-{i % 5}", i) for i in range(80)],
+        }
+        selected, budget = _select_candidate_pools(
+            pools,
+            100,
+            canonicalizer=lambda value: value,
+            key_fields=("sourceName",),
+        )
+        self.assertEqual(100, len(selected))
+        self.assertGreater(budget["selected"]["dynamic"], 0)
+        self.assertGreater(budget["selected"]["explore"], 0)
+        first_anchor_names = [item["sourceName"] for item in selected if item.get("budgetPool") == "anchor"][:4]
+        self.assertIn("huge-anchor", first_anchor_names)
+        self.assertIn("other-anchor", first_anchor_names)
+
+    def test_research_skill_references_and_evals_exist(self) -> None:
         skill = HERE.parent / "skills" / "hermes-research-radar"
         expected = {
             skill / "SKILL.md",
@@ -139,17 +203,22 @@ class HermesAutomationContractTests(unittest.TestCase):
             skill / "references" / "central-sources.md",
             skill / "references" / "reddit-rss.md",
             skill / "references" / "x-research.md",
+            skill / "references" / "research-evolution.md",
+            skill / "evals" / "evals.json",
         }
         self.assertTrue(all(path.is_file() for path in expected))
         skill_text = (skill / "SKILL.md").read_text(errors="replace")
         self.assertIn("200-1000", skill_text)
-        self.assertIn("protected central anchors", skill_text)
+        self.assertIn("vibe coding", skill_text.lower())
+        self.assertIn("Monero", skill_text)
         central_text = (skill / "references" / "central-sources.md").read_text(errors="replace")
         self.assertIn("MoneroMeansMoney", central_text)
-        self.assertIn("@Teknium", central_text)
-        self.assertIn("probation -> trusted -> promoted", central_text)
-        self.assertIn("X / Twitter", (skill / "references" / "x-research.md").read_text(errors="replace"))
-        self.assertIn("RSS", (skill / "references" / "reddit-rss.md").read_text(errors="replace"))
+        self.assertIn("r/vibecoding", central_text)
+        self.assertIn("r/LocalLLaMA", central_text)
+        self.assertIn("explicitly excluded", central_text)
+        evals = json.loads((skill / "evals" / "evals.json").read_text())
+        self.assertEqual("hermes-research-radar", evals["skill_name"])
+        self.assertGreaterEqual(len(evals["evals"]), 7)
 
     def test_social_mirror_urls_are_canonicalized(self) -> None:
         expected = "https://x.com/example/status/123456"
@@ -181,10 +250,7 @@ class HermesAutomationContractTests(unittest.TestCase):
         ]
         values = [minute_of_day(name) for name in order]
         self.assertEqual(values, sorted(values))
-        self.assertGreaterEqual(
-            minute_of_day("unknown-frontier-synthesis") - minute_of_day("unknown-frontier-x"),
-            20,
-        )
+        self.assertGreaterEqual(minute_of_day("unknown-frontier-synthesis") - minute_of_day("unknown-frontier-x"), 20)
 
     def test_all_cron_jobs_are_script_only_at_hermes_layer(self) -> None:
         script = Path("/home/test/.hermes/scripts/vesper-test.sh")

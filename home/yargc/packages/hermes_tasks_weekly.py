@@ -69,28 +69,56 @@ def project_archaeologist() -> dict[str, Any]:
     return write_report(invoke_json(research_prompt("project-archaeologist", objective, _project_snapshot()), web_only=False), "project-archaeologist")
 
 
+def _append_context(chunks: list[str], path: Path, label: str, *, max_chars: int = 18000) -> int:
+    if not path.is_file():
+        return 0
+    try:
+        text = path.read_text(errors="replace")[:max_chars]
+    except OSError:
+        return 0
+    chunk = f"\n--- {label}: {path} ---\n{text}\n"
+    chunks.append(chunk)
+    return len(chunk)
+
+
 def _skill_review_context() -> str:
     chunks: list[str] = []
     used = 0
+
+    active = Path.home() / ".agents" / "skills" / "hermes-research-radar"
+    for relative, label, limit in (
+        ("SKILL.md", "active research skill", 24000),
+        ("references/research-evolution.md", "research evolution policy", 20000),
+        ("references/central-sources.md", "central source policy", 18000),
+        ("evals/evals.json", "research skill eval set", 30000),
+    ):
+        used += _append_context(chunks, active / relative, label, max_chars=limit)
+
+    source_registry = STATE_ROOT / "unknown-frontier-ai" / "source-registry.json"
+    used += _append_context(chunks, source_registry, "adaptive source registry", max_chars=28000)
+
+    runs_root = STATE_ROOT / "runs"
+    if runs_root.is_dir():
+        for task in ("unknown-frontier-github", "unknown-frontier-reddit", "unknown-frontier-x", "unknown-frontier-synthesis"):
+            used += _append_context(chunks, runs_root / task / "latest.json", f"latest run {task}", max_chars=6000)
+
     if SKILL_DRAFT_ROOT.exists():
         for path in sorted(SKILL_DRAFT_ROOT.rglob("*")):
             if path.is_file() and path.stat().st_size <= 100000:
-                chunk = f"\n--- draft {path} ---\n{path.read_text(errors='replace')[:15000]}\n"
-                chunks.append(chunk)
-                used += len(chunk)
-                if used > 70000:
+                used += _append_context(chunks, path, "skill draft", max_chars=15000)
+                if used > 125000:
                     break
-    for path in sorted(STATE_ROOT.glob("*/heuristics.json")):
-        chunk = f"\n--- heuristics {path.parent.name} ---\n{path.read_text(errors='replace')[:12000]}\n"
-        chunks.append(chunk)
-        used += len(chunk)
-        if used > 100000:
-            break
-    return "".join(chunks)[:100000]
+
+    if used <= 125000:
+        for path in sorted(STATE_ROOT.glob("*/heuristics.json")):
+            used += _append_context(chunks, path, f"heuristics {path.parent.name}", max_chars=12000)
+            if used > 145000:
+                break
+    return "".join(chunks)[:150000]
 
 
 def skill_evolution_review() -> dict[str, Any]:
-    objective = "Review candidate skill drafts and accumulated research heuristics. Decide which procedures have repeated evidence and should be promoted, which should keep being tested, which overlap and should merge, which need narrower scope, and which should be retired. Never edit active skills automatically. Output an evidence-backed review queue."
+    objective = "Review Vesper's active research skill, its representative eval set, source-registry behavior, accumulated heuristics and skill drafts using an eval-first skill-creator mindset. Distinguish reversible runtime policy changes from Nix-owned active skill changes. For each candidate procedure decide promote, keep-testing, merge, narrow-scope, retire or rollback. Require repeated evidence and representative with-skill-vs-current/baseline evaluation before recommending an active skill promotion. Evaluate relevance, primary-source verification, duplicate/familiar rate, source diversity, anchor/dynamic/explore balance, access-failure reporting and token/time cost when measured. CandidateSources mentions alone are not proof of source usefulness. Never edit the active skill automatically; output a concrete evidence-backed review queue and any missing eval cases."
     return write_report(invoke_json(research_prompt("skill-evolution-review", objective, _skill_review_context()), web_only=False), "skill-evolution-review")
 
 

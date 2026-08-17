@@ -8,9 +8,10 @@ import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from hermes_automation_common import STATE_ROOT, atomic_json, load_json, now
 
@@ -21,19 +22,27 @@ USER_AGENT = os.environ.get(
 FETCH_TIMEOUT = max(3, int(os.environ.get("VESPER_RESEARCH_FETCH_TIMEOUT", "10")))
 MAX_RESPONSE_BYTES = max(256_000, int(os.environ.get("VESPER_RESEARCH_MAX_RESPONSE_BYTES", "2500000")))
 
+# Protected defaults are durable anchors, not an allowlist. Runtime env vars may
+# replace them; load_source_registry() reconciles protection against that set.
 CENTRAL_REDDIT_ANCHORS = (
     "MoneroMeansMoney",
     "Monero",
-    "LocalLLaMA",
+    "vibecoding",
+    "ClaudeCode",
+    "codex",
+    "opencodeCLI",
+    "cursor",
     "privacy",
     "NixOS",
-    "selfhosted",
     "Tor",
     "netsec",
 )
 
+# Explicit negative preference: do not let source discovery re-promote these.
+IGNORED_REDDIT_SOURCES = ("LocalLLaMA",)
+
 DEFAULT_REDDIT_SEEDS = (
-    "MachineLearning",
+    "selfhosted",
     "programming",
     "opensource",
     "linux",
@@ -46,8 +55,10 @@ DEFAULT_REDDIT_SEEDS = (
 DEFAULT_REDDIT_COMMENT_ANCHORS = (
     "MoneroMeansMoney",
     "Monero",
-    "LocalLLaMA",
-    "privacy",
+    "vibecoding",
+    "ClaudeCode",
+    "codex",
+    "opencodeCLI",
 )
 
 CENTRAL_X_ANCHORS = (
@@ -70,15 +81,21 @@ CENTRAL_X_ANCHORS = (
 )
 
 DEFAULT_X_QUERIES = (
-    '"AI agent" code',
-    '"coding agent"',
-    '"agent harness"',
-    '"LLM inference" open source',
-    '"open source AI" tool',
-    '"NixOS" AI',
-    'privacy AI developer',
-    'Monero privacy tool',
-    'Tor privacy research',
+    '"coding agent" workflow',
+    '"vibe coding" workflow',
+    '"agent harness" coding',
+    '"Claude Code" skill',
+    '"Codex CLI" agent',
+    '"OpenCode" agent',
+    '"SKILL.md" coding agent',
+    '"AGENTS.md" coding agent',
+    '"MCP" coding agent',
+    '"context engineering" coding agent',
+    '"Monero" privacy tool',
+    '"Monero" atomic swap',
+    '"Cuprate" Monero',
+    '"Tor" privacy research',
+    '"NixOS" agent workflow',
 )
 
 DEFAULT_X_MIRRORS = (
@@ -87,7 +104,8 @@ DEFAULT_X_MIRRORS = (
 )
 
 SOURCE_REGISTRY_PATH = STATE_ROOT / "unknown-frontier-ai" / "source-registry.json"
-TIER_PRIORITY = {"promoted": 3, "trusted": 2, "probation": 1}
+TIER_PRIORITY = {"promoted": 4, "trusted": 3, "probation": 2, "retired": 0}
+SOURCE_BUDGET_RATIOS = {"anchor": 0.45, "dynamic": 0.30, "explore": 0.25}
 
 
 def _csv_env(name: str, default: tuple[str, ...]) -> list[str]:
@@ -107,13 +125,92 @@ def _clean_x_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "", value.strip().lstrip("@"))[:15]
 
 
+def _ignored_reddit_names() -> set[str]:
+    return {
+        _clean_reddit_name(item).lower()
+        for item in _csv_env("VESPER_REDDIT_IGNORED", IGNORED_REDDIT_SOURCES)
+        if _clean_reddit_name(item)
+    }
+
+
 def _source_key(kind: str, name: str) -> str:
     clean = _clean_reddit_name(name) if kind == "reddit" else _clean_x_name(name)
     return f"{kind}:{clean.lower()}"
 
 
+def _configured_anchors(kind: str) -> list[str]:
+    if kind == "reddit":
+        ignored = _ignored_reddit_names()
+        return [
+            clean
+            for item in _csv_env("VESPER_REDDIT_ANCHORS", CENTRAL_REDDIT_ANCHORS)
+            if (clean := _clean_reddit_name(item)) and clean.lower() not in ignored
+        ]
+    if kind == "x":
+        return [
+            clean
+            for item in _csv_env("VESPER_X_ANCHORS", CENTRAL_X_ANCHORS)
+            if (clean := _clean_x_name(item))
+        ]
+    return []
+
+
 def _empty_registry() -> dict[str, Any]:
-    return {"version": 1, "updatedAt": "", "sources": {}}
+    return {"version": 2, "updatedAt": "", "sources": {}}
+
+
+def _parse_time(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.astimezone()
+    return parsed
+
+
+def _apply_lifecycle(entry: dict[str, Any], stamp: datetime) -> bool:
+    if entry.get("retiredReason") == "user-excluded":
+        changed = entry.get("tier") != "retired" or entry.get("protected") is not False or float(entry.get("score") or 0.0) != 0.0
+        entry["tier"] = "retired"
+        entry["protected"] = False
+        entry["score"] = 0.0
+        return changed
+
+    if entry.get("protected"):
+        if entry.get("tier") != "anchor":
+            entry["tier"] = "anchor"
+            return True
+        return False
+
+    changed = False
+    tier = str(entry.get("tier") or "probation")
+    hits = max(0, int(entry.get("hits") or 0))
+    failures = max(0, int(entry.get("failures") or 0))
+    last_useful = _parse_time(entry.get("lastUseful"))
+    age_days = max(0, (stamp - last_useful).days) if last_useful is not None else None
+
+    desired = tier
+    if hits >= 4 and (age_days is None or age_days <= 45):
+        desired = "promoted"
+    elif hits >= 2 and (age_days is None or age_days <= 60):
+        desired = "trusted"
+    elif tier != "retired":
+        desired = "probation"
+
+    if hits == 0 and failures >= 8:
+        desired = "retired"
+        entry["retiredReason"] = "repeated-fetch-failure"
+    elif age_days is not None and age_days >= 120:
+        desired = "retired"
+        entry["retiredReason"] = "stale-no-recent-use"
+
+    if desired != tier:
+        entry["tier"] = desired
+        changed = True
+    return changed
 
 
 def load_source_registry() -> dict[str, Any]:
@@ -125,37 +222,66 @@ def load_source_registry() -> dict[str, Any]:
         sources = {}
         value["sources"] = sources
 
+    stamp_dt = now()
+    stamp = stamp_dt.isoformat(timespec="seconds")
+    current_anchor_keys: set[str] = set()
     changed = False
-    stamp = now().isoformat(timespec="seconds")
-    for kind, anchors in (("reddit", CENTRAL_REDDIT_ANCHORS), ("x", CENTRAL_X_ANCHORS)):
-        for raw_name in anchors:
-            name = _clean_reddit_name(raw_name) if kind == "reddit" else _clean_x_name(raw_name)
+
+    for kind in ("reddit", "x"):
+        for name in _configured_anchors(kind):
             key = _source_key(kind, name)
+            current_anchor_keys.add(key)
             entry = sources.get(key)
             if not isinstance(entry, dict):
-                entry = {
+                sources[key] = {
                     "kind": kind,
                     "name": name,
                     "tier": "anchor",
                     "protected": True,
                     "score": 10.0,
                     "hits": 0,
+                    "observations": 0,
                     "failures": 0,
                     "firstSeen": stamp,
                     "lastSeen": stamp,
                     "lastUseful": "",
                     "origin": "central-config",
                 }
-                sources[key] = entry
                 changed = True
-            else:
-                if entry.get("tier") != "anchor" or entry.get("protected") is not True:
-                    entry["tier"] = "anchor"
-                    entry["protected"] = True
-                    changed = True
-                entry["kind"] = kind
-                entry["name"] = name
-                entry["score"] = max(10.0, float(entry.get("score") or 0.0))
+                continue
+            entry["kind"] = kind
+            entry["name"] = name
+            if entry.get("tier") != "anchor" or entry.get("protected") is not True:
+                entry["tier"] = "anchor"
+                entry["protected"] = True
+                changed = True
+            if float(entry.get("score") or 0.0) < 10.0:
+                entry["score"] = 10.0
+                changed = True
+
+    ignored_reddit = _ignored_reddit_names()
+    for key, entry in list(sources.items()):
+        if not isinstance(entry, dict):
+            continue
+        removed_anchor = (
+            entry.get("protected")
+            and entry.get("origin") == "central-config"
+            and key not in current_anchor_keys
+        )
+        explicitly_ignored = (
+            entry.get("kind") == "reddit"
+            and str(entry.get("name") or "").lower() in ignored_reddit
+        )
+        if removed_anchor or explicitly_ignored:
+            entry["protected"] = False
+            entry["tier"] = "retired"
+            entry["score"] = 0.0
+            entry["retiredReason"] = "user-excluded" if explicitly_ignored else "removed-from-central-config"
+            changed = True
+        if _apply_lifecycle(entry, stamp_dt):
+            changed = True
+
+    value["version"] = 2
     if changed:
         value["updatedAt"] = stamp
         atomic_json(SOURCE_REGISTRY_PATH, value)
@@ -163,6 +289,7 @@ def load_source_registry() -> dict[str, Any]:
 
 
 def _save_source_registry(value: dict[str, Any]) -> None:
+    value["version"] = 2
     value["updatedAt"] = now().isoformat(timespec="seconds")
     atomic_json(SOURCE_REGISTRY_PATH, value)
 
@@ -171,27 +298,40 @@ def discover_source(kind: str, raw_name: str, *, origin: str) -> None:
     name = _clean_reddit_name(raw_name) if kind == "reddit" else _clean_x_name(raw_name)
     if not name:
         return
+    if kind == "reddit" and name.lower() in _ignored_reddit_names():
+        return
+
     registry = load_source_registry()
     sources = registry["sources"]
     key = _source_key(kind, name)
     stamp = now().isoformat(timespec="seconds")
     entry = sources.get(key)
+    is_anchor = key in {_source_key(kind, item) for item in _configured_anchors(kind)}
     if not isinstance(entry, dict):
         sources[key] = {
             "kind": kind,
             "name": name,
-            "tier": "probation",
-            "protected": False,
-            "score": 0.25,
+            "tier": "anchor" if is_anchor else "probation",
+            "protected": is_anchor,
+            "score": 10.0 if is_anchor else 0.25,
             "hits": 0,
+            "observations": 0,
             "failures": 0,
             "firstSeen": stamp,
             "lastSeen": stamp,
             "lastUseful": "",
-            "origin": origin,
+            "origin": "central-config" if is_anchor else origin,
         }
     else:
+        if entry.get("tier") == "retired" and not is_anchor:
+            entry["tier"] = "probation"
+            entry["score"] = max(0.25, min(1.0, float(entry.get("score") or 0.0)))
+            entry["retiredReason"] = ""
         entry["lastSeen"] = stamp
+        if is_anchor:
+            entry["tier"] = "anchor"
+            entry["protected"] = True
+            entry["score"] = max(10.0, float(entry.get("score") or 0.0))
         if not entry.get("origin"):
             entry["origin"] = origin
     _save_source_registry(registry)
@@ -201,35 +341,39 @@ def _note_source_fetch(kind: str, raw_name: str, *, ok: bool) -> None:
     name = _clean_reddit_name(raw_name) if kind == "reddit" else _clean_x_name(raw_name)
     if not name:
         return
+    if kind == "reddit" and name.lower() in _ignored_reddit_names():
+        return
+    discover_source(kind, name, origin="fetch")
     registry = load_source_registry()
-    sources = registry["sources"]
-    key = _source_key(kind, name)
-    entry = sources.get(key)
-    if not isinstance(entry, dict):
-        discover_source(kind, name, origin="fetch")
-        registry = load_source_registry()
-        sources = registry["sources"]
-        entry = sources.get(key)
+    entry = registry["sources"].get(_source_key(kind, name))
     if not isinstance(entry, dict):
         return
+    entry["observations"] = int(entry.get("observations") or 0) + 1
     entry["lastSeen"] = now().isoformat(timespec="seconds")
     if not ok:
         entry["failures"] = int(entry.get("failures") or 0) + 1
+    _apply_lifecycle(entry, now())
     _save_source_registry(registry)
 
 
 def _dynamic_sources(kind: str, limit: int) -> list[str]:
     registry = load_source_registry()
+    ignored = _ignored_reddit_names() if kind == "reddit" else set()
     entries = [
         item
         for item in registry.get("sources", {}).values()
-        if isinstance(item, dict) and item.get("kind") == kind and not item.get("protected")
+        if isinstance(item, dict)
+        and item.get("kind") == kind
+        and not item.get("protected")
+        and item.get("tier") != "retired"
+        and str(item.get("name") or "").lower() not in ignored
     ]
     entries.sort(
         key=lambda item: (
             TIER_PRIORITY.get(str(item.get("tier") or "probation"), 0),
             float(item.get("score") or 0.0),
             int(item.get("hits") or 0),
+            -int(item.get("failures") or 0),
             str(item.get("lastUseful") or item.get("lastSeen") or ""),
         ),
         reverse=True,
@@ -237,8 +381,26 @@ def _dynamic_sources(kind: str, limit: int) -> list[str]:
     return [str(item.get("name")) for item in entries[: max(0, limit)] if item.get("name")]
 
 
-def _source_names_from_report(source: str, report: dict[str, Any]) -> set[str]:
+def _names_from_urls(source: str, urls: list[str]) -> set[str]:
     names: set[str] = set()
+    if source == "reddit":
+        ignored = _ignored_reddit_names()
+        for url in urls:
+            match = re.search(r"(?:^|/)r/([A-Za-z0-9_]{2,40})(?:/|$)", urllib.parse.urlsplit(url).path, re.I)
+            if match:
+                name = _clean_reddit_name(match.group(1))
+                if name and name.lower() not in ignored:
+                    names.add(name)
+    elif source == "x":
+        for url in urls:
+            path = urllib.parse.urlsplit(url).path
+            match = re.match(r"^/([A-Za-z0-9_]{1,15})(?:/status/\d+|/?$)", path)
+            if match:
+                names.add(_clean_x_name(match.group(1)))
+    return {name for name in names if name}
+
+
+def _useful_source_names(source: str, report: dict[str, Any]) -> set[str]:
     urls: list[str] = []
     for candidate in report.get("candidates") or []:
         if not isinstance(candidate, dict):
@@ -251,41 +413,43 @@ def _source_names_from_report(source: str, report: dict[str, Any]) -> set[str]:
             urls.append(str(item["url"]))
         elif isinstance(item, str):
             urls.append(item)
+    return _names_from_urls(source, urls)
 
-    if source == "reddit":
-        for url in urls:
-            match = re.search(r"(?:^|/)r/([A-Za-z0-9_]{2,40})(?:/|$)", urllib.parse.urlsplit(url).path, re.I)
-            if match:
-                names.add(_clean_reddit_name(match.group(1)))
-    elif source == "x":
-        for url in urls:
-            path = urllib.parse.urlsplit(url).path
-            match = re.match(r"^/([A-Za-z0-9_]{1,15})(?:/status/\d+|/?$)", path)
-            if match:
-                names.add(_clean_x_name(match.group(1)))
 
+def _candidate_source_names(source: str, report: dict[str, Any]) -> set[str]:
     patch = report.get("statePatch") or {}
     candidate_sources = patch.get("candidateSources") if isinstance(patch, dict) else []
-    if isinstance(candidate_sources, list):
-        for item in candidate_sources:
-            text = item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
-            if source == "reddit":
-                for match in re.findall(r"(?:^|\s|/)r/([A-Za-z0-9_]{2,40})", text, re.I):
-                    names.add(_clean_reddit_name(match))
-            elif source == "x":
-                for match in re.findall(r"@([A-Za-z0-9_]{1,15})", text):
-                    names.add(_clean_x_name(match))
+    names: set[str] = set()
+    if not isinstance(candidate_sources, list):
+        return names
+    for item in candidate_sources:
+        text = item if isinstance(item, str) else json.dumps(item, ensure_ascii=False)
+        if source == "reddit":
+            ignored = _ignored_reddit_names()
+            for match in re.findall(r"(?:^|\s|/)r/([A-Za-z0-9_]{2,40})", text, re.I):
+                name = _clean_reddit_name(match)
+                if name and name.lower() not in ignored:
+                    names.add(name)
+        elif source == "x":
+            for match in re.findall(r"@([A-Za-z0-9_]{1,15})", text):
+                names.add(_clean_x_name(match))
     return {name for name in names if name}
 
 
 def reinforce_source_registry(source: str, report: dict[str, Any]) -> None:
     if source not in {"reddit", "x"}:
         return
-    useful_names = _source_names_from_report(source, report)
-    if not useful_names:
-        return
+
+    # candidateSources are hints only: probation without useful-hit credit.
+    useful_names = _useful_source_names(source, report)
+    candidate_names = _candidate_source_names(source, report) - useful_names
+    for name in candidate_names:
+        discover_source(source, name, origin=f"{source}-candidate")
     for name in useful_names:
         discover_source(source, name, origin=f"{source}-scout")
+
+    if not useful_names:
+        return
 
     registry = load_source_registry()
     sources = registry["sources"]
@@ -298,15 +462,7 @@ def reinforce_source_registry(source: str, report: dict[str, Any]) -> None:
         entry["score"] = round(float(entry.get("score") or 0.0) + 1.0, 3)
         entry["lastUseful"] = stamp
         entry["lastSeen"] = stamp
-        if not entry.get("protected"):
-            hits = int(entry.get("hits") or 0)
-            score = float(entry.get("score") or 0.0)
-            if hits >= 4 and score >= 4.0:
-                entry["tier"] = "promoted"
-            elif hits >= 2 and score >= 2.0:
-                entry["tier"] = "trusted"
-            else:
-                entry["tier"] = "probation"
+        _apply_lifecycle(entry, now())
     _save_source_registry(registry)
 
 
@@ -319,14 +475,18 @@ def source_registry_summary() -> dict[str, Any]:
         counts[tier] = counts.get(tier, 0) + 1
     return {
         "counts": counts,
-        "redditAnchors": list(_csv_env("VESPER_REDDIT_ANCHORS", CENTRAL_REDDIT_ANCHORS)),
-        "xAnchors": list(_csv_env("VESPER_X_ANCHORS", CENTRAL_X_ANCHORS)),
+        "redditAnchors": _configured_anchors("reddit"),
+        "xAnchors": _configured_anchors("x"),
         "dynamicReddit": _dynamic_sources("reddit", 12),
         "dynamicX": _dynamic_sources("x", 16),
     }
 
 
-def _fetch(url: str, *, accept: str = "text/html,application/atom+xml,application/rss+xml;q=0.9,*/*;q=0.5") -> tuple[bytes, str]:
+def _fetch(
+    url: str,
+    *,
+    accept: str = "text/html,application/atom+xml,application/rss+xml;q=0.9,*/*;q=0.5",
+) -> tuple[bytes, str]:
     request = urllib.request.Request(
         url,
         headers={
@@ -377,17 +537,15 @@ def _feed_entries(payload: bytes, *, surface: str, feed_url: str) -> list[dict[s
             link = identifier if identifier.startswith("http") else ""
         if not link:
             continue
-        out.append(
-            {
-                "surface": surface,
-                "feed": feed_url,
-                "id": identifier,
-                "url": link,
-                "title": _strip_markup(title)[:500],
-                "summary": _strip_markup(summary)[:900],
-                "updated": updated,
-            }
-        )
+        out.append({
+            "surface": surface,
+            "feed": feed_url,
+            "id": identifier,
+            "url": link,
+            "title": _strip_markup(title)[:500],
+            "summary": _strip_markup(summary)[:900],
+            "updated": updated,
+        })
     return out
 
 
@@ -416,7 +574,11 @@ def _canonical_x_url(url: str) -> str:
     return urllib.parse.urlunsplit((parsed.scheme or "https", parsed.netloc, parsed.path, parsed.query, ""))
 
 
-def _dedupe(items: list[dict[str, Any]], canonicalizer, limit: int) -> list[dict[str, Any]]:
+def _dedupe(
+    items: list[dict[str, Any]],
+    canonicalizer: Callable[[str], str],
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in items:
@@ -428,66 +590,218 @@ def _dedupe(items: list[dict[str, Any]], canonicalizer, limit: int) -> list[dict
         value = dict(item)
         value["canonicalUrl"] = canonical
         out.append(value)
-        if len(out) >= limit:
+        if limit is not None and len(out) >= limit:
             break
     return out
+
+
+def _pool_quotas(target: int) -> dict[str, int]:
+    target = max(1, target)
+    anchor = max(1, round(target * SOURCE_BUDGET_RATIOS["anchor"]))
+    dynamic = max(1, round(target * SOURCE_BUDGET_RATIOS["dynamic"]))
+    if anchor + dynamic >= target:
+        dynamic = max(1, target - anchor - 1) if target >= 3 else max(0, target - anchor)
+    explore = max(0, target - anchor - dynamic)
+    total = anchor + dynamic + explore
+    if total < target:
+        explore += target - total
+    elif total > target:
+        anchor = max(0, anchor - (total - target))
+    return {"anchor": anchor, "dynamic": dynamic, "explore": explore}
+
+
+def _round_robin(
+    items: list[dict[str, Any]],
+    limit: int,
+    *,
+    key_fields: tuple[str, ...],
+) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    buckets: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for item in items:
+        key = ""
+        for field in key_fields:
+            value = str(item.get(field) or "").strip()
+            if value:
+                key = f"{field}:{value.lower()}"
+                break
+        if not key:
+            key = f"url:{item.get('canonicalUrl') or item.get('url') or len(order)}"
+        if key not in buckets:
+            buckets[key] = []
+            order.append(key)
+        buckets[key].append(item)
+
+    out: list[dict[str, Any]] = []
+    while len(out) < limit:
+        progressed = False
+        for key in order:
+            bucket = buckets.get(key) or []
+            if not bucket:
+                continue
+            out.append(bucket.pop(0))
+            progressed = True
+            if len(out) >= limit:
+                break
+        if not progressed:
+            break
+    return out
+
+
+def _select_candidate_pools(
+    pools: dict[str, list[dict[str, Any]]],
+    target: int,
+    *,
+    canonicalizer: Callable[[str], str],
+    key_fields: tuple[str, ...],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    quotas = _pool_quotas(target)
+    prepared = {name: _dedupe(items, canonicalizer) for name, items in pools.items()}
+    selected: list[dict[str, Any]] = []
+
+    for name in ("anchor", "dynamic", "explore"):
+        chosen = _round_robin(prepared.get(name, []), quotas[name], key_fields=key_fields)
+        for item in chosen:
+            value = dict(item)
+            value["budgetPool"] = name
+            selected.append(value)
+
+    selected = _dedupe(selected, canonicalizer)
+    if len(selected) < target:
+        selected_markers = {item.get("canonicalUrl") for item in selected}
+        leftovers: list[dict[str, Any]] = []
+        for name in ("explore", "dynamic", "anchor"):
+            for item in prepared.get(name, []):
+                marker = item.get("canonicalUrl")
+                if marker and marker in selected_markers:
+                    continue
+                value = dict(item)
+                value["budgetPool"] = name
+                leftovers.append(value)
+        selected.extend(_round_robin(leftovers, target - len(selected), key_fields=key_fields))
+        selected = _dedupe(selected, canonicalizer, target)
+
+    actual_counts = {"anchor": 0, "dynamic": 0, "explore": 0}
+    for item in selected:
+        pool = str(item.get("budgetPool") or "")
+        if pool in actual_counts:
+            actual_counts[pool] += 1
+
+    return selected[:target], {
+        "ratios": SOURCE_BUDGET_RATIOS,
+        "quotas": quotas,
+        "selected": actual_counts,
+        "available": {name: len(items) for name, items in prepared.items()},
+    }
 
 
 def _intake_path(name: str) -> Path:
     return STATE_ROOT / "unknown-frontier-ai" / "intake" / f"{name}-latest.json"
 
 
+def _fetch_reddit_feed(surface: str, url: str, source_name: str | None) -> list[dict[str, Any]]:
+    payload, _ = _fetch(url, accept="application/atom+xml,application/rss+xml,text/xml;q=0.9,*/*;q=0.5")
+    items = _feed_entries(payload, surface=surface, feed_url=url)
+    for item in items:
+        if source_name:
+            item["sourceName"] = source_name
+        else:
+            match = re.search(r"/r/([A-Za-z0-9_]{2,40})/", urllib.parse.urlsplit(str(item.get("url") or "")).path, re.I)
+            if match:
+                item["sourceName"] = _clean_reddit_name(match.group(1))
+    return items
+
+
 def reddit_rss_intake(target: int) -> dict[str, Any]:
     target = max(1, target)
-    anchors = [_clean_reddit_name(item) for item in _csv_env("VESPER_REDDIT_ANCHORS", CENTRAL_REDDIT_ANCHORS)]
-    general = [_clean_reddit_name(item) for item in _csv_env("VESPER_REDDIT_SEEDS", DEFAULT_REDDIT_SEEDS)]
+    anchors = _configured_anchors("reddit")
+    general = [
+        clean
+        for item in _csv_env("VESPER_REDDIT_SEEDS", DEFAULT_REDDIT_SEEDS)
+        if (clean := _clean_reddit_name(item)) and clean.lower() not in _ignored_reddit_names()
+    ]
     dynamic = [_clean_reddit_name(item) for item in _dynamic_sources("reddit", 12)]
-    comment_anchors = [_clean_reddit_name(item) for item in _csv_env("VESPER_REDDIT_COMMENT_SEEDS", DEFAULT_REDDIT_COMMENT_ANCHORS)]
+    comment_anchors = [
+        clean
+        for item in _csv_env("VESPER_REDDIT_COMMENT_SEEDS", DEFAULT_REDDIT_COMMENT_ANCHORS)
+        if (clean := _clean_reddit_name(item)) and clean.lower() not in _ignored_reddit_names()
+    ]
 
     for name in anchors:
         discover_source("reddit", name, origin="central-config")
 
-    feeds: list[tuple[str, str, str | None]] = []
-    for sub in anchors:
-        feeds.append(("reddit-anchor-new", f"https://www.reddit.com/r/{sub}/new.rss?limit=50", sub))
-    for sub in comment_anchors:
-        feeds.append(("reddit-anchor-comments", f"https://www.reddit.com/r/{sub}/comments.rss?limit=100", sub))
-
-    secondary = list(dict.fromkeys([item for item in dynamic + general if item and item.lower() not in {a.lower() for a in anchors}]))
-    for index in range(0, len(secondary), 5):
-        group = secondary[index:index + 5]
-        if group:
-            feeds.append(("reddit-discovery-new", f"https://www.reddit.com/r/{'+'.join(group)}/new.rss?limit=100", None))
-
-    raw: list[dict[str, Any]] = []
+    pools: dict[str, list[dict[str, Any]]] = {"anchor": [], "dynamic": [], "explore": []}
     errors: list[dict[str, str]] = []
     fetched_feeds: list[str] = []
     anchor_feeds_completed = 0
-    for surface, url, source_name in feeds:
+
+    for sub in anchors:
+        url = f"https://www.reddit.com/r/{sub}/new.rss?limit=50"
         try:
-            payload, _ = _fetch(url, accept="application/atom+xml,application/rss+xml,text/xml;q=0.9,*/*;q=0.5")
-            entries = _feed_entries(payload, surface=surface, feed_url=url)
-            raw.extend(entries)
+            pools["anchor"].extend(_fetch_reddit_feed("reddit-anchor-new", url, sub))
             fetched_feeds.append(url)
-            if source_name:
-                _note_source_fetch("reddit", source_name, ok=True)
-                anchor_feeds_completed += 1
+            _note_source_fetch("reddit", sub, ok=True)
+            anchor_feeds_completed += 1
         except Exception as exc:
             errors.append({"url": url, "error": str(exc)[-500:]})
-            if source_name:
-                _note_source_fetch("reddit", source_name, ok=False)
-        if source_name is None and len(_dedupe(raw, _canonical_reddit_url, target)) >= target:
-            break
+            _note_source_fetch("reddit", sub, ok=False)
 
-    candidates = _dedupe(raw, _canonical_reddit_url, target)
+    for sub in comment_anchors:
+        url = f"https://www.reddit.com/r/{sub}/comments.rss?limit=100"
+        try:
+            pools["anchor"].extend(_fetch_reddit_feed("reddit-anchor-comments", url, sub))
+            fetched_feeds.append(url)
+            _note_source_fetch("reddit", sub, ok=True)
+            anchor_feeds_completed += 1
+        except Exception as exc:
+            errors.append({"url": url, "error": str(exc)[-500:]})
+            _note_source_fetch("reddit", sub, ok=False)
+
+    anchor_lower = {item.lower() for item in anchors}
+    for sub in list(dict.fromkeys(item for item in dynamic if item and item.lower() not in anchor_lower)):
+        url = f"https://www.reddit.com/r/{sub}/new.rss?limit=40"
+        try:
+            pools["dynamic"].extend(_fetch_reddit_feed("reddit-dynamic-new", url, sub))
+            fetched_feeds.append(url)
+            _note_source_fetch("reddit", sub, ok=True)
+        except Exception as exc:
+            errors.append({"url": url, "error": str(exc)[-500:]})
+            _note_source_fetch("reddit", sub, ok=False)
+
+    dynamic_lower = {item.lower() for item in dynamic}
+    exploration = [
+        item for item in general
+        if item and item.lower() not in anchor_lower and item.lower() not in dynamic_lower
+    ]
+    for index in range(0, len(exploration), 5):
+        group = exploration[index:index + 5]
+        if not group:
+            continue
+        url = f"https://www.reddit.com/r/{'+'.join(group)}/new.rss?limit=100"
+        try:
+            pools["explore"].extend(_fetch_reddit_feed("reddit-explore-new", url, None))
+            fetched_feeds.append(url)
+        except Exception as exc:
+            errors.append({"url": url, "error": str(exc)[-500:]})
+
+    candidates, budget = _select_candidate_pools(
+        pools,
+        target,
+        canonicalizer=_canonical_reddit_url,
+        key_fields=("sourceName", "feed"),
+    )
+
     subreddit_pattern = re.compile(r"(?<![\w/])r/([A-Za-z0-9_]{2,40})")
     discovered: list[str] = []
     known = {item.lower() for item in anchors + general + dynamic}
+    ignored = _ignored_reddit_names()
     for item in candidates:
         text = f"{item.get('title', '')} {item.get('summary', '')}"
         for match in subreddit_pattern.findall(text):
             clean = _clean_reddit_name(match)
-            if clean and clean.lower() not in known and clean not in discovered:
+            if clean and clean.lower() not in known and clean.lower() not in ignored and clean not in discovered:
                 discovered.append(clean)
                 discover_source("reddit", clean, origin="reddit-rss-mention")
 
@@ -495,11 +809,13 @@ def reddit_rss_intake(target: int) -> dict[str, Any]:
         "source": "reddit-rss",
         "generatedAt": now().isoformat(timespec="seconds"),
         "target": target,
-        "rawEntries": len(raw),
+        "rawEntries": sum(len(items) for items in pools.values()),
         "canonicalCandidates": len(candidates),
         "anchors": anchors,
+        "ignored": sorted(ignored),
         "dynamicSources": dynamic,
         "anchorFeedsCompleted": anchor_feeds_completed,
+        "budget": budget,
         "feedsFetched": fetched_feeds,
         "errors": errors,
         "discoveredSubreddits": discovered[:40],
@@ -533,13 +849,11 @@ class _StatusLinkParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self._current_href:
-            self.items.append(
-                {
-                    "url": self._current_href,
-                    "title": re.sub(r"\s+", " ", " ".join(self._current_text)).strip()[:500],
-                    "summary": "",
-                }
-            )
+            self.items.append({
+                "url": self._current_href,
+                "title": re.sub(r"\s+", " ", " ".join(self._current_text)).strip()[:500],
+                "summary": "",
+            })
             self._current_href = ""
             self._current_text = []
 
@@ -572,7 +886,7 @@ def _x_profile_mirror(mirror: str, account: str) -> tuple[list[dict[str, Any]], 
     rss_url = f"{mirror.rstrip('/')}/{account}/rss"
     try:
         payload, _ = _fetch(rss_url, accept="application/atom+xml,application/rss+xml,text/xml;q=0.9,*/*;q=0.5")
-        entries = _feed_entries(payload, surface="x-anchor-rss", feed_url=rss_url)
+        entries = _feed_entries(payload, surface="x-profile-rss", feed_url=rss_url)
         if entries:
             for item in entries:
                 item["mirror"] = mirror
@@ -586,45 +900,62 @@ def _x_profile_mirror(mirror: str, account: str) -> tuple[list[dict[str, Any]], 
     parser = _StatusLinkParser(mirror.rstrip("/"))
     parser.feed(payload.decode("utf-8", errors="replace"))
     for item in parser.items:
-        item.update({"surface": "x-anchor-html", "mirror": mirror, "sourceAccount": account, "feed": html_url})
+        item.update({"surface": "x-profile-html", "mirror": mirror, "sourceAccount": account, "feed": html_url})
     return parser.items, "html"
+
+
+def _x_fetch_account(
+    account: str,
+    mirrors: list[str],
+    health: dict[str, dict[str, Any]],
+    errors: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    for mirror in mirrors:
+        try:
+            items, mode = _x_profile_mirror(mirror, account)
+            if not items:
+                raise RuntimeError("empty profile result")
+            health[mirror]["successes"] += 1
+            if mode not in health[mirror]["modes"]:
+                health[mirror]["modes"].append(mode)
+            _note_source_fetch("x", account, ok=True)
+            return items
+        except Exception as exc:
+            health[mirror]["failures"] += 1
+            errors.append({"mirror": mirror, "account": account, "error": str(exc)[-500:]})
+    _note_source_fetch("x", account, ok=False)
+    return []
 
 
 def x_mirror_intake(target: int) -> dict[str, Any]:
     target = max(1, target)
     mirrors = [item.rstrip("/") for item in _csv_env("VESPER_X_MIRRORS", DEFAULT_X_MIRRORS)]
     queries = _csv_env("VESPER_X_QUERIES", DEFAULT_X_QUERIES)
-    anchors = [_clean_x_name(item) for item in _csv_env("VESPER_X_ANCHORS", CENTRAL_X_ANCHORS)]
+    anchors = _configured_anchors("x")
     dynamic = [_clean_x_name(item) for item in _dynamic_sources("x", 16)]
 
     for name in anchors:
         discover_source("x", name, origin="central-config")
 
-    raw: list[dict[str, Any]] = []
+    pools: dict[str, list[dict[str, Any]]] = {"anchor": [], "dynamic": [], "explore": []}
     errors: list[dict[str, str]] = []
-    health: dict[str, dict[str, Any]] = {mirror: {"successes": 0, "failures": 0, "modes": []} for mirror in mirrors}
-    anchor_accounts_completed: list[str] = []
+    health: dict[str, dict[str, Any]] = {
+        mirror: {"successes": 0, "failures": 0, "modes": []} for mirror in mirrors
+    }
+    completed_accounts: list[str] = []
 
-    for account in list(dict.fromkeys(anchors + dynamic)):
-        success = False
-        for mirror in mirrors:
-            try:
-                items, mode = _x_profile_mirror(mirror, account)
-                if not items:
-                    raise RuntimeError("empty profile result")
-                raw.extend(items)
-                health[mirror]["successes"] += 1
-                if mode not in health[mirror]["modes"]:
-                    health[mirror]["modes"].append(mode)
-                _note_source_fetch("x", account, ok=True)
-                anchor_accounts_completed.append(account)
-                success = True
-                break
-            except Exception as exc:
-                health[mirror]["failures"] += 1
-                errors.append({"mirror": mirror, "account": account, "error": str(exc)[-500:]})
-        if not success:
-            _note_source_fetch("x", account, ok=False)
+    for account in anchors:
+        items = _x_fetch_account(account, mirrors, health, errors)
+        if items:
+            pools["anchor"].extend(items)
+            completed_accounts.append(account)
+
+    anchor_lower = {item.lower() for item in anchors}
+    for account in list(dict.fromkeys(item for item in dynamic if item and item.lower() not in anchor_lower)):
+        items = _x_fetch_account(account, mirrors, health, errors)
+        if items:
+            pools["dynamic"].extend(items)
+            completed_accounts.append(account)
 
     for query in queries:
         query_succeeded = False
@@ -633,21 +964,25 @@ def x_mirror_intake(target: int) -> dict[str, Any]:
                 items, mode = _x_search_mirror(mirror, query)
                 if not items:
                     raise RuntimeError("empty search result")
-                raw.extend(items)
                 health[mirror]["successes"] += 1
                 if mode not in health[mirror]["modes"]:
                     health[mirror]["modes"].append(mode)
+                pools["explore"].extend(items)
                 query_succeeded = True
                 break
             except Exception as exc:
                 health[mirror]["failures"] += 1
                 errors.append({"mirror": mirror, "query": query, "error": str(exc)[-500:]})
-        if len(_dedupe(raw, _canonical_x_url, target)) >= target:
-            break
         if not query_succeeded:
             time.sleep(0.2)
 
-    candidates = _dedupe(raw, _canonical_x_url, target)
+    candidates, budget = _select_candidate_pools(
+        pools,
+        target,
+        canonicalizer=_canonical_x_url,
+        key_fields=("sourceAccount", "query", "mirror"),
+    )
+
     discovered: list[str] = []
     known = {item.lower() for item in anchors + dynamic}
     mention_pattern = re.compile(r"@([A-Za-z0-9_]{1,15})")
@@ -666,11 +1001,12 @@ def x_mirror_intake(target: int) -> dict[str, Any]:
         "source": "x-mirror",
         "generatedAt": now().isoformat(timespec="seconds"),
         "target": target,
-        "rawEntries": len(raw),
+        "rawEntries": sum(len(items) for items in pools.values()),
         "canonicalCandidates": len(candidates),
         "anchors": anchors,
         "dynamicSources": dynamic,
-        "anchorAccountsCompleted": anchor_accounts_completed,
+        "accountsCompleted": completed_accounts,
+        "budget": budget,
         "mirrors": health,
         "errors": errors,
         "queries": queries,
@@ -693,9 +1029,11 @@ def compact_intake(value: dict[str, Any], max_chars: int = 76000) -> str:
                 "summary": item.get("summary", ""),
                 "updated": item.get("updated", ""),
                 "surface": item.get("surface", ""),
+                "budgetPool": item.get("budgetPool", ""),
+                "sourceName": item.get("sourceName", ""),
+                "sourceAccount": item.get("sourceAccount", ""),
                 "query": item.get("query", ""),
                 "mirror": item.get("mirror", ""),
-                "sourceAccount": item.get("sourceAccount", ""),
             }
             for item in candidates
             if isinstance(item, dict)

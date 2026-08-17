@@ -34,9 +34,9 @@ FRONTIER_DEEP_READ_BUDGET = _budget_map(FRONTIER_TOTAL_DEEP_READ_TARGET)
 
 def _scout_prompt(source: str, intake: dict[str, Any] | None = None) -> str:
     rules = {
-        "github": "Search recent/small repositories, issues, PRs, commits, forks, discussions, package/release surfaces and author/org neighborhoods. Prefer working code and technical evidence over stars.",
-        "reddit": "Use the supplied RSS/Atom intake as the cheap first pass, then search/fetch only where it adds coverage or verification. Inspect recent/low-score posts, comment branches and niche communities. Extract reproducible techniques, fixes, workflows and primary links.",
-        "x": "X/Twitter is mandatory. Use direct X when accessible; otherwise use XCancel and configured Nitter-compatible mirrors, with HTML/search fallback when RSS is blocked. Search low-attention builder/researcher posts, replies/quotes, demos, code links, patches and concrete techniques. Verify important claims against primary sources.",
+        "github": "Search recent/small repositories, issues, PRs, commits, forks, discussions, package/release surfaces and author/org neighborhoods. Prioritize coding-agent/vibe-coding workflows and Monero/privacy engineering; prefer working code and technical evidence over stars.",
+        "reddit": "Use the supplied RSS/Atom intake as the cheap first pass, then search/fetch only where it adds coverage or verification. Inspect recent/low-score posts, comment branches and niche communities. Extract reproducible coding-agent workflows, Monero/privacy techniques, fixes and primary links.",
+        "x": "X/Twitter is mandatory. Use direct X when accessible; otherwise use XCancel and configured Nitter-compatible mirrors, with HTML/search fallback when RSS is blocked. Search low-attention builders/researchers for coding-agent workflows, Monero/privacy engineering, replies/quotes, demos, code, patches and concrete techniques. Verify important claims against primary sources.",
     }
     references = ["research-pipeline.md", "source-governance.md", "central-sources.md"]
     if source == "reddit":
@@ -51,7 +51,14 @@ def _scout_prompt(source: str, intake: dict[str, Any] | None = None) -> str:
 
 {rules[source]}
 
-Goal: discover useful AI/coding-agent/model/dev-tooling capabilities outside the user's current map and not yet obvious mainstream items. Low engagement is a discovery hint, never a quality score. Use broad discovery first, verify the strongest candidates, and avoid generic news, repeated known items, hype, price chatter and filler.
+Research profile, in priority order:
+1. vibe coding / agentic software engineering: Codex, Claude Code, OpenCode, Hermes, harnesses, skills, MCP, context engineering, evals, agent orchestration, practical workflows and overlooked developer tools;
+2. Monero/privacy: Monero protocol/ecosystem, Cuprate, wallets, atomic swaps, private payments, Tor, SimpleX, GrapheneOS/privacy engineering and useful adjacent infrastructure;
+3. Nix/Linux, security and open-source developer infrastructure when it improves the workstation or the two priorities above.
+
+Generic local-LLM/model-quantization/inference hobby content is not a target. Only surface model/inference material when it materially improves coding-agent workflows, privacy, cost, or deployment. Do not spend frontier budget on price charts, trading chatter, generic AI news or familiar mainstream releases without a genuinely useful technical angle.
+
+Goal: find high-information-gain capabilities, techniques, tools and changes outside the user's current map. Low engagement is a discovery hint, never a quality score. Use broad discovery first, verify the strongest candidates, and avoid repeated known items, hype and filler.
 
 Coverage contract for this scout:
 - candidate target: about {candidate_target} distinct canonical items/URLs
@@ -59,7 +66,7 @@ Coverage contract for this scout:
 - the full daily bundle target is {FRONTIER_TOTAL_CANDIDATE_TARGET} candidates and {FRONTIER_TOTAL_DEEP_READ_TARGET} deep reads across GitHub + Reddit + X
 - deterministic RSS/mirror intake counts as cheap candidate inspection, not as a full deep read
 - central anchors are mandatory inspection seeds but are not an allowlist
-- discovered sources may receive future budget only when they repeatedly produce useful evidence-bearing candidates
+- learned sources may receive future budget only after repeated useful evidence-bearing results
 - if access failures prevent the target, report the actual count and limitation; never invent coverage
 
 ----- RESEARCH PROCEDURE -----
@@ -73,7 +80,7 @@ Coverage contract for this scout:
 ----- END CHEAP INTAKE -----
 
 Return exactly one JSON object and nothing else:
-{{"title":"{source} scout","summary":"short scout summary","body":"technical scout notes","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source","url":"https://..."}}],"candidates":[{{"title":"candidate","whyNew":"...","whyUseful":"...","evidence":"...","urls":["https://..."]}}],"coverage":{{"candidateTarget":{candidate_target},"candidatesInspected":0,"canonicalCandidates":0,"deepReads":0,"primaryVerifications":0,"surfaces":[],"limitations":[]}},"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
+{{"title":"{source} scout","summary":"short scout summary","body":"technical scout notes","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source","url":"https://..."}}],"candidates":[{{"title":"candidate","topic":"vibe-coding|monero-privacy|nix-linux|security|other","whyNew":"...","whyUseful":"...","evidence":"...","urls":["https://..."]}}],"coverage":{{"candidateTarget":{candidate_target},"candidatesInspected":0,"canonicalCandidates":0,"deepReads":0,"primaryVerifications":0,"surfaces":[],"limitations":[]}},"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
 Never invent URLs or coverage numbers.
 """
 
@@ -114,6 +121,8 @@ def frontier_scout(source: str) -> dict[str, Any]:
     if intake:
         coverage["intakeCandidates"] = int(intake.get("canonicalCandidates") or 0)
         coverage["intakeErrors"] = len(intake.get("errors") or [])
+        if isinstance(intake.get("budget"), dict):
+            coverage["intakeBudget"] = intake["budget"]
     reinforce_source_registry(source, report)
     envelope = {
         "source": source,
@@ -199,7 +208,7 @@ def frontier_synthesis() -> dict[str, Any]:
     report = invoke_json(
         research_prompt(
             "unknown-frontier-ai",
-            "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and rank only discoveries worth attention. Prefer a few technically dense discoveries over a long list. Run a counter-review before final selection. X is a mandatory discovery surface when its scout is available. Explicitly flag missing/stale scouts and any coverage shortfall rather than silently treating old or inaccessible data as current.",
+            "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Rank vibe-coding/agentic software-engineering findings and Monero/privacy findings first, with Nix/Linux/security as secondary. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and run a counter-review before final selection. Generic local-model/inference content is out of scope unless directly useful to those priorities. X is mandatory when its scout is available. Explicitly flag missing/stale scouts and any coverage shortfall.",
             extra,
             skill_references=("research-pipeline.md", "source-governance.md", "central-sources.md", "x-research.md", "reddit-rss.md"),
         ),
@@ -233,17 +242,17 @@ def frontier_daily() -> dict[str, Any]:
 
 
 def free_ai_radar() -> dict[str, Any]:
-    objective = "Find legitimate currently useful ways to reduce AI tooling cost. Treat linux.do as a first-class discovery surface, then verify through official docs, repos, releases or other primary sources. Hunt free models/services/APIs/coding agents, changed free tiers/credits, open-source/self-hosted replacements, local inference tricks and compatibility layers. For every useful item state what is free, quota/limit/catch, compute requirement, expiry/uncertainty and why it matters. Reject leaked/shared credentials, stolen accounts, payment bypasses, mass-account abuse and service restriction evasion."
+    objective = "Find legitimate currently useful ways to reduce the cost of coding-agent and developer workflows. Treat linux.do as a first-class discovery surface, then verify through official docs, repos, releases or other primary sources. Hunt free/cheap coding agents, APIs, model access, credits, open-source replacements, compatibility layers and workflow tricks. Local inference matters only when it materially improves coding-agent cost/privacy/workflow; do not turn this into a local-model hobby feed. For every useful item state what is free, quota/limit/catch, compute requirement, expiry/uncertainty and why it matters. Reject leaked/shared credentials, stolen accounts, payment bypasses, mass-account abuse and service restriction evasion."
     return write_report(invoke_json(research_prompt("free-ai-radar", objective), web_only=True), "free-ai-radar")
 
 
 def agenda() -> dict[str, Any]:
-    objective = "Produce the compact current agenda the user should know today. Bias toward AI/coding agents, software, privacy, Nix/Linux, Tor/Monero, security, web technology and meaningful startup/business changes, plus major broader technology events when consequential. This is not hidden-gem hunting: importance, recency and consequence matter more than obscurity. Prefer official/primary reporting and corroboration. Avoid price analysis and filler."
+    objective = "Produce the compact current agenda the user should know today. Highest bias: coding agents/vibe coding/dev tooling and Monero/privacy. Secondary: Nix/Linux, Tor, security, web technology, private communications, open source and meaningful startup/business changes; include major broader technology events only when consequential. Do not fill space with generic model benchmark chatter, local-LLM hobby news, token-price analysis or filler. Prefer official/primary reporting and corroboration."
     return write_report(invoke_json(research_prompt("agenda", objective), web_only=True), "agenda")
 
 
 def upstream_edge_radar() -> dict[str, Any]:
-    objective = "Act as an early-warning radar for Vesper's upstream stack. Inspect meaningful recent PRs, issues, commits, releases and migration notes around NousResearch/hermes-agent, numtide/llm-agents.nix, nixpkgs/NixOS, Hyprland, Caelestia shell, Zen Browser, Helium, Tor, Monero and Cuprate. Surface breaking changes, new capabilities, deprecations, security/privacy implications and workarounds before they become surprises. Ignore routine churn. For each item say act now, watch, or ignore."
+    objective = "Act as an early-warning radar for Vesper's upstream stack. Inspect meaningful recent PRs, issues, commits, releases and migration notes around NousResearch/hermes-agent, numtide/llm-agents.nix, OpenAI Codex, Anthropic Claude Code, anomalyco/opencode, nixpkgs/NixOS, Hyprland, Caelestia shell, Zen Browser, Helium, Tor, Monero and Cuprate. Surface breaking changes, new capabilities, deprecations, security/privacy implications and workarounds before they become surprises. Ignore routine churn. For each item say act now, watch, or ignore."
     return write_report(invoke_json(research_prompt("upstream-edge-radar", objective), web_only=True), "upstream-edge-radar")
 
 
@@ -290,7 +299,7 @@ Return only the final Telegram message in English. No tool chatter, execution de
 Sections:
 1) **Git / Projects** — useful state/blockers only, 1-3 lines per relevant repo
 2) **Todos** — at most 3-5 important unfinished/blocking items; if none say `No important open todos.`
-3) **News** — 10-15 genuinely important items when available; privacy, payments, Monero/Zcash (no price talk), Tor/onion, AI/coding agents/dev tooling, security/development/web privacy/startups/major tech. Each item: bold numbered title, one concise sentence, then URL. Never invent URLs.
+3) **News** — 10-15 genuinely important items when available. Prioritize coding agents/vibe coding/dev tooling and Monero/privacy; then Tor/onion, Nix/Linux, private communications, security/development/web privacy/startups/major tech. No coin-price talk and no generic local-model/inference filler. Each item: bold numbered title, one concise sentence, then URL. Never invent URLs.
 4) Optional **Actions** — only 1-3 concrete actions worth taking.
 
 ----- LOCAL DATA -----

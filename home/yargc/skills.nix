@@ -33,12 +33,13 @@ let
   ];
 
   # Hermes keeps its own bundled/agent-created skill tree. Expose only Vesper's
-  # local workflow skills there, under a category directory, so Hermes retains
-  # its native bundled skills while these shared definitions stay Nix-owned.
+  # local workflow skills plus Anthropic's eval-oriented skill-creator there,
+  # while retaining Hermes' native bundled skills.
   hermesSkillNames = [
     "hermes-research-radar"
     "vesper-obsidian-second-brain"
     "vesper-maintainer"
+    "skill-creator"
   ];
 
   canonicalLinks = builtins.listToAttrs (

@@ -1,8 +1,6 @@
 # Hermes automations
 
-Vesper keeps Hermes cron as the only recurring scheduler.
-
-Cron never performs long research inside the gateway process. Every Vesper cron entry is a short `no_agent` script:
+Vesper keeps Hermes cron as the only recurring scheduler. Long research never runs inside the cron gateway: each `vesper:*` cron entry is a short `no_agent` script that dispatches a transient user service, which runs Hermes one-shot research and persists state/briefings.
 
 ```text
 Hermes cron
@@ -18,56 +16,56 @@ vesper-hermes-automations trigger <job>
                            persistent state + briefing
 ```
 
-`systemd-run` is only the execution container for a triggered run. It is not another timer and does not own recurrence. This keeps the Hermes cron tick cheap, zero-token for script-only triggers, and independent from long model runtime.
+`systemd-run` is execution containment only, not another scheduler.
 
 ## declarative registry
 
-Schedules live in `home/yargc/hermes-jobs.nix`.
-
-Home Manager writes the registry to `~/.config/vesper/hermes-jobs.json` and installs one physical wrapper per job under `~/.hermes/scripts/`.
-
-The wrappers are deliberately real files, not Home Manager symlinks. Hermes resolves script paths before enforcing containment under `~/.hermes/scripts`; a Nix-store symlink would therefore be rejected as a script-directory escape at fire time.
-
-After the wrappers are installed, Home Manager runs:
+Schedules live in `home/yargc/hermes-jobs.nix`. Home Manager writes `~/.config/vesper/hermes-jobs.json`, installs physical wrappers under `~/.hermes/scripts/`, then runs:
 
 ```bash
 vesper-hermes-automations sync-cron --prune
 ```
 
-Before mutating Hermes state, `sync-cron` validates the declarative registry against the installed task/watchdog set. It then reconciles only machine-owned `vesper:*` records through Hermes' own CLI. Unrelated user-created Hermes jobs are never pruned.
-
-The old `sabah-check-deliver.sh` and `morning-check-deliver.sh` paths remain physical compatibility aliases that dispatch the new Morning Check worker.
-
-## delivery policy
-
-Dispatch jobs use `deliver=local` at the Hermes cron layer because the cron tick only launches a transient worker and intentionally prints nothing. Finished research is persisted to the Vesper briefing/state layer. Morning Check explicitly sends its completed brief with `hermes send --to telegram`.
-
-Watchdogs use `deliver=telegram` because their stdout is the alert itself. Healthy ticks emit no stdout and use no model.
+Only machine-owned `vesper:*` jobs are reconciled/pruned. Dispatch jobs use `deliver=local`; Morning Check sends its completed message explicitly through Hermes Telegram delivery. Watchdogs use Telegram and remain zero-token while healthy.
 
 ## daily pipeline
 
 | time | job | behavior |
 |---|---|---|
-| `08:30` | `unknown-frontier-github` | GitHub frontier scout |
-| `08:35` | `unknown-frontier-reddit` | Reddit RSS/Atom intake + AI deep research |
-| `08:40` | `unknown-frontier-x` | direct X when possible, XCancel/Nitter-compatible fallback |
-| `08:45` | `free-ai-radar` | Linux.do-first legitimate free AI / free-tier / self-hosted radar |
-| `09:00` | `unknown-frontier-synthesis` | bounded fan-in over fresh scout state, then verified synthesis |
+| `08:30` | `unknown-frontier-github` | GitHub coding-agent + Monero/privacy frontier scout |
+| `08:35` | `unknown-frontier-reddit` | Reddit RSS/Atom intake + selective deep research |
+| `08:40` | `unknown-frontier-x` | X profiles/search with XCancel/Nitter-compatible fallback |
+| `08:45` | `free-ai-radar` | Linux.do-first legitimate coding-agent cost/free-tier radar |
+| `09:00` | `unknown-frontier-synthesis` | fresh scout fan-in + counter-reviewed synthesis |
 | `09:30` | `agenda` | compact important current agenda |
-| `10:00` | `morning-check` | projects + todos + durable research, delivered to Telegram by the completed worker |
-| `15:00` | `upstream-edge-radar` | early breaking changes and capabilities in Vesper upstreams |
-| `23:30` | `second-brain-dream` | durable knowledge consolidation into the Obsidian workflow |
+| `10:00` | `morning-check` | projects/todos/research → Telegram |
+| `15:00` | `upstream-edge-radar` | early warning for coding-agent/Vesper/privacy upstreams |
+| `23:30` | `second-brain-dream` | durable knowledge consolidation |
 
-### high-volume research funnel
+## research profile
 
-The frontier bundle is intentionally not one giant model prompt.
+The frontier is intentionally opinionated.
+
+Priority 1 is **vibe coding / agentic software engineering**: Codex, Claude Code, OpenCode, Hermes, agent harnesses, skills, MCP, context engineering, orchestration, evals, practical workflows and overlooked developer tooling.
+
+Priority 2 is **Monero / privacy**: Monero, Cuprate, wallets, atomic swaps, private payments, Tor/onion, SimpleX, GrapheneOS/privacy engineering and adjacent infrastructure.
+
+Priority 3 is **Nix/Linux/security/open source** where it improves the workstation or the two priorities above.
+
+Generic local-LLM/model-quantization/inference hobby material is not a standing target. `r/LocalLLaMA` is explicitly excluded from the default source graph. Model/inference material survives only when it materially changes coding-agent quality/cost/privacy/deployment.
+
+## high-volume research funnel
+
+The default frontier target is `600` distinct canonical candidate items/URLs, configurable through `VESPER_FRONTIER_CANDIDATE_TARGET` and clamped to `200..1000`. Default deep-read target is `48`, configurable and clamped to `24..60`.
 
 ```text
 RSS/search/metadata/mirror intake
         ↓
 canonicalize + dedupe
         ↓
-cheap triage
+anchor / learned / exploration candidate pools
+        ↓
+cheap relevance + novelty triage
         ↓
 24-60 strongest deep reads
         ↓
@@ -75,121 +73,203 @@ primary-source verification
         ↓
 counter-review
         ↓
-synthesis + durable state
+synthesis + durable learning
 ```
 
-The default daily frontier target is `600` distinct candidate items/URLs across GitHub, Reddit and X. `VESPER_FRONTIER_CANDIDATE_TARGET` may tune this but is clamped to `200..1000`.
+Hundreds of candidate inspections therefore do not mean hundreds of full pages dumped into one model context.
 
-The default deep-read target is `48`, clamped to `24..60` with `VESPER_FRONTIER_DEEP_READ_TARGET`. The distinction is important: hundreds of feed/search candidates can be inspected cheaply without dumping hundreds of complete pages into one LLM context.
+## central sources without source lock-in
 
-Each scout records real coverage metadata. Access failure is a reportable limitation, not permission to fabricate a target count.
+Protected central sources are guaranteed inspection seeds, not an allowlist.
 
-Research procedure lives in:
+### Reddit anchors
 
-```text
-home/yargc/skills/hermes-research-radar/
-├── SKILL.md
-└── references/
-    ├── research-pipeline.md
-    ├── source-governance.md
-    ├── reddit-rss.md
-    └── x-research.md
-```
+Vibe coding / agentic development:
 
-The runtime reads the installed Nix-owned skill/reference files into the research prompt, so the scheduled scout is executing the same procedure documented in the skill rather than merely paraphrasing it in Python.
+- `r/vibecoding`
+- `r/ClaudeCode`
+- `r/codex`
+- `r/opencodeCLI`
+- `r/cursor`
 
-### Reddit: RSS + AI
+Monero/privacy/security:
 
-`hermes_research_intake.py` treats Reddit RSS/Atom as cheap sensor input. It uses combined subreddit `new.rss` feeds for breadth and selected `comments.rss` feeds to catch useful detail buried in discussion trees.
+- `r/MoneroMeansMoney`
+- `r/Monero`
+- `r/privacy`
+- `r/Tor`
+- `r/netsec`
 
-Default seeds are only seeds. The research skill tells Hermes to discover adjacent subreddits/accounts/repos from mentions, crossposts and outgoing links, then keep new sources on probation until they repeatedly produce useful findings.
+Workstation:
 
-The intake layer stores the latest machine-readable result under:
+- `r/NixOS`
+
+`r/LocalLLaMA` is a user-excluded source and is retired during source-registry migration rather than rediscovered into probation.
+
+### X anchors
+
+Coding/dev: `@Teknium`, `@thdxr`, `@XOpenSource`, `@ZixuanLi_`.
+
+Monero/privacy/payments: `@eigenwallet`, `@kyc_rip`, `@XBToshi`, `@schmidt1024`, `@XMRHub_org`, `@CR1337`, `@linuxuser1996`, `@Examare1`, `@ZcashLabs`.
+
+Threat/privacy communications: `@akaclandestine`, `@DailyDarkWeb`, `@SimpleXChat`.
+
+### GitHub anchor neighborhoods
+
+Coding-agent starting points:
+
+- `NousResearch/hermes-agent`
+- `openai/codex`
+- `anthropics/claude-code`
+- `anomalyco/opencode`
+
+Monero/privacy starting points:
+
+- `monero-project/monero`
+- `Cuprate/cuprate`
+
+The GitHub scout expands outward through issues, PRs, commits, forks, authors, dependencies and small adjacent repositories.
+
+## adaptive candidate allocation
+
+Social intake separates final candidates into pools instead of concatenating anchor feeds and truncating them:
+
+- about **45% anchors**
+- about **30% learned dynamic sources**
+- about **25% exploration/query tail**
+
+Unused quota is redistributed if a pool is blocked/empty. Selection inside each pool is round-robin across source identities/queries, preventing one prolific subreddit/account from monopolizing the candidate budget.
+
+This fixes the failure mode where central feeds alone could fill the daily target and starve autonomous discovery.
+
+## Reddit: RSS + AI
+
+Reddit RSS/Atom is the cheap sensor layer. Anchor `new.rss` and selected `comments.rss` feeds are fetched separately, learned sources get their own intake, and general exploration can use combined feeds.
+
+After canonicalization and pool selection, Hermes deep-reads only promising threads/comment branches. Community claims are followed to repositories/docs/issues/PRs/papers when they matter.
+
+Latest deterministic intake:
 
 ```text
 ~/.local/state/vesper/research/unknown-frontier-ai/intake/reddit-latest.json
 ```
 
-`VESPER_REDDIT_SEEDS` and `VESPER_REDDIT_COMMENT_SEEDS` can override the seed set without editing the Python implementation.
+## X: mandatory surface + mirrors
 
-### X: mandatory surface + mirrors
-
-X/Twitter remains a mandatory frontier source. The playbook prefers direct X when accessible, then falls back to XCancel and configured Nitter-compatible mirrors.
-
-The deterministic X intake tries Nitter-compatible search RSS first and falls back to search HTML on the same mirror. Mirror copies are normalized to canonical `x.com/<user>/status/<id>` identities before dedupe, so one tweet reached through X, Twitter, XCancel and Nitter counts once.
-
-The default fallback list is intentionally small and configurable:
+X remains mandatory. The playbook prefers direct X when available; deterministic intake uses XCancel/Nitter-compatible profile/search RSS, falling back to HTML on the same mirror and then the next configured mirror.
 
 ```text
 VESPER_X_MIRRORS=https://xcancel.com,https://nitter.net
 ```
 
-Public mirror reliability changes over time, so failed RSS/search access is persisted and surfaced rather than assumed healthy forever. `VESPER_X_QUERIES` can override discovery queries.
+X/Twitter/XCancel/Nitter copies of one status normalize to one canonical `x.com/<user>/status/<id>` identity. A mirror is transport, not independent corroboration.
 
-The latest machine-readable mirror intake is stored under:
+Latest intake:
 
 ```text
 ~/.local/state/vesper/research/unknown-frontier-ai/intake/x-latest.json
 ```
 
-A mirror is transport, not corroboration. Important claims discovered on X are followed to primary code/docs/commits/releases/papers whenever possible.
+## self-evolving source graph
 
-### frontier fan-out / fan-in
+Runtime state lives at:
 
-The three frontier scouts are independent cron entries so each has its own trigger and transient worker. This prevents three research calls from being launched at the same instant.
+```text
+~/.local/state/vesper/research/unknown-frontier-ai/source-registry.json
+```
 
-The synthesis job does **not** use Hermes `context_from` as its join primitive. Cron entries are deliberately `no_agent` dispatch wrappers, while expensive work runs outside Hermes cron sessions. Each scout writes a timestamped envelope under:
+Protected anchors remain anchors. New sources begin at `probation`. Merely appearing in `candidateSources` does **not** earn a useful hit. A source gets hit/score credit only when its URL survives research as an evidence-bearing candidate/source.
+
+Normal lifecycle:
+
+```text
+discovered → probation → trusted → promoted → decay/review → probation/retired
+```
+
+Repeated zero-value failures and long periods without useful output can retire learned sources. Explicitly user-excluded sources stay retired. Retired non-excluded sources may later be rediscovered, but only at probation.
+
+## skill evolution is eval-gated
+
+The researcher has two speeds of self-improvement.
+
+Fast/reversible state can change automatically: source tiers, scores, mirror health, query candidates, heuristic confidence and dead-end state.
+
+Nix-owned active skill instructions use a slower process:
+
+```text
+trajectory evidence
+    ↓
+candidate rule / skill draft
+    ↓
+representative evals
+    ↓
+with-skill vs current/baseline comparison
+    ↓
+promote / keep-testing / reject / rollback
+```
+
+The official pinned Anthropic `skill-creator` is exposed to Hermes for this evaluation-oriented workflow. The research skill also ships a representative eval set under:
+
+```text
+home/yargc/skills/hermes-research-radar/evals/evals.json
+```
+
+Eval cases cover vibe-coding novelty, Monero community→primary-source verification, X mirror failure, Reddit RSS breadth, LocalLLaMA noise rejection, anchor saturation/exploration preservation and evidence-gated source promotion.
+
+Research skill structure:
+
+```text
+home/yargc/skills/hermes-research-radar/
+├── SKILL.md
+├── evals/
+│   └── evals.json
+└── references/
+    ├── research-pipeline.md
+    ├── source-governance.md
+    ├── central-sources.md
+    ├── reddit-rss.md
+    ├── x-research.md
+    └── research-evolution.md
+```
+
+The weekly `skill-evolution-review` reads the active research skill, evals, adaptive source registry, recent frontier run state, heuristics and skill drafts. It produces an evidence-backed promotion/testing/retirement queue but does not mutate the active Nix-owned skill automatically.
+
+## frontier fan-in
+
+Scouts are separate cron entries and write timestamped envelopes under:
 
 ```text
 ~/.local/state/vesper/research/unknown-frontier-ai/scouts/
 ```
 
-At `09:00`, synthesis reads only fresh envelopes. It waits for missing scouts for a bounded interval (`VESPER_FRONTIER_FANIN_WAIT_SECONDS`, default 300 seconds), then synthesizes the fresh subset and explicitly records missing/stale sources. If no fresh scout exists, synthesis fails instead of silently recycling old state.
-
-`frontier-daily` remains available as a manual compatibility task. It uses bounded concurrency (`VESPER_FRONTIER_MAX_WORKERS`, default 2) and the same state fan-in.
-
-This join is inspectable, freshness-aware, independent of Hermes' cron-session lifetime, and survives process boundaries.
+Synthesis uses only fresh envelopes, waits a bounded interval for missing scouts, then reports missing/stale sources explicitly. If no fresh scout exists, synthesis fails instead of silently recycling yesterday's research.
 
 ## watchdogs
 
-`vesper-health-watch` runs every three hours. It checks `vesper-doctor --json`, failed user/system systemd units, root/home disk utilization (`VESPER_DISK_ALERT_PERCENT`, default 90), and discovered Restic timer state when Restic timers are present.
+`vesper-health-watch` checks Vesper doctor state, failed user/system units, disk utilization and Restic state when present.
 
-`cron-skill-integrity-watch` runs every six hours. It checks desired jobs, enabled/paused state, schedules, physical script paths, `no_agent=true`, duplicate job names, referenced skills, and Hermes cron/gateway health.
+`cron-skill-integrity-watch` checks declarative cron records, enabled state, schedule, physical script paths, `no_agent=true`, duplicate names, skill references and Hermes scheduler health.
 
-Both watchdogs are edge-triggered through `~/.local/state/vesper/research/watches/`: unchanged warnings are not resent, and recovery emits one recovery message.
+Both are edge-triggered and silent while healthy.
 
 ## weekly jobs
 
-Sunday jobs are staggered:
-
-| time | job |
+| time Sunday | job |
 |---|---|
 | `11:00` | `user-pain-miner` |
 | `12:30` | `project-archaeologist` |
 | `14:00` | `skill-evolution-review` |
 | `15:30` | `ai-usage-economist` |
 
-`user-pain-miner` requires recurrence evidence instead of turning isolated complaints into fake trends.
-
-`project-archaeologist` scans bounded local Git roots for unfinished work worth revisiting.
-
-`skill-evolution-review` reviews research heuristics and `skill-drafts`; it never edits active skills automatically and does not replace Hermes Curator.
-
-`ai-usage-economist` uses available local accounting surfaces (`ccusage`, CodexBar and TurnLens) and keeps measured usage separate from routing suggestions.
-
-The nightly second-brain resolver prefers `OBSIDIAN_VAULT_PATH` and known locations, then performs only a bounded depth scan. It never recursively walks the entire home directory.
+`user-pain-miner` requires recurrence evidence. `project-archaeologist` scans bounded local Git roots. `ai-usage-economist` separates measured usage from model-routing suggestions.
 
 ## validation and CI
-
-The runtime exposes:
 
 ```bash
 vesper-hermes-automations validate-registry
 ```
 
-The validator rejects unknown tasks/watchdogs, invalid schedule shape, duplicate cron/script identities and incorrect delivery policy before cron reconciliation.
-
-GitHub Actions evaluates `hermes-jobs.nix` to JSON and runs the Python contract suite. Tests assert the automation surface, frontier coverage bounds, budget allocation, skill/reference presence, X/Reddit canonicalization, scout/synthesis staggering, watchdog delivery policy and `--no-agent`/script flags used by the Hermes CLI integration.
+GitHub Actions evaluates the Nix registry and runs the Python contract suite. Contracts cover schedule/task wiring, 200–1000 coverage bounds, source interests/exclusions, source-registry promotion behavior, old LocalLLaMA migration, 45/30/25 candidate-pool preservation, skill/reference/eval presence, X/Reddit canonicalization and Hermes no-agent script mode.
 
 ## commands
 
@@ -206,16 +286,8 @@ vesper-hermes-automations execute unknown-frontier-synthesis
 vesper-hermes status
 vesper-hermes list
 vesper-hermes inbox
-```
 
-Scheduler-level inspection remains native Hermes:
-
-```bash
 hermes cron status
 hermes cron list
 hermes cron run <job>
 ```
-
-## why not automation blueprints here
-
-Automation Blueprints are useful for portable opt-in skills. These jobs are machine-owned Vesper configuration, so schedule, wrapper and state paths stay in Nix as the single source of truth. A mature workflow can later be exported as a blueprint for sharing.

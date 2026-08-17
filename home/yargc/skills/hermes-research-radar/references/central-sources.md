@@ -2,33 +2,52 @@
 
 Central sources are durable anchors, not an allowlist.
 
-The researcher must inspect them every normal frontier run while still reserving substantial budget for autonomous discovery. An anchor cannot be demoted merely because one or several runs are quiet. Newly discovered sources can earn more budget, but they do not silently replace the anchors.
+They receive guaranteed inspection budget because they map directly to the user's highest-value domains. Autonomous discovery remains mandatory and can promote better sources, but learned sources do not silently replace protected anchors.
+
+## Interest map
+
+The research center of gravity is:
+
+1. vibe coding / coding agents / agent harnesses / skills / MCP / context engineering;
+2. Monero / privacy / private payments / Tor / private communications;
+3. Nix/Linux/security/open-source infrastructure when it improves those workflows or the workstation.
+
+Generic local-model/inference discussion is not a standing interest. `r/LocalLLaMA` is explicitly excluded from the default research graph.
 
 ## Reddit anchors
 
-Primary Reddit anchors:
+### Vibe coding / agentic development
 
-- `r/MoneroMeansMoney` — Monero/privacy culture, ecosystem edges, niche discussion
+- `r/vibecoding` — practical AI-built software, workflows, failures and emerging patterns
+- `r/ClaudeCode` — Claude Code workflows, subagents, skills, context and real-repo usage
+- `r/codex` — Codex CLI/IDE/cloud workflows, failures, usage and workarounds
+- `r/opencodeCLI` — OpenCode workflows, providers, integrations and community tooling
+- `r/cursor` — agentic editor workflows, context/repo practices and product-edge techniques
+
+### Monero / privacy
+
+- `r/MoneroMeansMoney` — Monero/privacy culture, ecosystem edges and niche discussion
 - `r/Monero` — protocol/ecosystem/community developments
-- `r/LocalLLaMA` — local models, inference, open model tooling and agent techniques
 - `r/privacy` — privacy software, policy and practical privacy changes
-- `r/NixOS` — Nix/NixOS ecosystem and workstation-relevant changes
-- `r/selfhosted` — self-hosted replacements and practical infrastructure
 - `r/Tor` — Tor/onion/privacy operational developments
 - `r/netsec` — technical security research and tooling
 
-These anchors receive guaranteed intake before general and discovered communities.
+### Workstation / infrastructure
+
+- `r/NixOS` — Nix/NixOS ecosystem and workstation-relevant changes
+
+Anchor feeds should not be concatenated and blindly truncated. Select candidates with a bounded anchor quota and source-diverse round-robin so prolific communities cannot consume the entire Reddit budget.
 
 ## X / Twitter anchors
 
 The initial X anchor graph is selected from the user's followed accounts for technical signal rather than raw engagement.
 
-### AI / developer tooling
+### Coding agents / developer tooling
 
 - `@Teknium` — Hermes Agent / NousResearch
 - `@thdxr` — OpenCode / developer tooling
 - `@XOpenSource` — X open-source engineering
-- `@ZixuanLi_` — Z.ai / model and AI engineering
+- `@ZixuanLi_` — Z.ai / AI engineering
 
 ### Monero / privacy / decentralized payments
 
@@ -36,58 +55,87 @@ The initial X anchor graph is selected from the user's followed accounts for tec
 - `@kyc_rip` — no-KYC swap ecosystem signals
 - `@XBToshi` — Bitcoin/Monero privacy tooling ecosystem
 - `@schmidt1024` — privacy/open-source/Monero projects
-- `@XMRHub_org` — Monero ecosystem aggregation/discovery
-- `@CR1337` — crypto-agorism, Monero and privacy projects
+- `@XMRHub_org` — Monero ecosystem discovery
+- `@CR1337` — Monero/privacy projects and crypto-agorism
 - `@linuxuser1996` — Linux/GrapheneOS/Monero/privacy
 - `@Examare1` — Monero ecosystem
 - `@ZcashLabs` — Zcash engineering/ecosystem counterpoint
 
-### security / threat intelligence
+### Security / threat intelligence
 
-- `@akaclandestine` — OSINT, threat research, OPSEC, threat intelligence
+- `@akaclandestine` — OSINT, threat research, OPSEC and threat intelligence
 - `@DailyDarkWeb` — dark-web threat intelligence
 
-### private communications
+### Private communications
 
 - `@SimpleXChat` — private messaging/network architecture
 
-The following followed accounts are intentionally not central by default when their expected signal is dominated by memes, general trading, price/charts, or broad consumer activity. They remain discoverable through the autonomous graph and may earn promotion if repeated technical value is demonstrated.
+Accounts dominated by memes, general trading, price/charts or broad consumer activity are not protected anchors. They remain discoverable and can earn adaptive promotion only through repeated technical value.
+
+## GitHub anchor neighborhoods
+
+GitHub frontier research should always know where to begin, then expand through issues, PRs, commits, forks, authors and dependency neighborhoods.
+
+### Coding-agent anchors
+
+- `NousResearch/hermes-agent`
+- `openai/codex`
+- `anthropics/claude-code`
+- `anomalyco/opencode`
+
+### Monero/privacy anchors
+
+- `monero-project/monero`
+- `Cuprate/cuprate`
+
+These are starting neighborhoods, not the final report. The highest-value finding may live in a small adjacent repo, fork, issue, author account or dependency discovered from them.
 
 ## Autonomous source evolution
 
 Every non-anchor source starts as `probation`.
 
-The source lifecycle is:
+Lifecycle:
 
-`probation -> trusted -> promoted`
+`probation -> trusted -> promoted -> decay/review -> probation/retired`
 
-A source earns promotion only when its discoveries repeatedly survive triage/deep-read and produce useful evidence-bearing findings. One lucky hit is not enough.
+Discovery alone does not count as a useful hit. A source earns credit only when a candidate survives deep reading and contributes evidence-bearing value.
 
-The runtime keeps a source registry under:
+The runtime registry lives at:
 
 `~/.local/state/vesper/research/unknown-frontier-ai/source-registry.json`
 
-For discovered sources track at least:
+Track at least:
 
-- type and canonical identity
-- tier
+- source type and canonical identity
+- tier and protected status
 - score
 - useful-hit count
-- first/last seen time
+- observation/fetch count
+- failure count
+- first/last seen
 - last useful time
-- failure count when relevant
-- discovery provenance when available
+- discovery provenance
+- retirement reason when applicable
 
-Anchors are marked `protected=true`. They may accumulate health/failure history but cannot be automatically demoted or removed.
+Protected anchors may accumulate failure/health history but cannot be automatically removed. Explicitly user-excluded sources are retired from the active graph and should not be rediscovered into probation.
 
-## Budget policy
+## Candidate budget policy
 
-A normal source budget should roughly reserve:
+A normal social-source candidate set should roughly reserve:
 
-- 35-50% for central anchors
-- 25-40% for trusted/promoted discovered sources
-- 20-30% for exploration/query tail/new sources
+- **45%** protected anchors
+- **30%** trusted/promoted/probation learned sources
+- **25%** query-tail/new-source exploration
 
-These are adaptive bands, not rigid quotas. If one transport is blocked, move unused budget to another route while recording the access failure.
+These are candidate-selection quotas, not hard request-count quotas. If one pool is empty or blocked, redistribute unused budget to the others while recording the failure.
 
-Do not let autonomous optimization collapse the source graph into a small echo chamber. Preserve explicit exploration and cross-source diversity even when a few sources have high historical hit rates.
+Within each pool, use source-diverse selection. One high-volume subreddit or X account must not dominate merely because it emitted more entries.
+
+## Anti-echo-chamber rules
+
+- never optimize exploration to zero;
+- never treat a mirror copy as independent corroboration;
+- periodically re-test trusted/promoted sources for freshness and downstream utility;
+- retire dead/noisy learned sources conservatively;
+- keep cross-platform paths: Reddit -> X -> GitHub -> docs/paper and the reverse;
+- preserve contradictory sources when they materially challenge a finding.

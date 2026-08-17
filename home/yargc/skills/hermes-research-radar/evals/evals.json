@@ -1,0 +1,96 @@
+{
+  "skill_name": "hermes-research-radar",
+  "evals": [
+    {
+      "id": 1,
+      "name": "vibe-coding-hidden-workflow",
+      "prompt": "Research today's overlooked coding-agent or vibe-coding workflows. Prefer concrete techniques around Codex, Claude Code, OpenCode, Hermes, skills, MCP, context engineering or agent harnesses. Do not fill the result with mainstream model launches.",
+      "expected_output": "A small set of novel practical coding-agent findings, each traced to technical evidence, with generic launch/model chatter excluded.",
+      "files": [],
+      "assertions": [
+        "At least one finding is a reproducible coding-agent workflow, tool, integration, skill, harness or context technique.",
+        "Important technical claims point to primary evidence such as a repository, issue, PR, commit, documentation or first-party release.",
+        "The result is not dominated by generic model announcements or benchmark news.",
+        "The report explains why each surviving finding is useful and new rather than listing links only."
+      ]
+    },
+    {
+      "id": 2,
+      "name": "monero-community-to-primary-evidence",
+      "prompt": "Find a recent technically meaningful Monero or privacy development. Use community sources such as Reddit/X for discovery when useful, but verify the strongest claim against primary technical evidence.",
+      "expected_output": "A Monero/privacy finding with a visible discovery-to-verification chain and explicit confidence/caveats.",
+      "files": [],
+      "assertions": [
+        "The finding is about Monero/privacy engineering, not coin price speculation.",
+        "A community/social discovery signal is not treated as independent proof by itself.",
+        "The central claim is checked against project-owned code, issue/PR/commit, documentation, paper or first-party announcement when available.",
+        "Contradictions or verification limits are stated instead of hidden."
+      ]
+    },
+    {
+      "id": 3,
+      "name": "x-fallback-remains-mandatory",
+      "prompt": "Run the X research lane while the first X mirror is unavailable. Continue X discovery through configured fallback routes and report access failures honestly.",
+      "expected_output": "X remains in the research surface using fallback mirrors/search paths; failure of one transport does not silently remove X.",
+      "files": [],
+      "assertions": [
+        "Failure of the first mirror is recorded as a limitation.",
+        "Another configured X route is attempted before declaring X unavailable.",
+        "Mirror copies of the same X post are canonicalized as one candidate/source identity.",
+        "Important X-discovered technical claims are followed to primary evidence when possible."
+      ]
+    },
+    {
+      "id": 4,
+      "name": "reddit-rss-broad-intake-selective-depth",
+      "prompt": "Use Reddit to discover coding-agent and Monero/privacy developments with enough breadth for a daily frontier run. Use RSS/Atom for intake and selectively deep-read only the strongest threads/comments.",
+      "expected_output": "Broad RSS candidate coverage with dedupe, source diversity and limited deep reading rather than hundreds of full-thread model reads.",
+      "files": [],
+      "assertions": [
+        "RSS/Atom is used as cheap intake rather than as the final evidence layer.",
+        "Candidate URLs are canonicalized/deduplicated before coverage accounting.",
+        "Only a bounded strongest subset is deep-read.",
+        "Useful comment branches can trigger primary-source follow-up."
+      ]
+    },
+    {
+      "id": 5,
+      "name": "local-llm-noise-is-out-of-scope",
+      "prompt": "Produce the unknown-frontier research report when the intake includes many LocalLLaMA/local-inference/model-quantization items plus a smaller number of coding-agent and Monero/privacy items.",
+      "expected_output": "Coding-agent and Monero/privacy items win unless local inference directly changes those workflows; generic LocalLLaMA noise is filtered.",
+      "files": [],
+      "assertions": [
+        "Generic local-model, quantization and inference-hobby items are not surfaced merely because they are available.",
+        "A local-inference item may survive only when it materially improves coding-agent cost, privacy, deployment or workflow.",
+        "Vibe-coding/coding-agent and Monero/privacy findings receive higher relevance priority.",
+        "The excluded LocalLLaMA source is not automatically re-promoted through source discovery."
+      ]
+    },
+    {
+      "id": 6,
+      "name": "anchor-saturation-preserves-exploration",
+      "prompt": "Assume protected anchor feeds alone contain more candidates than the daily target. Select the candidate set without losing adaptive learned sources or new-source exploration.",
+      "expected_output": "Candidate selection respects anchor/dynamic/explore pools instead of truncating the anchor feed first.",
+      "files": [],
+      "assertions": [
+        "Protected anchors receive guaranteed candidate budget but do not consume the whole target.",
+        "Learned dynamic sources retain a non-zero candidate share when available.",
+        "Query-tail/new-source exploration retains a non-zero candidate share when available.",
+        "Selection is source-diverse so one prolific account/subreddit cannot monopolize a pool."
+      ]
+    },
+    {
+      "id": 7,
+      "name": "source-learning-needs-useful-evidence",
+      "prompt": "A newly discovered source appears in candidateSources but has not yet produced a useful deep-read finding. Later it produces useful evidence-bearing candidates on repeated runs. Apply the source lifecycle.",
+      "expected_output": "Discovery alone creates probation without hit credit; repeated useful evidence later advances the source through trusted/promoted tiers.",
+      "files": [],
+      "assertions": [
+        "A candidateSources mention alone does not increment useful-hit count.",
+        "The new source starts at probation unless it is an explicit protected anchor.",
+        "Repeated useful evidence can advance the source to trusted and then promoted.",
+        "User-excluded sources cannot regain promotion through autonomous discovery."
+      ]
+    }
+  ]
+}
