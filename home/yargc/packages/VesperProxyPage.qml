@@ -6,6 +6,7 @@ import Quickshell.Io
 import Caelestia.Config
 import qs.components
 import qs.components.controls
+import qs.services
 import qs.modules.nexus.common
 
 PageBase {
@@ -98,6 +99,7 @@ PageBase {
                 isRound: true
                 icon: "delete"
                 text: qsTr("Clear")
+                disabled: change.running
                 onClicked: {
                     change.action = "clear";
                     change.command = ["@vesperControl@", "proxy", "clear"];
