@@ -165,6 +165,73 @@ pub fn set_airplane(enabled: bool) -> Result<(), String> {
     }
 }
 
+fn zapret_profile_raw() -> String {
+    let value = fs::read_to_string("/etc/vesper/zapret-profile.json").unwrap_or_default();
+    let trimmed = value.trim();
+    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+        trimmed.to_string()
+    } else {
+        "{}".to_string()
+    }
+}
+
+pub fn dpi_status_json() -> String {
+    let active = success("systemctl", &["is-active", "--quiet", "nfqws2@default.service"]);
+    format!(
+        "{{\"active\":{},\"service\":\"nfqws2@default.service\",\"managedBy\":\"nix\",\"mutableProfile\":false,\"profile\":{}}}",
+        bool_lit(active),
+        zapret_profile_raw()
+    )
+}
+
+fn valid_test_domain(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 253
+        && !value.starts_with('.')
+        && !value.ends_with('.')
+        && value.contains('.')
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-'))
+}
+
+pub fn dpi_test_json(domain: &str) -> String {
+    if !valid_test_domain(domain) {
+        return format!(
+            "{{\"domain\":\"{}\",\"reachable\":false,\"httpCode\":\"\",\"error\":\"invalid test domain\",\"claim\":\"reachability-only\"}}",
+            escape(domain)
+        );
+    }
+    let url = format!("https://{domain}/");
+    match output(
+        "curl",
+        &[
+            "--silent",
+            "--show-error",
+            "--output",
+            "/dev/null",
+            "--connect-timeout",
+            "5",
+            "--max-time",
+            "10",
+            "--write-out",
+            "%{http_code}",
+            &url,
+        ],
+    ) {
+        Ok(code) => format!(
+            "{{\"domain\":\"{}\",\"reachable\":true,\"httpCode\":\"{}\",\"error\":\"\",\"claim\":\"reachability-only\"}}",
+            escape(domain),
+            escape(&code)
+        ),
+        Err(error) => format!(
+            "{{\"domain\":\"{}\",\"reachable\":false,\"httpCode\":\"\",\"error\":\"{}\",\"claim\":\"reachability-only\"}}",
+            escape(domain),
+            escape(&error)
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,5 +256,14 @@ mod tests {
     #[test]
     fn rejects_invalid_boolean_values() {
         assert_eq!(parse_record("wifi=maybe\nbluetooth=0\n"), None);
+    }
+
+    #[test]
+    fn dpi_test_domains_are_strict() {
+        assert!(valid_test_domain("example.com"));
+        assert!(valid_test_domain("sub.example.org"));
+        assert!(!valid_test_domain("localhost"));
+        assert!(!valid_test_domain("example.com/path"));
+        assert!(!valid_test_domain("example.com;id"));
     }
 }
