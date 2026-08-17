@@ -18,15 +18,24 @@ fn unit_failed(unit: &str) -> bool {
     success("systemctl", &["is-failed", "--quiet", unit])
 }
 
-fn snapper_summary(config: &str) -> String {
-    output("snapper", &["-c", config, "list"])
-        .map(|text| {
-            let mut rows = text.lines().filter(|line| !line.trim().is_empty()).collect::<Vec<_>>();
-            if rows.len() > 5 {
-                rows = rows.split_off(rows.len() - 5);
-            }
-            rows.join(" · ")
+fn snapper_inventory(config: &str) -> (u64, String) {
+    let text = output("snapper", &["-c", config, "list"]).unwrap_or_default();
+    let rows = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| {
+            let first = line.split_whitespace().next().unwrap_or("");
+            line.contains('|') && !first.is_empty() && first.chars().all(|ch| ch.is_ascii_digit())
         })
+        .collect::<Vec<_>>();
+    let count = rows.len() as u64;
+    let start = rows.len().saturating_sub(5);
+    (count, rows[start..].join(" · "))
+}
+
+fn disk_usage_summary() -> String {
+    output("df", &["-B1", "--output=size,used,avail,pcent,target", "/", "/home"])
+        .map(|text| text.lines().take(4).collect::<Vec<_>>().join(" · "))
         .unwrap_or_default()
 }
 
@@ -76,15 +85,16 @@ pub fn status_json() -> String {
     let check_last_run = property(CHECK_JOB, "InactiveExitTimestamp");
     let check_next_run = property(CHECK_TIMER, "NextElapseUSecRealtime");
 
-    let root_snapshots = snapper_summary("root");
-    let home_snapshots = snapper_summary("home");
+    let (root_snapshot_count, root_snapshots) = snapper_inventory("root");
+    let (home_snapshot_count, home_snapshots) = snapper_inventory("home");
+    let disk_usage = disk_usage_summary();
     let scrub_next = scrub_timer_summary();
     let scrub_result = scrub_result_summary();
     let restore_ready = backup_result == "success" && check_result == "success" && !backup_failed && !check_failed;
     let safe_check_available = check_load_state == "loaded";
 
     format!(
-        "{{\"backend\":\"restic\",\"managedBy\":\"nixos\",\"mutable\":false,\"backup\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"conditionResult\":\"{}\",\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"repositoryCheck\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"snapper\":{{\"root\":\"{}\",\"home\":\"{}\"}},\"btrfsScrub\":{{\"next\":\"{}\",\"result\":\"{}\"}},\"retention\":{{\"daily\":7,\"weekly\":4,\"monthly\":12}},\"restoreReady\":{},\"restoreAvailableInSettings\":false,\"safeCheckActionAvailableInSettings\":{}}}",
+        "{{\"backend\":\"restic\",\"managedBy\":\"nixos\",\"mutable\":false,\"backup\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"conditionResult\":\"{}\",\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"repositoryCheck\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"snapper\":{{\"rootCount\":{},\"homeCount\":{},\"root\":\"{}\",\"home\":\"{}\"}},\"storage\":{{\"localDiskUsage\":\"{}\",\"repositoryUsageAvailable\":false,\"repositoryUsageReason\":\"Restic credentials are intentionally unavailable to the unprivileged Settings process\"}},\"btrfsScrub\":{{\"next\":\"{}\",\"result\":\"{}\"}},\"retention\":{{\"daily\":7,\"weekly\":4,\"monthly\":12}},\"restoreReady\":{},\"restoreAvailableInSettings\":false,\"safeCheckActionAvailableInSettings\":{}}}",
         bool_lit(backup_timer_active),
         bool_lit(backup_job_active),
         bool_lit(backup_failed),
@@ -98,8 +108,11 @@ pub fn status_json() -> String {
         escape(&check_result),
         escape(&check_last_run),
         escape(&check_next_run),
+        root_snapshot_count,
+        home_snapshot_count,
         escape(&root_snapshots),
         escape(&home_snapshots),
+        escape(&disk_usage),
         escape(&scrub_next),
         escape(&scrub_result),
         bool_lit(restore_ready),
@@ -117,5 +130,6 @@ mod tests {
         assert!(json.contains("\"backend\":\"restic\""));
         assert!(json.contains("\"restoreAvailableInSettings\":false"));
         assert!(json.contains("\"mutable\":false"));
+        assert!(json.contains("\"repositoryUsageAvailable\":false"));
     }
 }
