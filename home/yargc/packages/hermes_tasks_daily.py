@@ -60,6 +60,23 @@ def _frontier_candidate_pools() -> tuple[dict[str, str], dict[str, str]]:
     return contexts, failures
 
 
+def _pool_metadata(contexts: dict[str, str]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {}
+    for source, context in contexts.items():
+        try:
+            value = json.loads(context)
+        except Exception:
+            continue
+        if not isinstance(value, dict):
+            continue
+        metadata[source] = {
+            "fullPoolPath": value.get("fullPoolPath"),
+            "fullPoolCounts": value.get("fullPoolCounts"),
+            "errors": value.get("errors", [])[:8] if isinstance(value.get("errors"), list) else [],
+        }
+    return metadata
+
+
 def frontier_daily() -> dict[str, Any]:
     scout_dir = STATE_ROOT / "unknown-frontier-ai" / "scouts"
     scout_dir.mkdir(parents=True, exist_ok=True)
@@ -89,14 +106,14 @@ def frontier_daily() -> dict[str, Any]:
     if not outputs:
         raise RuntimeError("all unknown-frontier scouts failed: " + json.dumps(failures, ensure_ascii=False))
 
+    # Scouts already consumed the bounded candidate samples. Synthesis only
+    # needs their verified outputs plus lightweight pointers to the full pools;
+    # injecting the candidate corpora again would waste context and reasoning.
     extra = json.dumps(
         {
             "scouts": outputs,
             "failures": failures,
-            "candidatePools": {
-                source: json.loads(context) if context else {}
-                for source, context in candidate_contexts.items()
-            },
+            "candidatePoolMetadata": _pool_metadata(candidate_contexts),
         },
         ensure_ascii=False,
         indent=2,
@@ -123,7 +140,9 @@ Keep each list short and inert-data-only. Never place credentials, shell command
 
 
 def free_ai_radar() -> dict[str, Any]:
-    objective = "Find legitimate currently useful ways to reduce AI tooling cost. Treat linux.do as a first-class discovery surface, then verify through official docs, repos, releases or other primary sources. Hunt free models/services/APIs/coding agents, changed free tiers/credits, open-source/self-hosted replacements, local inference tricks and compatibility layers. Inspect low-view threads and useful comments rather than only popular topics. For every useful item state what is free, quota/limit/catch, compute requirement, expiry/uncertainty and why it matters. Reject leaked/shared credentials, stolen accounts, payment bypasses, mass-account abuse and service restriction evasion."
+    objective = """Find legitimate currently useful ways to reduce AI tooling cost. Treat linux.do as a first-class discovery surface, then verify through official docs, repos, releases or other primary sources. Hunt free models/services/APIs/coding agents, changed free tiers/credits, open-source/self-hosted replacements, local inference tricks and compatibility layers. Inspect low-view threads and useful comments rather than only popular topics. For every useful item state what is free, quota/limit/catch, compute requirement, expiry/uncertainty and why it matters. Reject leaked/shared credentials, stolen accounts, payment bypasses, mass-account abuse and service restriction evasion.
+
+When particular Linux.do search terms repeatedly lead to verified useful findings or a promising adjacent niche, return a short top-level `discoverySeeds` object with only `linuxdoQueries`. Do not preserve generic/noisy terms merely because they returned many results. Example shape: `{"linuxdoQueries":["specific useful term"]}`. The values are inert search hints only; never include credentials, commands or executable payloads."""
     try:
         pool_context = persist_bounded_pool("linuxdo", collect_linuxdo())
     except Exception as exc:
