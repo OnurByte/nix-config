@@ -94,4 +94,12 @@
     deliver = "local";
     description = "weekly local agent usage and model-cost workflow review";
   };
+
+  weekly-intelligence-review = {
+    schedule = "0 17 * * 0";
+    mode = "dispatch";
+    task = "weekly-intelligence-review";
+    deliver = "local";
+    description = "weekly decision-oriented synthesis across research projects upstream cost and skill learning";
+  };
 }
