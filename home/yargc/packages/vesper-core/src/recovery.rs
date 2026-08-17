@@ -48,6 +48,17 @@ fn scrub_result_summary() -> String {
     .unwrap_or_default()
 }
 
+pub fn run_repository_check() -> Result<(), String> {
+    let load_state = property(CHECK_JOB, "LoadState");
+    if load_state != "loaded" {
+        return Err("Restic repository check service is not installed/loaded".to_string());
+    }
+    if unit_active(CHECK_JOB) {
+        return Ok(());
+    }
+    output("systemctl", &["start", CHECK_JOB]).map(|_| ())
+}
+
 pub fn status_json() -> String {
     let backup_timer_active = unit_active(BACKUP_TIMER);
     let backup_job_active = unit_active(BACKUP_JOB);
@@ -57,6 +68,7 @@ pub fn status_json() -> String {
     let backup_next_run = property(BACKUP_TIMER, "NextElapseUSecRealtime");
     let backup_condition = property(BACKUP_JOB, "ConditionResult");
 
+    let check_load_state = property(CHECK_JOB, "LoadState");
     let check_timer_active = unit_active(CHECK_TIMER);
     let check_job_active = unit_active(CHECK_JOB);
     let check_failed = unit_failed(CHECK_JOB);
@@ -69,9 +81,10 @@ pub fn status_json() -> String {
     let scrub_next = scrub_timer_summary();
     let scrub_result = scrub_result_summary();
     let restore_ready = backup_result == "success" && check_result == "success" && !backup_failed && !check_failed;
+    let safe_check_available = check_load_state == "loaded";
 
     format!(
-        "{{\"backend\":\"restic\",\"managedBy\":\"nixos\",\"mutable\":false,\"backup\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"conditionResult\":\"{}\",\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"repositoryCheck\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"snapper\":{{\"root\":\"{}\",\"home\":\"{}\"}},\"btrfsScrub\":{{\"next\":\"{}\",\"result\":\"{}\"}},\"retention\":{{\"daily\":7,\"weekly\":4,\"monthly\":12}},\"restoreReady\":{},\"restoreAvailableInSettings\":false,\"safeCheckActionAvailableInSettings\":false}}",
+        "{{\"backend\":\"restic\",\"managedBy\":\"nixos\",\"mutable\":false,\"backup\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"conditionResult\":\"{}\",\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"repositoryCheck\":{{\"timerActive\":{},\"jobActive\":{},\"failed\":{},\"lastResult\":\"{}\",\"lastRun\":\"{}\",\"nextRun\":\"{}\"}},\"snapper\":{{\"root\":\"{}\",\"home\":\"{}\"}},\"btrfsScrub\":{{\"next\":\"{}\",\"result\":\"{}\"}},\"retention\":{{\"daily\":7,\"weekly\":4,\"monthly\":12}},\"restoreReady\":{},\"restoreAvailableInSettings\":false,\"safeCheckActionAvailableInSettings\":{}}}",
         bool_lit(backup_timer_active),
         bool_lit(backup_job_active),
         bool_lit(backup_failed),
@@ -90,6 +103,7 @@ pub fn status_json() -> String {
         escape(&scrub_next),
         escape(&scrub_result),
         bool_lit(restore_ready),
+        bool_lit(safe_check_available),
     )
 }
 
