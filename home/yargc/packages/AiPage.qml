@@ -51,12 +51,12 @@ PageBase {
         InfoRow { icon: "schedule"; label: qsTr("Hermes"); subtext: root.control.hermesRegistry ? qsTr("job registry available") : qsTr("job registry unavailable"); value: qsTr("%1 unread").arg(root.ai.hermes?.unread ?? 0) }
 
         SectionHeader { text: qsTr("Control plane") }
-        NavRow { icon: "password"; text: qsTr("Manage API keys"); subtext: qsTr("desktop keyring · no plaintext files"); onClicked: root.nState.openSubPage(1) }
-        NavRow { icon: "palette"; text: qsTr("App Icons"); subtext: qsTr("semantic SVG curation · Original / Light / Dark / Tinted / Clear"); onClicked: root.nState.openSubPage(2) }
-        NavRow { icon: "route"; text: qsTr("Runtime Credentials"); subtext: qsTr("map OpenCode and Hermes to credential aliases"); onClicked: root.nState.openSubPage(3) }
-        NavRow { icon: "dns"; text: qsTr("Providers"); subtext: qsTr("built-in/custom endpoints · model · budget · default/fallback routing"); onClicked: root.nState.openSubPage(4) }
-        NavRow { icon: "extension"; text: qsTr("Skills & MCP"); subtext: qsTr("runtime skill promotion with explicit ownership; Nix-owned MCP inventory"); onClicked: root.nState.openSubPage(5) }
-        NavRow { icon: "schedule"; text: qsTr("Hermes Jobs"); subtext: qsTr("inspect, sync and run declarative research jobs"); onClicked: root.nState.openSubPage(6) }
+        NavRow { icon: "password"; text: qsTr("Manage API keys"); subtext: qsTr("desktop keyring · no plaintext files"); onClicked: root.nState.openSubPageRoute("apiKeys") }
+        NavRow { icon: "palette"; text: qsTr("App Icons"); subtext: qsTr("semantic SVG curation · Original / Light / Dark / Tinted / Clear"); onClicked: root.nState.openSubPageRoute("appIcons") }
+        NavRow { icon: "route"; text: qsTr("Runtime Credentials"); subtext: qsTr("map OpenCode and Hermes to credential aliases"); onClicked: root.nState.openSubPageRoute("runtimeCredentials") }
+        NavRow { icon: "dns"; text: qsTr("Providers"); subtext: qsTr("built-in/custom endpoints · model · budget · default/fallback routing"); onClicked: root.nState.openSubPageRoute("providers") }
+        NavRow { icon: "extension"; text: qsTr("Skills & MCP"); subtext: qsTr("runtime skill promotion with explicit ownership; Nix-owned MCP inventory"); onClicked: root.nState.openSubPageRoute("skillsMcp") }
+        NavRow { icon: "schedule"; text: qsTr("Hermes Jobs"); subtext: qsTr("inspect, sync and run declarative research jobs"); onClicked: root.nState.openSubPageRoute("hermes") }
 
         StyledText { Layout.fillWidth: true; Layout.topMargin: Tokens.spacing.medium; visible: root.loadError; text: root.loadError; color: Colours.palette.m3error; font: Tokens.font.body.small; wrapMode: Text.WordWrap }
     }
