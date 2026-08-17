@@ -1,8 +1,6 @@
 {
   coreutils,
   git,
-  ghostty,
-  gnugrep,
   hyprland,
   jq,
   procps,
@@ -13,8 +11,6 @@ writeShellApplication {
   runtimeInputs = [
     coreutils
     git
-    ghostty
-    gnugrep
     hyprland
     jq
     procps
@@ -139,44 +135,6 @@ AGENTS
         '{count:$count,class:$state,tooltip:$tooltip,stateDir:$stateDir,agents:$agents}'
     }
 
-    render() {
-      local payload
-      payload="$(status_json)"
-      clear
-      jq -r '
-        "VESPER AGENT COCKPIT\n" +
-        "active sessions  \(.count)\n" +
-        "────────────────────────────────────────────────────────\n" +
-        (if .agents | length == 0 then
-          "no active coding agents"
-        else
-          (.agents | map(
-            "\(.agent)\n" +
-            "  project  \(.project)\n" +
-            "  branch   " + (if .branch == "" then "-" else .branch end) +
-            (if .dirty then "  (dirty)" else "  (clean)" end) + "\n" +
-            "  pid      \(.pid)\n" +
-            "  age      \(.elapsedSeconds)s\n" +
-            "  cwd      " + (if .cwd == "" then "-" else .cwd end)
-          ) | join("\n\n"))
-        end) +
-        "\n\nstate  \(.stateDir)" +
-        "\nrefreshes every 2s · Ctrl+C closes"
-      ' <<<"$payload"
-    }
-
-    tui() {
-      trap 'exit 0' INT TERM
-      while true; do
-        render
-        sleep 2
-      done
-    }
-
-    popup() {
-      exec ghostty --class=vesper-agent-cockpit -e vesper-agent-cockpit tui
-    }
-
     focus_pid() {
       local pid="''${1:-}"
       if ! [[ "$pid" =~ ^[0-9]+$ ]]; then
@@ -186,24 +144,15 @@ AGENTS
       hyprctl dispatch focuswindow "pid:$pid" >/dev/null
     }
 
-    case "''${1:-popup}" in
+    case "''${1:-status}" in
       status|--json)
         status_json
-        ;;
-      render)
-        render
-        ;;
-      tui)
-        tui
-        ;;
-      popup)
-        popup
         ;;
       focus)
         focus_pid "''${2:-}"
         ;;
       *)
-        echo "usage: vesper-agent-cockpit [popup|tui|status|render|focus <pid>]" >&2
+        echo "usage: vesper-agent-cockpit [status|focus <pid>]" >&2
         exit 2
         ;;
     esac
