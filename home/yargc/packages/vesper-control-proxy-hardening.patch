@@ -1,6 +1,9 @@
 --- a/vesper-control.rs
 +++ b/vesper-control.rs
-@@ -1,19 +1,83 @@
+@@ -4,22 +4,86 @@
+     Ok(path)
+ }
+ 
 +fn validate_proxy_port(port: Option<&str>) -> Result<(), String> {
 +    let Some(port) = port else {
 +        return Ok(());
@@ -91,7 +94,7 @@
          format!("ALL_PROXY=\"{value}\"\nall_proxy=\"{value}\"\n")
      } else {
          format!(
-@@ -22,6 +86,11 @@
+@@ -28,6 +92,11 @@
          )
      };
      fs::write(env_dir.join("90-vesper-proxy.conf"), content).map_err(|error| error.to_string())?;
@@ -103,7 +106,7 @@
      Ok(())
  }
  
-@@ -36,5 +105,10 @@
+@@ -42,6 +111,11 @@
              Err(error) => return Err(error.to_string()),
          }
      }
@@ -114,3 +117,4 @@
 +        .status();
      Ok(())
  }
+ 
