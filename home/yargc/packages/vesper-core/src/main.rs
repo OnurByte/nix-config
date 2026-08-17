@@ -1,4 +1,5 @@
 mod apps;
+mod icons;
 mod json;
 mod network;
 mod paths;
@@ -32,30 +33,26 @@ fn on_off(value: &str) -> bool {
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.as_slice() {
-        [group, action] if group == "network" && action == "status" => {
-            println!("{}", network::status_json());
-        }
+        [group, action] if group == "network" && action == "status" => println!("{}", network::status_json()),
         [group, action, value] if group == "network" && action == "airplane" => {
             network::set_airplane(on_off(value)).unwrap_or_else(|error| fail(error));
         }
-        [command, id] if command == "app-status" => {
-            println!("{}", apps::status_json(id));
-        }
+        [command, id] if command == "app-status" => println!("{}", apps::status_json(id)),
         [command, id, permission, value] if command == "app-permission" => {
             apps::set_permission(id, permission, on_off(value)).unwrap_or_else(|error| fail(error));
         }
-        [command, id] if command == "app-reset-permissions" => {
-            apps::reset_all(id).unwrap_or_else(|error| fail(error));
-        }
+        [command, id] if command == "app-reset-permissions" => apps::reset_all(id).unwrap_or_else(|error| fail(error)),
         [command, id, filesystem, value] if command == "app-filesystem" => {
             apps::set_filesystem(id, filesystem, on_off(value)).unwrap_or_else(|error| fail(error));
         }
         [command, id, bus, name, access] if command == "app-dbus" => {
             apps::set_dbus(id, bus, name, access).unwrap_or_else(|error| fail(error));
         }
-        [command] if command == "control-version" => {
-            println!("0.3.0");
-        }
+        [group, action] if group == "icons" && action == "status" => println!("{}", icons::status_json()),
+        [group, action] if group == "icons" && action == "reconcile" => icons::reconcile().unwrap_or_else(|error| fail(error)),
+        [group, action, id] if group == "icons" && action == "regenerate" => icons::regenerate(id).unwrap_or_else(|error| fail(error)),
+        [group, action, key, value] if group == "icons" && action == "set" => icons::set_config(key, value).unwrap_or_else(|error| fail(error)),
+        [command] if command == "control-version" => println!("0.4.0"),
         _ => legacy(&args),
     }
 }
