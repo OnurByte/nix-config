@@ -549,6 +549,8 @@ fn wifi_qr() -> Result<PathBuf, String> {
     );
     let root = runtime_root();
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
     let path = root.join("wifi-share.svg");
     let path_string = path.to_string_lossy().into_owned();
     let mut child = Command::new("qrencode")
@@ -570,6 +572,8 @@ fn wifi_qr() -> Result<PathBuf, String> {
     if !result.status.success() {
         return Err(String::from_utf8_lossy(&result.stderr).trim().to_string());
     }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
     Ok(path)
 }
 
