@@ -3,7 +3,7 @@
     schedule = "30 8 * * *";
     mode = "dispatch";
     task = "frontier-daily";
-    deliver = "telegram";
+    deliver = "local";
     description = "parallel GitHub Reddit and X frontier scouts followed by one verified synthesis";
   };
 
@@ -11,7 +11,7 @@
     schedule = "45 8 * * *";
     mode = "dispatch";
     task = "free-ai-radar";
-    deliver = "telegram";
+    deliver = "local";
     description = "linux.do-first legitimate free AI and cost-saving radar";
   };
 
@@ -19,7 +19,7 @@
     schedule = "30 9 * * *";
     mode = "dispatch";
     task = "agenda";
-    deliver = "telegram";
+    deliver = "local";
     description = "compact current agenda before Morning Check";
   };
 
@@ -27,7 +27,7 @@
     schedule = "0 10 * * *";
     mode = "dispatch";
     task = "morning-check";
-    deliver = "telegram";
+    deliver = "local";
     description = "daily Telegram brief built from local project data and persistent Hermes findings";
   };
 
@@ -35,7 +35,7 @@
     schedule = "0 15 * * *";
     mode = "dispatch";
     task = "upstream-edge-radar";
-    deliver = "telegram";
+    deliver = "local";
     description = "early warning for Vesper upstream changes";
   };
 
@@ -59,7 +59,7 @@
     schedule = "30 23 * * *";
     mode = "dispatch";
     task = "second-brain-dream";
-    deliver = "telegram";
+    deliver = "local";
     description = "nightly durable research consolidation into the Obsidian second brain";
   };
 
@@ -67,7 +67,7 @@
     schedule = "0 11 * * 0";
     mode = "dispatch";
     task = "user-pain-miner";
-    deliver = "telegram";
+    deliver = "local";
     description = "weekly recurring-problem and project-opportunity miner";
   };
 
@@ -75,7 +75,7 @@
     schedule = "30 12 * * 0";
     mode = "dispatch";
     task = "project-archaeologist";
-    deliver = "telegram";
+    deliver = "local";
     description = "weekly local repository archaeology for forgotten unfinished work";
   };
 
@@ -83,7 +83,7 @@
     schedule = "0 14 * * 0";
     mode = "dispatch";
     task = "skill-evolution-review";
-    deliver = "telegram";
+    deliver = "local";
     description = "weekly evidence-based review of skill drafts and research heuristics";
   };
 
@@ -91,7 +91,7 @@
     schedule = "30 15 * * 0";
     mode = "dispatch";
     task = "ai-usage-economist";
-    deliver = "telegram";
+    deliver = "local";
     description = "weekly local agent usage and model-cost workflow review";
   };
 }

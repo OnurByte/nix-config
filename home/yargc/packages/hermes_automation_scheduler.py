@@ -110,8 +110,12 @@ def _cron_integrity_watch() -> str:
         if not job:
             problems.append(f"missing job {desired_name}")
             continue
-        if not job.get("enabled", True):
-            problems.append(f"job disabled {desired_name}")
+        expected_enabled = bool(spec.get("enabled", True))
+        actual_enabled = bool(job.get("enabled", True))
+        if actual_enabled != expected_enabled:
+            state = "enabled" if actual_enabled else "disabled"
+            expected = "enabled" if expected_enabled else "disabled"
+            problems.append(f"state drift {desired_name}: {state}, expected {expected}")
         expected_schedule = str(spec.get("schedule") or "")
         schedule = job.get("schedule") or {}
         actual_schedule = str(job.get("schedule_display") or (schedule.get("display") if isinstance(schedule, dict) else "") or (schedule.get("value") if isinstance(schedule, dict) else schedule) or "")
@@ -151,6 +155,17 @@ def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, text=True, capture_output=True, check=False)
 
 
+def _reconcile_enabled(hermes: str, ref: str, desired_enabled: bool, currently_enabled: bool) -> tuple[bool, str]:
+    if desired_enabled == currently_enabled:
+        return True, ""
+    action = "resume" if desired_enabled else "pause"
+    result = _run([hermes, "cron", action, ref])
+    if result.returncode == 0:
+        return True, action
+    detail = (result.stderr or result.stdout).strip()[-3000:]
+    return False, f"{action} failed: {detail}"
+
+
 def sync_cron(prune: bool = False) -> dict[str, Any]:
     registry = load_registry()
     hermes = hermes_bin()
@@ -158,6 +173,8 @@ def sync_cron(prune: bool = False) -> dict[str, Any]:
     by_name = {str(job.get("name")): job for job in jobs if str(job.get("name") or "")}
     created: list[str] = []
     updated: list[str] = []
+    resumed: list[str] = []
+    paused: list[str] = []
     removed: list[str] = []
     errors: list[str] = []
 
@@ -166,6 +183,7 @@ def sync_cron(prune: bool = False) -> dict[str, Any]:
         schedule = str(spec.get("schedule") or "")
         prompt = str(spec.get("prompt") or "Run the declarative Vesper Hermes trigger.")
         deliver = str(spec.get("deliver") or "local")
+        desired_enabled = bool(spec.get("enabled", True))
         script = str(spec.get("script") or f"vesper-{short_name}.sh")
         script_path = HERMES_HOME / "scripts" / script
         existing = by_name.get(cron_name)
@@ -189,17 +207,30 @@ def sync_cron(prune: bool = False) -> dict[str, Any]:
             ref = str(existing.get("id") or cron_name)
             argv = [hermes, "cron", "edit", ref, "--name", cron_name, "--schedule", schedule, "--prompt", prompt, "--deliver", deliver, "--script", str(script_path), "--no-agent"]
             result = _run(argv)
-            if result.returncode == 0:
-                updated.append(short_name)
-            else:
+            if result.returncode != 0:
                 errors.append(f"{short_name}: edit failed: {(result.stderr or result.stdout).strip()[-3000:]}")
+                continue
+            updated.append(short_name)
+            ok, action = _reconcile_enabled(hermes, ref, desired_enabled, bool(existing.get("enabled", True)))
+            if not ok:
+                errors.append(f"{short_name}: {action}")
+            elif action == "resume":
+                resumed.append(short_name)
+            elif action == "pause":
+                paused.append(short_name)
         else:
             argv = [hermes, "cron", "create", schedule, prompt, "--name", cron_name, "--deliver", deliver, "--script", str(script_path), "--no-agent"]
             result = _run(argv)
-            if result.returncode == 0:
-                created.append(short_name)
-            else:
+            if result.returncode != 0:
                 errors.append(f"{short_name}: create failed: {(result.stderr or result.stdout).strip()[-3000:]}")
+                continue
+            created.append(short_name)
+            if not desired_enabled:
+                ok, action = _reconcile_enabled(hermes, cron_name, False, True)
+                if not ok:
+                    errors.append(f"{short_name}: {action}")
+                elif action == "pause":
+                    paused.append(short_name)
 
     if prune:
         desired = {str(spec.get("cronName") or f"vesper:{name}") for name, spec in registry.items()}
@@ -213,4 +244,12 @@ def sync_cron(prune: bool = False) -> dict[str, Any]:
             else:
                 errors.append(f"{name}: remove failed: {(result.stderr or result.stdout).strip()[-3000:]}")
 
-    return {"created": created, "updated": updated, "removed": removed, "errors": errors, "ok": not errors}
+    return {
+        "created": created,
+        "updated": updated,
+        "resumed": resumed,
+        "paused": paused,
+        "removed": removed,
+        "errors": errors,
+        "ok": not errors,
+    }

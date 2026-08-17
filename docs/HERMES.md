@@ -10,7 +10,7 @@ Hermes cron
 ~/.hermes/scripts/vesper-<job>.sh
     ↓
 vesper-hermes-automations trigger <job>
-    ├─ watchdog → inspect local state → empty stdout when healthy
+    ├─ watchdog → inspect local state → edge-triggered stdout
     └─ research → systemd-run --user → vesper-hermes-automations execute <job>
                                       ↓
                                  Hermes one-shot
@@ -30,21 +30,29 @@ Home Manager writes the registry to:
 ~/.config/vesper/hermes-jobs.json
 ```
 
-and generates one short wrapper per job under:
+and installs one short wrapper per job under:
 
 ```text
 ~/.hermes/scripts/
 ```
 
-During Home Manager activation:
+Those wrappers are deliberately **real files**, not Home Manager symlinks. Hermes resolves script paths before enforcing containment under `~/.hermes/scripts`; a symlink into the Nix store would therefore be rejected as a script-directory escape at fire time. Home Manager builds immutable wrapper sources and copies them into the Hermes scripts directory during activation.
+
+After the physical wrappers are installed, Home Manager runs:
 
 ```bash
 vesper-hermes-automations sync-cron --prune
 ```
 
-reconciles `vesper:*` jobs through Hermes' own CLI. It does not delete unrelated user-created Hermes jobs.
+This reconciles only machine-owned `vesper:*` jobs through Hermes' own CLI. It restores their declarative schedule, prompt, delivery target, script, no-agent mode and enabled/paused state. It does not delete unrelated user-created Hermes jobs.
 
-The old `sabah-check-deliver.sh` and `morning-check-deliver.sh` paths remain as tiny compatibility aliases. They dispatch the new Morning Check runner instead of running a long model call inside Hermes' script timeout.
+The old `sabah-check-deliver.sh` and `morning-check-deliver.sh` paths remain as tiny physical compatibility aliases. They dispatch the new Morning Check runner instead of running a long model call inside Hermes' script timeout.
+
+## delivery policy
+
+Dispatch jobs use `deliver=local` at the Hermes cron layer because the cron tick only launches the transient worker and intentionally prints nothing. Their real output goes to the persistent briefing inbox; high/critical findings may raise a desktop notification. This avoids pretending that an asynchronous report was delivered by the short cron tick.
+
+Watchdogs use `deliver=telegram` because their stdout is the alert itself. Morning Check also keeps the cron dispatch silent, then its worker explicitly sends the finished brief through `hermes send --to telegram` after generation succeeds.
 
 ## daily jobs
 
@@ -53,28 +61,28 @@ The old `sabah-check-deliver.sh` and `morning-check-deliver.sh` paths remain as 
 | `08:30` | `frontier-daily` | GitHub, Reddit and X scouts in parallel, then one verified unknown-frontier synthesis |
 | `08:45` | `free-ai-radar` | legitimate free AI, free tiers, self-hosted alternatives and Linux.do findings |
 | `09:30` | `agenda` | compact important current agenda |
-| `10:00` | `morning-check` | local projects + todos + persistent research, delivered to Telegram |
+| `10:00` | `morning-check` | local projects + todos + persistent research, delivered to Telegram by the completed worker |
 | `15:00` | `upstream-edge-radar` | early breaking changes and capabilities in Vesper upstreams |
 | `23:30` | `second-brain-dream` | deduplicate and promote durable knowledge into the Obsidian workflow |
 
-The frontier scouts are one orchestration job instead of three independent cron entries. Synthesis waits for the scouts that actually finished, so there is no `context_from` same-tick race and no arbitrary five-minute timing dependency.
+The frontier scouts are one orchestration job instead of three independent cron entries. Synthesis waits for the scouts that actually finished, so there is no `context_from` same-tick race and no arbitrary five-minute timing dependency. Partial scout failure is recorded and tolerated; the run fails only if every scout fails or synthesis itself fails.
 
 ## watchdogs
 
 `vesper-health-watch` runs every three hours.
 
-It reads `vesper-doctor --json` and stays completely silent while healthy. It only emits the warning checks when something is wrong.
+It reads `vesper-doctor --json` and stays completely silent while healthy. It emits warnings only when health becomes bad or materially changes.
 
 `cron-integrity-watch` runs every six hours.
 
 It verifies:
 
-- every declarative Vesper cron job exists and is enabled
+- every declarative Vesper cron job exists and matches its desired enabled/paused state
 - schedules and script paths did not drift
 - referenced skills still resolve through Hermes/Vesper skill roots
 - Hermes cron/gateway status does not report a stopped or stalled scheduler
 
-Both are `no_agent` jobs. Healthy ticks use no model.
+Both are `no_agent` jobs. Healthy ticks use no model. Watch results are fingerprinted under `~/.local/state/vesper/research/watches/`: an unchanged warning is not sent repeatedly, and recovery from a previously unhealthy state produces one recovery message.
 
 ## weekly jobs
 
@@ -87,13 +95,13 @@ Sunday jobs are staggered so they do not all compete for the provider or laptop 
 | `14:00` | `skill-evolution-review` |
 | `15:30` | `ai-usage-economist` |
 
-`user-pain-miner` clusters recurring complaints across agent/Linux tooling and turns strong clusters into concrete project or skill opportunities.
+`user-pain-miner` clusters recurring complaints across agent/Linux tooling and turns strong clusters into concrete project or skill opportunities. Isolated complaints are not promoted into fake trends.
 
-`project-archaeologist` scans local Git repositories and surfaces forgotten branches, dirty work and abandoned experiments that are actually worth revisiting.
+`project-archaeologist` scans bounded local Git roots and surfaces forgotten branches, dirty work and abandoned experiments that are actually worth revisiting. It does not recursively crawl the whole home directory.
 
 `skill-evolution-review` reads research heuristics and `skill-drafts`. It only recommends promotion when there is repeated evidence. It never edits active skills automatically.
 
-`ai-usage-economist` uses whatever local accounting surfaces are available (`ccusage`, CodexBar and TurnLens) and separates measured usage from model-routing suggestions.
+`ai-usage-economist` uses whatever local accounting surfaces are available (`ccusage`, CodexBar and TurnLens) and separates measured usage from model-routing suggestions instead of inventing costs or token counts.
 
 ## state
 
@@ -116,6 +124,7 @@ Research state remains outside Hermes cron sessions:
 ├── ai-usage-economist/
 ├── second-brain-dream/
 ├── locks/
+├── watches/
 └── runs/
 ```
 
@@ -158,7 +167,7 @@ hermes cron run <job>
 
 ## why not `context_from`
 
-Hermes supports `context_from`, but it reads the most recent completed upstream output and does not wait for another job that started in the same tick.
+Hermes supports `context_from`, but it reads the most recent completed upstream output and does not provide a real same-tick join between concurrently-started jobs.
 
 The unknown-frontier pipeline needs a real join. Vesper therefore starts the three scouts inside one `frontier-daily` run and synthesizes only after the scout futures complete. Persistent scout JSON stays available for inspection and recovery.
 
