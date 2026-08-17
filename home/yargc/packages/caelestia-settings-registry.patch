@@ -37,16 +37,19 @@
          Component {
              // Network
              StackPage {
-+                routes: ({ proxy: 7 })
++                routes: ({ proxy: 7, dpi: 8 })
                  Component {
                      NetworkPage {}
                  }
-@@ -64,6 +65,9 @@
+@@ -64,6 +65,12 @@
                  Component {
                      SavedNetworksPage {}
                  }
 +                Component {
 +                    VesperProxyPage {}
++                }
++                Component {
++                    VesperDpiPage {}
 +                }
              }
          },
