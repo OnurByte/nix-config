@@ -7,13 +7,22 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from hermes_automation_common import SKILL_DRAFT_ROOT, STATE_ROOT, invoke_json
+from hermes_automation_common import (
+    RESEARCH_SKILL,
+    SECOND_BRAIN_SKILLS,
+    SKILL_DRAFT_ROOT,
+    STATE_ROOT,
+    invoke_json,
+)
 from hermes_automation_reports import recent_briefings, research_prompt, write_report
 
 
 def user_pain_miner() -> dict[str, Any]:
     objective = "Mine recurring evidence-backed user pain across Hermes, Codex, Claude Code, OpenCode, NixOS, Hyprland and adjacent agent/Linux tooling. Cluster the same complaint across multiple issues, comments, threads or communities. For strong clusters report problem, independent examples, recurrence evidence, existing solutions, why those are insufficient, and the smallest useful project/skill/tool opportunity. Do not turn isolated complaints into fake trends."
-    return write_report(invoke_json(research_prompt("user-pain-miner", objective), web_only=True), "user-pain-miner")
+    return write_report(
+        invoke_json(research_prompt("user-pain-miner", objective), toolsets=["web", "x_search"], skills=[RESEARCH_SKILL]),
+        "user-pain-miner",
+    )
 
 
 def _git(args: list[str], cwd: Path, timeout: int = 8) -> str:
@@ -32,15 +41,15 @@ def _discover_repos(limit: int = 60) -> list[Path]:
         root_depth = len(root.parts)
         for current, dirs, _files in os.walk(root):
             path = Path(current)
-            dirs[:] = [name for name in dirs if name not in ignored]
+            # Detect repository ownership before pruning .git from traversal.
             if ".git" in dirs:
                 resolved = path.resolve()
                 if resolved not in seen:
                     found.append(resolved)
                     seen.add(resolved)
-                dirs.remove(".git")
                 if len(found) >= limit:
                     return found
+            dirs[:] = [name for name in dirs if name != ".git" and name not in ignored]
             if len(path.parts) - root_depth >= 5:
                 dirs[:] = []
     return found
@@ -66,7 +75,14 @@ def _project_snapshot() -> str:
 
 def project_archaeologist() -> dict[str, Any]:
     objective = "Analyze the bounded local Git snapshot as a weekly project archaeologist. Find forgotten but valuable unfinished work: stale dirty repos, branches with meaningful work, abandoned experiments and projects whose state suggests a blocker. Prioritize 3-8 things actually worth revisiting and explain why. Do not recommend cleanup merely for aesthetics and do not infer file contents that were not supplied."
-    return write_report(invoke_json(research_prompt("project-archaeologist", objective, _project_snapshot()), web_only=False), "project-archaeologist")
+    return write_report(
+        invoke_json(
+            research_prompt("project-archaeologist", objective, _project_snapshot()),
+            toolsets=["file", "terminal"],
+            skills=[RESEARCH_SKILL],
+        ),
+        "project-archaeologist",
+    )
 
 
 def _skill_review_context() -> str:
@@ -91,7 +107,14 @@ def _skill_review_context() -> str:
 
 def skill_evolution_review() -> dict[str, Any]:
     objective = "Review candidate skill drafts and accumulated research heuristics. Decide which procedures have repeated evidence and should be promoted, which should keep being tested, which overlap and should merge, which need narrower scope, and which should be retired. Never edit active skills automatically. Output an evidence-backed review queue."
-    return write_report(invoke_json(research_prompt("skill-evolution-review", objective, _skill_review_context()), web_only=False), "skill-evolution-review")
+    return write_report(
+        invoke_json(
+            research_prompt("skill-evolution-review", objective, _skill_review_context()),
+            toolsets=["file", "terminal"],
+            skills=["vesper-obsidian-second-brain"],
+        ),
+        "skill-evolution-review",
+    )
 
 
 def _capture(command: list[str], timeout: int = 25) -> dict[str, Any]:
@@ -106,9 +129,20 @@ def _capture(command: list[str], timeout: int = 25) -> dict[str, Any]:
 
 
 def ai_usage_economist() -> dict[str, Any]:
-    measurements = {"ccusage": _capture(["ccusage", "--json"]), "codexbar": _capture(["codexbar-status"]), "turnlens": _capture(["turnlens", "--help"])}
+    measurements = {
+        "ccusage": _capture(["ccusage", "--json"]),
+        "codexbar": _capture(["codexbar-status"]),
+        "turnlens": _capture(["turnlens", "report", "weekly"]),
+    }
     objective = "Analyze the local accounting surfaces as a weekly workflow economist. Clearly separate measured facts from recommendations. Identify which agents/providers appear to consume the most usage, where expensive models may be used for low-value work, what could move to cheaper/free routes without harming quality, and which measurements are missing or unreliable. Do not invent costs or token counts absent from the data."
-    return write_report(invoke_json(research_prompt("ai-usage-economist", objective, json.dumps(measurements, ensure_ascii=False, indent=2)[:90000]), web_only=False), "ai-usage-economist")
+    return write_report(
+        invoke_json(
+            research_prompt("ai-usage-economist", objective, json.dumps(measurements, ensure_ascii=False, indent=2)[:90000]),
+            toolsets=["file"],
+            skills=[RESEARCH_SKILL],
+        ),
+        "ai-usage-economist",
+    )
 
 
 def _resolve_vault() -> Path | None:
@@ -126,14 +160,18 @@ def _resolve_vault() -> Path | None:
 
 def second_brain_dream() -> dict[str, Any]:
     vault = _resolve_vault()
-    prompt = f"""Use the installed `vesper-obsidian-second-brain` skill for Vesper's nightly dream/consolidation cycle.
+    prompt = f"""Run Vesper's nightly second-brain dream/consolidation cycle.
 Resolved vault: {str(vault) if vault else 'UNRESOLVED'}
 Recent durable research:
 {recent_briefings(days=2, max_chars=90000)}
-Do real consolidation, not a transcript summary. Deduplicate against existing notes when a vault is available. Promote only durable facts, useful relationships, corrected beliefs, open questions and proven source paths. Stage repeated procedures under {SKILL_DRAFT_ROOT}; never auto-promote them into active skills. If the vault is unresolved, do not invent or create one; report ingestion as pending.
+Do real consolidation, not a transcript summary. Deduplicate against existing notes when a vault is available. Promote only durable facts, useful relationships, corrected beliefs, open questions and proven source paths. Keep Hermes hot memory compact; Obsidian is the long-form knowledge graph. Stage repeated procedures under {SKILL_DRAFT_ROOT}; never auto-promote them into active skills. If the vault is unresolved, do not invent or create one; report ingestion as pending.
 Return exactly one JSON object and nothing else: {{"title":"...","summary":"...","body":"...","priority":"low|normal|high|critical","confidence":0.0,"sources":[],"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
 """
-    return write_report(invoke_json(prompt, web_only=False), "second-brain-dream", notify_user=False)
+    return write_report(
+        invoke_json(prompt, toolsets=["file", "terminal"], skills=SECOND_BRAIN_SKILLS),
+        "second-brain-dream",
+        notify_user=False,
+    )
 
 
 WEEKLY_TASKS = {
