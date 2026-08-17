@@ -4,8 +4,28 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import threading
 
+import hermes_research_adhoc as adhoc
 from hermes_research_adhoc import ADHOC_MAX_PAGES, run_adhoc_research, source_records
+
+_REGISTRY_LOCK = threading.Lock()
+_ORIG_SOCIAL_REINFORCE = adhoc.reinforce_source_registry
+_ORIG_WEB_REINFORCE = adhoc.reinforce_web_registry
+
+
+def _locked_social_reinforce(*args, **kwargs):
+    with _REGISTRY_LOCK:
+        return _ORIG_SOCIAL_REINFORCE(*args, **kwargs)
+
+
+def _locked_web_reinforce(*args, **kwargs):
+    with _REGISTRY_LOCK:
+        return _ORIG_WEB_REINFORCE(*args, **kwargs)
+
+
+adhoc.reinforce_source_registry = _locked_social_reinforce
+adhoc.reinforce_web_registry = _locked_web_reinforce
 
 
 def _run_parser(prog: str) -> argparse.ArgumentParser:
