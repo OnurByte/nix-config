@@ -40,5 +40,6 @@ jobs:
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-credential-aliases.patch
+            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing-toggle.patch
             rustc --edition=2021 --emit=metadata /tmp/vesper-control.rs -o /tmp/vesper-control.rmeta
           '
