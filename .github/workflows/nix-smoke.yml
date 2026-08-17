@@ -42,7 +42,20 @@ jobs:
           done < <(find . -name '*.nix' -print0)
 
       - name: Validate Caelestia patch syntax
-        run: git apply --numstat home/yargc/packages/caelestia-ai-hub.patch >/dev/null
+        shell: bash
+        run: |
+          set +e
+          git apply --numstat home/yargc/packages/caelestia-ai-hub.patch >caelestia-patch-check.log 2>&1
+          status=$?
+          cat caelestia-patch-check.log
+          if [ "$status" -ne 0 ]; then
+            message="$(tail -n 40 caelestia-patch-check.log)"
+            message="${message//'%'/'%25'}"
+            message="${message//$'\r'/'%0D'}"
+            message="${message//$'\n'/'%0A'}"
+            echo "::error title=Caelestia patch syntax failed::$message"
+          fi
+          exit "$status"
 
       - name: Check AI Hub Rust backend
         shell: bash
