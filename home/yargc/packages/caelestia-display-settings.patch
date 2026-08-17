@@ -1,0 +1,90 @@
+--- a/modules/nexus/PageRegistry.qml
++++ b/modules/nexus/PageRegistry.qml
+@@ -15,13 +15,12 @@ QtObject {
+         },
+ 
+         // Connectivity
+-        // TODO
+-        // {
+-        //     label: qsTr("Display"),
+-        //     icon: "monitor",
+-        //     description: qsTr("Output configuration"),
+-        //     category: "connectivity"
+-        // },
++        {
++            label: qsTr("Display"),
++            icon: "monitor",
++            description: qsTr("Output configuration"),
++            category: "connectivity"
++        },
+         {
+             label: qsTr("Network"),
+             icon: "wifi",
+--- a/modules/nexus/PageCompRegistry.qml
++++ b/modules/nexus/PageCompRegistry.qml
+@@ -10,6 +10,7 @@ import qs.modules.nexus.pages
+ import qs.modules.nexus.pages.apps
+ import qs.modules.nexus.pages.audio
+ import qs.modules.nexus.pages.bluetooth
++import qs.modules.nexus.pages.monitors
+ import qs.modules.nexus.pages.network
+ import qs.modules.nexus.pages.panels
+ import qs.modules.nexus.pages.services
+@@ -35,6 +36,16 @@ QtObject {
+                 }
+             }
+         },
++        Component {
++            // Display / Monitors
++            StackPage {
++                Component {
++                    MonitorsPane {}
++                }
++                Component {
++                    MonitorDetail {}
++                }
++            }
++        },
+ 
+         // Connectivity
+         Component {
+--- a/modules/nexus/NexusState.qml
++++ b/modules/nexus/NexusState.qml
+@@ -1,7 +1,10 @@
+ import QtQuick
+ import Quickshell
+ import Quickshell.Bluetooth
++import qs.services
+ 
+ QtObject {
++    id: state
++
+     property ShellScreen screen
+     property bool isWindow
+     property bool animatingContainer
+@@ -16,8 +19,25 @@ QtObject {
+     property int editingVpnIndex: -1
+     property string selectedNetworkSsid
+     property string selectedEthernetInterface
++    property var selectedMonitor
+     property bool networkDetailsFromSaved
+ 
++    property Connections monitorsConnection: Connections {
++        function onMonitorsChanged(): void {
++            if (state.selectedMonitor) {
++                for (let i = 0; i < Hyprctl.monitors.length; i++) {
++                    if (Hyprctl.monitors[i].name === state.selectedMonitor.name) {
++                        state.selectedMonitor = Hyprctl.monitors[i];
++                        return;
++                    }
++                }
++                state.selectedMonitor = null;
++            }
++        }
++
++        target: Hyprctl
++    }
++
+     signal close
+     signal subPageOpened(idx: int)
+     signal subPageClosed

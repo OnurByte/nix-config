@@ -7,6 +7,10 @@ let
   codexbar = inputs.codexbar.packages.${pkgs.system}.default;
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
+  niriScreenTime = pkgs.callPackage ./packages/niri-screen-time.nix { };
+  vesperSettings = pkgs.callPackage ./packages/vesper-settings.nix {
+    inherit niriScreenTime;
+  };
   aiHub = pkgs.callPackage ./packages/ai-hub.nix {
     inherit
       codexbar
@@ -15,10 +19,28 @@ let
       ;
   };
 
-  agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./packages/caelestia-ai-hub.patch ];
+  # Caelestia's monitor editor is still pending upstream. Pin the reviewed PR
+  # implementation to an exact commit and transplant only its native QML
+  # services/pages onto the shell version already locked by this flake.
+  displaySettingsSrc = builtins.fetchGit {
+    url = "https://github.com/devalentineomonya/caelestia-shell.git";
+    rev = "2b79be0d9c609c4fa7ecde0118143db00e213a90";
+  };
+
+  # Extend Caelestia in its native QML/Quickshell tree. Vesper shell surfaces
+  # stay inside Caelestia; no parallel GTK shell or Caelestia GTK theme layer.
+  nativeCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [
+      ./packages/caelestia-display-settings.patch
+      ./packages/caelestia-ai-hub.patch
+    ];
 
     postPatch = (old.postPatch or "") + ''
+      ${pkgs.coreutils}/bin/install -Dm644 ${displaySettingsSrc}/services/Hyprctl.qml services/Hyprctl.qml
+      ${pkgs.coreutils}/bin/install -Dm644 ${displaySettingsSrc}/services/Monitors.qml services/Monitors.qml
+      ${pkgs.coreutils}/bin/install -Dm644 ${displaySettingsSrc}/modules/nexus/pages/monitors/MonitorsPane.qml modules/nexus/pages/monitors/MonitorsPane.qml
+      ${pkgs.coreutils}/bin/install -Dm644 ${displaySettingsSrc}/modules/nexus/pages/monitors/MonitorDetail.qml modules/nexus/pages/monitors/MonitorDetail.qml
+
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
@@ -31,6 +53,12 @@ let
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml
+      substitute ${./packages/VesperSystemSettings.qml} modules/nexus/pages/VesperSystemSettings.qml \
+        --subst-var-by vesperSettings ${vesperSettings}/bin/vesper-settings
+      substitute ${./packages/VesperClipboardSettings.qml} modules/nexus/pages/VesperClipboardSettings.qml \
+        --subst-var-by vesperSettings ${vesperSettings}/bin/vesper-settings
+      substituteInPlace modules/nexus/pages/AppsPage.qml \
+        --subst-var-by vesperSettings ${vesperSettings}/bin/vesper-settings
     '';
   });
 
@@ -44,7 +72,7 @@ in
 
   programs.caelestia = {
     enable = true;
-    package = agenticCaelestia;
+    package = nativeCaelestia;
     systemd.enable = false;
 
     settings = {
@@ -168,7 +196,7 @@ in
         enableBtop = true;
         enableNvtop = true;
         enableHtop = false;
-        enableGtk = true;
+        enableGtk = false;
         enableQt = true;
         enableWarp = false;
         enableChromium = false;
@@ -176,22 +204,14 @@ in
         enableCava = false;
         iconThemeLight = "Papirus-Light";
         iconThemeDark = "Papirus-Dark";
-        # Upstream currently writes adw-gtk3-dark even in light mode. Correct
-        # that final dconf key after palette generation without forking the CLI.
-        postHook = ''
-          if [ "$SCHEME_MODE" = "light" ]; then
-            ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3'"
-          else
-            ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3-dark'"
-          fi
-          hyprctl reload
-        '';
+        postHook = "hyprctl reload";
       };
     };
   };
 
-  # Caelestia generates live GTK/Qt palettes. Home Manager provides the native
-  # toolkit engines so applications consume those generated files.
+  # Caelestia owns shell appearance in native QML. Qt keeps its native
+  # platform/style engines; GTK theming is intentionally left outside
+  # Caelestia rather than creating a second toolkit-specific theme layer.
   qt = {
     enable = true;
     platformTheme = {
@@ -204,12 +224,30 @@ in
     };
   };
 
+  # The unit is installable but not enabled declaratively: wellbeing stays
+  # opt-in. Nexus uses `systemctl --user enable/disable --now`, so the user's
+  # choice persists across login/reboot without forcing tracking on by default.
+  systemd.user.services.vesper-wellbeing = {
+    Unit = {
+      Description = "Vesper local digital wellbeing tracker";
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = "${niriScreenTime}/bin/niri-screen-time -daemon";
+      Environment = "XDG_CURRENT_DESKTOP=Hyprland";
+      Restart = "on-failure";
+      RestartSec = 3;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
+
   home.packages = [
     agentCockpit
     privacyHud
     aiHub
     codexbar
-    pkgs.adw-gtk3
+    vesperSettings
+    niriScreenTime
     pkgs.papirus-icon-theme
     pkgs.qtengine
     pkgs.darkly

@@ -28,9 +28,42 @@ ColumnLayout {
         refreshTimer.restart();
     }
 
+    function setMode(mode: string): void {
+        // Keep the native shell state immediate, then ask Caelestia CLI to
+        // regenerate the shared GTK, Qt and Hyprland palettes in one pass.
+        Colours.setMode(mode);
+        Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-m", mode]);
+        refreshTimer.restart();
+    }
+
+    function setGlass(enabled: bool): void {
+        // Caelestia owns translucent shell surfaces; Hyprland supplies the
+        // backdrop blur. Do not lower whole-window opacity because that would
+        // fade text and icons together with the background.
+        GlobalConfig.appearance.transparency.enabled = enabled;
+        Quickshell.execDetached([
+            "hyprctl",
+            "keyword",
+            "decoration:blur:enabled",
+            enabled ? "true" : "false"
+        ]);
+    }
+
     function reapplyToolkitThemes(): void {
         Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-m", Colours.light ? "light" : "dark"]);
         refreshTimer.restart();
+    }
+
+    Component.onCompleted: {
+        // appearance.lua defaults blur to enabled. Reconcile it with the
+        // persisted Caelestia transparency state whenever the settings page
+        // is instantiated so one Glass switch remains authoritative.
+        Quickshell.execDetached([
+            "hyprctl",
+            "keyword",
+            "decoration:blur:enabled",
+            Colours.transparency.enabled ? "true" : "false"
+        ]);
     }
 
     property list<MenuItem> schemeItems: [
@@ -174,12 +207,12 @@ ColumnLayout {
 
     SectionHeader {
         first: true
-        text: qsTr("Caelestia")
+        text: qsTr("Vesper appearance")
     }
 
     SelectRow {
         label: qsTr("Colour scheme")
-        subtext: qsTr("Drives Caelestia, GTK and Qt from one palette")
+        subtext: qsTr("Drives Caelestia, GTK, Qt and Hyprland from one palette")
         fallbackIcon: "palette"
         fallbackText: `${Colours.scheme} ${Colours.flavour}`
         menuItems: root.schemeItems
@@ -196,18 +229,36 @@ ColumnLayout {
     }
 
     ToggleRow {
-        text: qsTr("Transparency")
-        subtext: qsTr("Base %1, layers %2").arg(Colours.transparency.base).arg(Colours.transparency.layers)
+        text: qsTr("Glass")
+        subtext: qsTr("Caelestia translucency + Hyprland backdrop blur")
         checked: Colours.transparency.enabled
-        onToggled: GlobalConfig.appearance.transparency.enabled = checked
+        onToggled: root.setGlass(checked)
     }
 
     ToggleRow {
         last: true
         text: qsTr("Dark theme")
-        subtext: qsTr("Propagates to GTK and Qt")
+        subtext: qsTr("One switch for Caelestia, GTK, Qt and Hyprland")
         checked: !Colours.light
-        onToggled: Colours.setMode(checked ? "dark" : "light")
+        onToggled: root.setMode(checked ? "dark" : "light")
+    }
+
+    SectionHeader {
+        text: qsTr("Hyprland")
+    }
+
+    InfoRow {
+        icon: "blur_on"
+        label: qsTr("Backdrop blur")
+        subtext: qsTr("Compositor blur behind translucent toolkit surfaces")
+        value: Colours.transparency.enabled ? qsTr("Enabled") : qsTr("Disabled")
+    }
+
+    InfoRow {
+        icon: "tune"
+        label: qsTr("Glass profile")
+        subtext: qsTr("Configured declaratively in Vesper appearance")
+        value: "12 px × 4"
     }
 
     SectionHeader {
@@ -217,7 +268,7 @@ ColumnLayout {
     InfoRow {
         icon: "desktop_windows"
         label: qsTr("GTK theme")
-        subtext: qsTr("GTK 3 and GTK 4 receive Caelestia generated CSS")
+        subtext: qsTr("GTK 3 and GTK 4 receive the active Caelestia palette")
         value: qsTr("Caelestia")
     }
 
@@ -231,7 +282,7 @@ ColumnLayout {
     RowButton {
         icon: "sync"
         text: qsTr("Reapply GTK theme")
-        subtext: qsTr("Regenerate GTK 3/4 colours from the current Caelestia scheme")
+        subtext: qsTr("Regenerate GTK colours from the current Caelestia scheme")
         trailingIcon: "refresh"
         onClicked: root.reapplyToolkitThemes()
     }
