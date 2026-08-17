@@ -146,7 +146,7 @@ ColumnLayout {
 
     ToggleRow {
         text: qsTr("Zapret2 DPI bypass")
-        subtext: qsTr("current boot · adaptive host detection · TLS ClientHello · TCP 443 · system authorization may be requested")
+        subtext: qsTr("current boot · adaptive host detection · TLS ClientHello · TCP 443")
         checked: root.net.zapret
         disabled: dpi.running
         onToggled: {
