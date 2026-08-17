@@ -1,4 +1,5 @@
 {
+  gh,
   git,
   hermesAgent,
   libnotify,
@@ -10,6 +11,7 @@ writeShellApplication {
   name = "vesper-hermes-automations";
 
   runtimeInputs = [
+    gh
     git
     hermesAgent
     libnotify
