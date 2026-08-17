@@ -22,6 +22,7 @@ let
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
     vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
+    vesper-adaptive-icons = ./skills/vesper-adaptive-icons;
   };
 
   skillNames = builtins.attrNames skillSources;

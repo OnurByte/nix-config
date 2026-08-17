@@ -1,5 +1,7 @@
 {
+  config,
   inputs,
+  lib,
   pkgs,
   ...
 }:
@@ -7,6 +9,7 @@ let
   codexbar = inputs.codexbar.packages.${pkgs.system}.default;
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
+  vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
   aiHub = pkgs.callPackage ./packages/ai-hub.nix {
     inherit
       codexbar
@@ -14,21 +17,41 @@ let
       privacyHud
       ;
   };
+  mcpServerNames = builtins.attrNames config.programs.mcp.servers;
+  caelestiaPatch = pkgs.writeText "caelestia-ai-hub.patch" (
+    builtins.readFile ./packages/caelestia-ai-hub.patch + "\n"
+  );
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./packages/caelestia-ai-hub.patch ];
+    patches = (old.patches or [ ]) ++ [ caelestiaPatch ];
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+      substituteInPlace modules/dashboard/AiHub.qml \
+        --replace-fail 'qsTr("Vesper Hub")' 'qsTr("AI")' \
+        --replace-fail 'AI Hub returned invalid data' 'AI returned invalid data'
       substitute ${./packages/AgentCockpit.qml} modules/bar/components/AgentCockpit.qml \
         --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
         --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
       substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+      substitute ${./packages/AiPage.qml} modules/nexus/pages/AiPage.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control \
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+      substitute ${./packages/AiCredentials.qml} modules/nexus/pages/AiCredentials.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperProxyPage.qml} modules/nexus/pages/VesperProxyPage.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperAppsSettings.qml} modules/nexus/pages/VesperAppsSettings.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperAppControls.qml} modules/nexus/pages/apps/VesperAppControls.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml
     '';
@@ -208,12 +231,17 @@ in
     agentCockpit
     privacyHud
     aiHub
+    vesperControl
     codexbar
     pkgs.adw-gtk3
     pkgs.papirus-icon-theme
     pkgs.qtengine
     pkgs.darkly
   ];
+
+  # The AI settings page reads the same MCP registry that Home Manager feeds to
+  # Codex, Claude Code and OpenCode. Keep this generated inventory value-only.
+  home.file.".config/vesper/mcp-servers".text = lib.concatStringsSep "\n" mcpServerNames + "\n";
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
   home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;
