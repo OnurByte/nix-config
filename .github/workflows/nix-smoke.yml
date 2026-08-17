@@ -61,11 +61,29 @@ jobs:
           nix shell nixpkgs#rustc nixpkgs#jq -c bash -c '
             set -euo pipefail
             rustc --edition=2021 home/yargc/packages/hermes-rs/main.rs -o /tmp/vesper-hermes-core
+            ln -sf /tmp/vesper-hermes-core /tmp/vesper-hermes
             ln -sf /tmp/vesper-hermes-core /tmp/vesper-hermes-automations
+            ln -sf /tmp/vesper-hermes-core /tmp/vesper-research
+
             registry="$RUNNER_TEMP/hermes-jobs.json"
+            state="$RUNNER_TEMP/hermes-state"
+            briefings="$RUNNER_TEMP/hermes-briefings"
+            mkdir -p "$state" "$briefings"
             nix eval --json --file home/yargc/hermes-jobs.nix > "$registry"
-            PATH="/tmp:$PATH" VESPER_HERMES_JOB_REGISTRY="$registry" \
-              /tmp/vesper-hermes-automations validate-registry
+
+            export PATH="/tmp:$PATH"
+            export VESPER_HERMES_JOB_REGISTRY="$registry"
+            export VESPER_RESEARCH_STATE_DIR="$state"
+            export VESPER_BRIEFING_DIR="$briefings"
+
+            /tmp/vesper-hermes-automations validate-registry
+            /tmp/vesper-hermes status --json | jq -e ".count == 0 and .unread == 0 and .high == 0" >/dev/null
+            /tmp/vesper-research sources | jq -e ".schemaVersion == 1 and .count == 0" >/dev/null
+
+            if /tmp/vesper-hermes-automations tor-fetch "https://example.com/path/.onion" >/dev/null 2>&1; then
+              echo "tor-fetch accepted a clearnet authority" >&2
+              exit 1
+            fi
           '
 
       - name: Parse Hyprland Lua
