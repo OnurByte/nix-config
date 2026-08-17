@@ -91,7 +91,7 @@ fn main() {
         [group, action, id] if group == "icons" && action == "regenerate" => icons::regenerate(id).unwrap_or_else(|error| fail(error)),
         [group, action, key, value] if group == "icons" && action == "set" => icons::set_config(key, value).unwrap_or_else(|error| fail(error)),
 
-        [command] if command == "control-version" => println!("0.9.0"),
+        [command] if command == "control-version" => println!("0.8.0"),
         _ => legacy(&args),
     }
 }
