@@ -41,6 +41,9 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
+      - name: Validate Caelestia patch syntax
+        run: git apply --numstat home/yargc/packages/caelestia-ai-hub.patch >/dev/null
+
       - name: Check AI Hub Rust backend
         shell: bash
         run: |
