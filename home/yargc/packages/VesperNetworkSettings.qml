@@ -12,7 +12,7 @@ ColumnLayout {
     id: root
 
     property var nState
-    property var net: ({ airplane: false, wifi: false, bluetooth: false, connection: "", zapret: false, proxy: false })
+    property var net: ({ airplane: false, wifi: false, wwan: false, bluetooth: false, connection: "", zapret: false, proxy: false })
     property string qrPath: ""
     property string errorText: ""
 
@@ -35,7 +35,7 @@ ColumnLayout {
 
     Process {
         id: status
-        command: ["@vesperControl@", "network", "status"]
+        command: ["@vesperNetwork@", "status"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -61,7 +61,6 @@ ColumnLayout {
     Process {
         id: qr
         stdout: StdioCollector {
-            id: qrOutput
             onStreamFinished: {
                 if (text.trim())
                     root.qrPath = text.trim();
@@ -81,11 +80,11 @@ ColumnLayout {
     ToggleRow {
         first: true
         text: qsTr("Airplane mode")
-        subtext: qsTr("turn Wi-Fi and Bluetooth radios off together")
+        subtext: qsTr("turn radios off together and restore their previous states later")
         checked: root.net.airplane
         disabled: airplane.running
         onToggled: {
-            airplane.command = ["@vesperControl@", "network", "airplane", checked ? "on" : "off"];
+            airplane.command = ["@vesperNetwork@", "airplane", checked ? "on" : "off"];
             airplane.running = true;
         }
     }
@@ -98,7 +97,7 @@ ColumnLayout {
         onClicked: {
             root.qrPath = "";
             root.errorText = "";
-            qr.command = ["@vesperControl@", "network", "wifi-qr"];
+            qr.command = ["@vesperNetwork@", "wifi-qr"];
             qr.running = true;
         }
     }
@@ -134,12 +133,11 @@ ColumnLayout {
         text: qsTr("DPI")
     }
 
-    InfoRow {
+    NavRow {
         icon: "shield"
-        label: qsTr("Zapret2")
-        subtext: qsTr("adaptive host detection · TLS ClientHello · TCP 443")
-        value: root.net.zapret ? qsTr("active") : qsTr("inactive")
-        iconColour: root.net.zapret ? Colours.palette.m3primary : Colours.palette.m3error
+        text: qsTr("Zapret2")
+        subtext: root.net.zapret ? qsTr("active · adaptive TLS bypass · tune strategy") : qsTr("inactive · open tuning")
+        onClicked: root.nState.openSubPage(8)
     }
 
     StyledText {
