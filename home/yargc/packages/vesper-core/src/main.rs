@@ -6,8 +6,10 @@ mod mcp;
 mod network;
 mod notifications;
 mod paths;
+mod privacy;
 mod process;
 mod providers;
+mod recovery;
 mod skills;
 mod wellbeing;
 
@@ -40,6 +42,8 @@ fn main() {
     match args.as_slice() {
         [group, action] if group == "network" && action == "status" => println!("{}", network::status_json()),
         [group, action, value] if group == "network" && action == "airplane" => network::set_airplane(on_off(value)).unwrap_or_else(|error| fail(error)),
+        [group, action] if group == "privacy" && action == "status" => println!("{}", privacy::status_json()),
+        [group, action] if group == "recovery" && action == "status" => println!("{}", recovery::status_json()),
         [command, id] if command == "app-status" => println!("{}", apps::status_json(id)),
         [command, id, permission, value] if command == "app-permission" => apps::set_permission(id, permission, on_off(value)).unwrap_or_else(|error| fail(error)),
         [command, id] if command == "app-reset-permissions" => apps::reset_all(id).unwrap_or_else(|error| fail(error)),
@@ -87,7 +91,7 @@ fn main() {
         [group, action, id] if group == "icons" && action == "regenerate" => icons::regenerate(id).unwrap_or_else(|error| fail(error)),
         [group, action, key, value] if group == "icons" && action == "set" => icons::set_config(key, value).unwrap_or_else(|error| fail(error)),
 
-        [command] if command == "control-version" => println!("0.8.0"),
+        [command] if command == "control-version" => println!("0.9.0"),
         _ => legacy(&args),
     }
 }
