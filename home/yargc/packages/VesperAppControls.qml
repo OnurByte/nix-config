@@ -247,6 +247,53 @@ ColumnLayout {
         }
     }
 
+    SectionHeader { visible: root.flatpak; text: qsTr("Environment overrides") }
+
+    InfoRow {
+        visible: root.flatpak
+        icon: "warning"
+        label: qsTr("Non-secret values only")
+        subtext: qsTr("Flatpak environment overrides are persisted as app configuration; API keys and passwords belong in Secret Service")
+        value: qsTr("plaintext")
+    }
+
+    StyledTextField {
+        id: envNameField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("VARIABLE_NAME")
+        leadingIcon: "data_object"
+        supportingText: qsTr("letters, digits and underscore; must not start with a digit")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    StyledTextField {
+        id: envValueField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("value")
+        leadingIcon: "edit"
+        supportingText: qsTr("stored by Flatpak; do not enter credentials")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "delete"; text: qsTr("Unset")
+            disabled: !envNameField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-unset-env", root.app.id, envNameField.text.trim()])
+        }
+        IconTextButton {
+            isRound: true; icon: "save"; text: qsTr("Set")
+            disabled: !envNameField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-env", root.app.id, envNameField.text.trim(), envValueField.text])
+        }
+    }
+
     InfoRow {
         visible: root.flatpak
         icon: "shield"
@@ -303,6 +350,18 @@ ColumnLayout {
             ? qsTr("advisory daily limit reached; Vesper is not claiming a hard block")
             : qsTr("local only · paused while idle or locked")
         value: root.duration(root.appWellbeing.todaySeconds)
+    }
+
+    Repeater {
+        model: (root.appWellbeing.history || []).slice(0, 7).reverse()
+        delegate: InfoRow {
+            required property var modelData
+            Layout.fillWidth: true
+            icon: "history"
+            label: modelData.date || ""
+            subtext: qsTr("foreground activity")
+            value: root.duration(modelData.seconds || 0)
+        }
     }
 
     ToggleRow {
