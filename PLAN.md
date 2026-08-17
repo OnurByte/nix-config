@@ -4,7 +4,7 @@ This file is the implementation plan for the current Vesper control-plane work i
 
 It supersedes older notes/prompts where Adaptive Icons were experimental or lived under `Settings → Apps`.
 
-The target is a production Vesper feature controlled from `Settings → AI`, with Apple-style Light/Dark/Tinted/Clear appearance modes, repository-owned curated SVGs for Vesper's default applications, automatic AI SVG generation for every non-curated application, and one shared provider usage/quota model used by both the Dashboard AI surface and Settings.
+The target is a production Vesper feature controlled from `Settings → AI`, with Apple-style Light/Dark/Tinted/Clear appearance modes, repository-owned curated SVGs for Vesper's default applications, automatic AI SVG generation for every non-curated application, one shared provider usage/quota model used by both the Dashboard AI surface and Settings, and a production `Settings → Apps` control plane with Flatseal-style permission management, per-application notification policy and a global Do Not Disturb mode.
 
 ---
 
@@ -53,6 +53,24 @@ The target is a production Vesper feature controlled from `Settings → AI`, wit
    - No refresh-token manager.
    - No CLI/session-token harvesting.
    - Secrets never enter QML, argv, logs, Git or the Nix store.
+
+9. **`Settings → Apps` becomes a real Flatseal-style application permission center.**
+   - The current Network/Home-only Flatpak subset is not enough.
+   - For Flatpak applications, expose the full useful set of effective permission/override categories supported by the underlying Flatpak model instead of arbitrarily hardcoding two toggles.
+   - The interaction model should feel like Flatseal: select app → inspect effective permissions → change overrides → reset individual/all overrides.
+   - Reuse one canonical app identity/registry across permissions, Wellbeing, notifications and AI icons.
+   - Do not create fake security switches for native Nix applications when Vesper cannot actually enforce the requested restriction.
+
+10. **Notifications are a first-class per-application permission/policy.**
+   - Every resolvable application can expose an `Allow notifications` control in its Apps detail page.
+   - Notification blocking must be enforced by Vesper's notification handling layer, not represented as decorative state.
+   - Notification policy is separate from Flatpak filesystem/network overrides so native applications can also be controlled at the Vesper notification layer.
+
+11. **Do Not Disturb is a global Vesper notification mode.**
+   - DND is not modeled as a per-app permission.
+   - It must be available from Settings and from a fast shell/quick-settings action.
+   - DND suppresses interruption UI globally while preserving a coherent notification history policy.
+   - Per-app notification deny still means that app is blocked independently of DND.
 
 ---
 
@@ -639,32 +657,230 @@ Changing Light/Dark/Tinted/Clear or tint color must not invalidate the semantic 
 
 ---
 
-# 15. Settings → Apps relationship
+# 15. Settings → Apps — Flatseal-style application control plane
 
-`Settings → Apps` continues to own app-centric controls such as:
+`Settings → Apps` remains application-centric, but it must become substantially more capable than the current Network/Home-only permission subset.
 
-```text
-installed app inventory
-permissions
-wellbeing / foreground usage
-```
-
-App Icons configuration lives only under AI.
-
-Remove the old:
+Target structure:
 
 ```text
-Experimental
-→ AI adaptive icons
+Apps
+├── Installed applications
+├── Global notification / DND status
+└── <selected application>
+    ├── Overview
+    ├── Permissions
+    ├── Notifications
+    └── Wellbeing
 ```
 
-UI from `VesperAppsSettings.qml` after the AI App Icons page is wired.
+App Icons configuration does **not** return here; it remains under `Settings → AI → App Icons`.
 
-Do not maintain independent icon-enabled state in both Apps and AI.
+## Application list
+
+The Apps page should provide one canonical searchable application inventory with useful identity/state such as:
+
+```text
+name
+icon
+desktop/application id
+packaging/sandbox type
+permission status
+notification status
+foreground usage today
+```
+
+Selecting an application opens its controls without creating another registry.
+
+## Flatseal parity for Flatpak applications
+
+For Flatpak apps, aim for the same practical permission-management model as Flatseal rather than only exposing Network and Home.
+
+The backend should inspect the effective application permissions plus user overrides and expose the useful categories that the underlying Flatpak permission model can actually control. This includes, where supported by the installed Flatpak/runtime:
+
+```text
+network
+filesystem access
+home/host/XDG directory access
+custom filesystem paths
+devices
+sockets / display integration
+IPC
+session/system bus access
+environment overrides
+other effective Flatpak override categories
+```
+
+Do not hardcode a fake fixed capability list if Flatpak can expose the effective state dynamically.
+
+The UI should support:
+
+```text
+current packaged/default permission
+effective permission after overrides
+user override state
+change override
+reset one override/category
+reset all overrides
+```
+
+A user should be able to open a Flatpak app and manage it with roughly the same mental model as Flatseal without leaving Vesper Settings.
+
+## Enforcement/ownership labels
+
+Be explicit about what Vesper is actually controlling.
+
+Possible states/labels:
+
+```text
+Flatpak-enforced
+portal-mediated
+Vesper notification policy
+native / unrestricted
+informational
+unsupported
+```
+
+For native Nix applications, do not show a working-looking filesystem/network toggle unless Vesper has a real sandbox/enforcement mechanism behind it.
+
+Native apps may still have Vesper-enforceable controls such as notification policy and local Wellbeing because those are enforced by Vesper-owned layers.
+
+## Reset behavior
+
+Flatpak permission changes must be reversible.
+
+Provide:
+
+```text
+Reset this permission
+Reset category
+Reset all Flatpak overrides
+```
+
+Reset must return the application to its packaged/default Flatpak permissions, not to arbitrary Vesper defaults.
 
 ---
 
-# 16. AI Overview
+# 16. Per-application notification permissions
+
+Notification control is part of each application's Apps detail page.
+
+Minimum required control:
+
+```text
+Notifications                     [Allow / Block]
+```
+
+This must work for both Flatpak and native applications whenever Vesper can resolve the notification sender to a canonical application identity.
+
+The notification permission is **not** merely a Flatpak override. It is a Vesper notification-server policy so that the desktop can consistently control notifications regardless of packaging type.
+
+Conceptual policy:
+
+```text
+AppNotificationPolicy
+├── appId
+├── allowed: bool
+├── popup: bool
+├── sound: bool
+├── keepInHistory: bool
+└── updatedAt
+```
+
+Only expose finer-grained `popup`, `sound`, or history controls where the notification stack really supports them. `Allow / Block` is mandatory; unsupported granularity must not be faked.
+
+Expected behavior:
+
+```text
+allowed = false
+→ notifications from that app are suppressed by the Vesper notification layer
+→ no popup/banner
+→ no notification sound
+→ history behavior follows the explicit block policy
+
+allowed = true
+→ notification proceeds through normal Vesper notification/DND policy
+```
+
+The Apps list should make blocked notification state visible at a glance where useful.
+
+Notification identity must use the canonical app registry as far as possible. Avoid maintaining a disconnected list keyed only by arbitrary notification text/app-name strings.
+
+If sender identity cannot be resolved safely, treat it as unknown/unmapped rather than applying policy to the wrong application.
+
+---
+
+# 17. Do Not Disturb
+
+Add a global Vesper Do Not Disturb mode.
+
+DND is distinct from per-app notification permission:
+
+```text
+Per-app Block
+→ that application is not allowed to notify
+
+Do Not Disturb
+→ temporarily suppress interruption UI globally
+```
+
+## Required entry points
+
+DND should be available from:
+
+```text
+Settings → Apps / Notifications
+Shell quick settings / notification surface
+```
+
+A visible shell indicator should make it obvious when DND is active.
+
+## Default DND semantics
+
+When DND is enabled:
+
+```text
+notification popups/banners → suppressed
+notification sounds         → suppressed
+notification history        → retained by default
+```
+
+This allows DND to stop interruptions without silently destroying all incoming notification history.
+
+Per-app `Allow notifications = false` remains a stronger independent policy and should still block that application according to its configured block/history behavior.
+
+## Critical/system exceptions
+
+Do not silently let arbitrary apps bypass DND by claiming importance.
+
+If Vesper later supports critical exceptions, they must be explicit and bounded, for example:
+
+```text
+system-critical Vesper alerts
+explicit per-app DND bypass allowlist
+```
+
+Normal applications do not bypass DND by default.
+
+## State model
+
+Conceptually:
+
+```text
+NotificationState
+├── doNotDisturb: bool
+├── appPolicies[]
+├── updatedAt
+└── optional temporaryUntil
+```
+
+The first implementation only requires reliable manual On/Off. A timed `for 1 hour` / `until tomorrow` control may be added later without changing the core model.
+
+The notification service/state must survive shell UI recreation cleanly and must not lose per-app policy merely because Caelestia restarts.
+
+---
+
+# 18. AI Overview
 
 `Settings → AI → Overview` should stay concise and summarize:
 
@@ -684,7 +900,7 @@ Detailed data belongs in the dedicated pages.
 
 ---
 
-# 17. Providers, API keys, Agents, Skills, MCP and Hermes
+# 19. Providers, API keys, Agents, Skills, MCP and Hermes
 
 The broader AI control-plane architecture from PR #18 remains in force.
 
@@ -733,7 +949,7 @@ The broader AI control-plane architecture from PR #18 remains in force.
 
 ---
 
-# 18. Failure isolation
+# 20. Failure isolation
 
 ## App Icons
 
@@ -771,11 +987,42 @@ usage snapshot stale
 → other AI settings continue working
 ```
 
+## Apps permissions
+
+```text
+Flatpak permission inspection fails
+→ show permission state unavailable
+→ do not invent toggles/state
+
+one Flatpak override fails
+→ report that change as failed
+→ do not corrupt unrelated overrides
+
+native app has no enforcement backend
+→ display native/unrestricted or unsupported
+→ no fake security guarantee
+```
+
+## Notifications / DND
+
+```text
+app identity unresolved
+→ do not apply another app's policy
+→ treat sender as unknown/unmapped
+
+notification policy backend unavailable
+→ surface degraded state
+→ shell remains usable
+
+DND UI restarts
+→ persisted DND/app policy remains coherent
+```
+
 None of these failures may prevent graphical login or make the desktop unusable.
 
 ---
 
-# 19. Implementation order
+# 21. Implementation order
 
 ## Phase A — document/current-state cleanup
 
@@ -830,7 +1077,7 @@ None of these failures may prevent graphical login or make the desktop unusable.
 4. Implement Clear.
 5. Ensure switching any appearance option is AI-free.
 
-## Phase H — move UI into AI
+## Phase H — move App Icon UI into AI
 
 1. Add `Settings → AI → App Icons`.
 2. Add global toggle.
@@ -840,7 +1087,30 @@ None of these failures may prevent graphical login or make the desktop unusable.
 6. Add preview/regenerate/original/reset repair controls.
 7. Remove the Apps experimental icon section.
 
-## Phase I — validation
+## Phase I — full Apps permission surface
+
+1. Keep one canonical application registry.
+2. Expand Flatpak permission inspection beyond Network/Home.
+3. Represent packaged/default, override and effective permission state.
+4. Add Flatseal-style permission categories based on what the installed Flatpak backend actually exposes.
+5. Support individual/category/all override reset.
+6. Label Flatpak-enforced, portal-mediated, native/unrestricted, informational and unsupported states honestly.
+7. Remove fake/unenforceable native permission switches.
+
+## Phase J — notifications and Do Not Disturb
+
+1. Add canonical per-app notification policy state.
+2. Add `Allow notifications` to app details.
+3. Enforce that policy in the Vesper notification handling layer for both resolvable Flatpak and native app identities.
+4. Add optional popup/sound/history controls only where actually supported.
+5. Add global DND state.
+6. Add Settings DND control.
+7. Add quick-settings/notification-surface DND toggle and active indicator.
+8. Suppress popups and sounds while DND is active while retaining history by default.
+9. Keep per-app notification blocking independent from DND.
+10. Persist notification/DND policy across shell restarts.
+
+## Phase K — validation
 
 1. Compile Rust control-plane code.
 2. Validate QML and Caelestia patches.
@@ -855,11 +1125,17 @@ None of these failures may prevent graphical login or make the desktop unusable.
 11. Visually inspect/refine curated SVGs.
 12. Verify Dashboard compact quota and Settings detailed quota stay consistent.
 13. Verify Dashboard button opens detailed AI settings.
-14. Confirm no icon operation leaks credentials or executes unsafe SVG content.
+14. Compare at least one Flatpak app's effective permissions/overrides against Flatpak tooling and confirm Vesper reports/changes the same underlying state.
+15. Test reset-one/reset-category/reset-all Flatpak override behavior.
+16. Verify unsupported native restrictions are not presented as enforceable permissions.
+17. Block one Flatpak app's notifications and one native app's notifications and verify both are suppressed at the Vesper notification layer.
+18. Enable DND and verify popups/sounds stop while notification history remains available.
+19. Restart/reload the shell and verify notification policy/DND state remains coherent.
+20. Confirm no icon operation leaks credentials or executes unsafe SVG content.
 
 ---
 
-# 20. Definition of done
+# 22. Definition of done
 
 The plan is complete when:
 
@@ -885,15 +1161,25 @@ The plan is complete when:
 20. Dashboard and Settings use one quota schema/source of truth.
 21. Provider cards show real plan/account/windows/reset/credits/cost/error fields only where available.
 22. Warning/critical semantics remain consistent across surfaces.
-23. Existing API-key-only credential architecture remains intact.
-24. No OAuth broker/token harvesting is introduced.
-25. API keys remain outside QML, argv, logs, Git and the Nix store.
-26. Failures remain isolated and cannot prevent graphical login.
-27. PR #18 finishes with passing Rust/QML/Home Manager/NixOS validation plus a real-desktop visual pass.
+23. `Settings → Apps` provides a Flatseal-style permission-management experience for Flatpak applications rather than only Network/Home toggles.
+24. Flatpak packaged/default, override and effective permission state are represented accurately enough to match the underlying Flatpak tooling.
+25. Flatpak permissions can be changed and reset individually/by category/all where supported.
+26. Native applications are not given fake unenforceable filesystem/network security toggles.
+27. Every resolvable app can have Vesper notification delivery allowed or blocked independently of packaging type.
+28. Per-app notification blocking is enforced by the Vesper notification layer.
+29. Global Do Not Disturb can be toggled from Settings and a fast shell surface.
+30. DND suppresses notification popups/sounds while retaining history by default.
+31. Per-app notification deny remains independent of DND.
+32. Notification/DND state survives shell UI restart without becoming inconsistent.
+33. Existing API-key-only credential architecture remains intact.
+34. No OAuth broker/token harvesting is introduced.
+35. API keys remain outside QML, argv, logs, Git and the Nix store.
+36. Failures remain isolated and cannot prevent graphical login.
+37. PR #18 finishes with passing Rust/QML/Home Manager/NixOS validation plus a real-desktop visual pass.
 
 ---
 
-# 21. Final target
+# 23. Final target
 
 ```text
                      Dashboard / AI
@@ -936,6 +1222,30 @@ The plan is complete when:
         └── one normalized quota model
 ```
 
+```text
+                     Settings → Apps
+                          │
+             ┌────────────┼─────────────┐
+             ↓            ↓             ↓
+          App list     Global DND    Wellbeing
+             │
+             ↓
+        Selected app
+             │
+     ┌───────┼────────────┐
+     ↓       ↓            ↓
+ Permissions Notifications Usage
+     │       │
+     │       └── Allow/Block → Vesper notification policy
+     │
+     ├── Flatpak → Flatseal-style effective overrides
+     └── Native  → only controls Vesper can really enforce
+
+Shell quick settings
+        │
+        └── Do Not Disturb On/Off
+```
+
 Core principle:
 
 ```text
@@ -945,5 +1255,8 @@ AI prepares the semantic icon once.
 Vesper renders appearance modes many times without AI.
 Dashboard shows quota at a glance.
 Settings shows quota in full detail.
+Apps provides real Flatpak permission control instead of fake toggles.
+Notification permission is enforceable per app through Vesper's notification layer.
+Do Not Disturb is global and quickly accessible.
 Secrets stay centralized.
 ```
