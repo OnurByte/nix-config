@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
+import hermes_automation_common
 from hermes_automation_common import load_registry
 from hermes_automation_contract import validate_registry
 from hermes_automation_scheduler import WATCHDOG_TASKS, cron_create_argv, cron_edit_argv
@@ -37,11 +40,13 @@ class HermesAutomationContractTests(unittest.TestCase):
             "upstream-edge-radar",
             "vesper-health-watch",
             "cron-skill-integrity-watch",
+            "cron-retention",
             "second-brain-dream",
             "user-pain-miner",
             "project-archaeologist",
             "skill-evolution-review",
             "ai-usage-economist",
+            "weekly-intelligence-review",
         }
         self.assertTrue(expected.issubset(self.registry))
 
@@ -91,6 +96,25 @@ class HermesAutomationContractTests(unittest.TestCase):
             self.assertEqual("watchdog", spec["mode"])
             self.assertEqual("telegram", spec["deliver"])
             self.assertIn(spec["task"], WATCHDOG_TASKS)
+
+    def test_oneshot_preloads_requested_skills_and_toolsets(self) -> None:
+        completed = subprocess.CompletedProcess(["hermes"], 0, stdout="ok", stderr="")
+        with patch.object(hermes_automation_common, "hermes_bin", return_value="hermes"), patch.object(
+            hermes_automation_common.subprocess,
+            "run",
+            return_value=completed,
+        ) as run:
+            hermes_automation_common._invoke(
+                "research",
+                toolsets=["web", "x_search"],
+                skills=["hermes-research-radar"],
+                timeout=60,
+            )
+        command = run.call_args.args[0]
+        self.assertIn("--toolsets", command)
+        self.assertEqual("web,x_search", command[command.index("--toolsets") + 1])
+        self.assertIn("--skills", command)
+        self.assertEqual("hermes-research-radar", command[command.index("--skills") + 1])
 
 
 if __name__ == "__main__":
