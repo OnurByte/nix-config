@@ -2,7 +2,7 @@ name: Patch smoke check
 
 on:
   push:
-    branches: [main]
+    branches: [main, vesper-control-plane-phase2]
   pull_request:
 
 concurrency:
@@ -129,12 +129,13 @@ jobs:
             test "$(/tmp/vesper-control credential list | jq ".credentials | length")" = 0
 
             printf "http://127.0.0.1:8080\n" | /tmp/vesper-control proxy set
-            test "$(/tmp/vesper-control proxy status)" = configured
+            /tmp/vesper-control proxy status | jq -e ".configured == true and .http == \"http://127.0.0.1:8080\" and .https == \"http://127.0.0.1:8080\"" >/dev/null
             grep -Fx "HTTP_PROXY=\"http://127.0.0.1:8080\"" "$HOME/.config/environment.d/90-vesper-proxy.conf"
             /tmp/vesper-control proxy clear
-            test "$(/tmp/vesper-control proxy status)" = off
+            /tmp/vesper-control proxy status | jq -e ".configured == false" >/dev/null
 
             printf "socks5h://localhost:9050\n" | /tmp/vesper-control proxy set
+            /tmp/vesper-control proxy status | jq -e ".configured == true and .socks == \"socks5h://localhost:9050\"" >/dev/null
             grep -Fx "ALL_PROXY=\"socks5h://localhost:9050\"" "$HOME/.config/environment.d/90-vesper-proxy.conf"
             /tmp/vesper-control proxy clear
 
