@@ -1,6 +1,6 @@
 # Hermes automations
 
-Vesper keeps Hermes cron as the only recurring scheduler. Long research never runs inside the cron gateway: each `vesper:*` cron entry is a short `no_agent` script that dispatches a transient user service, which runs Hermes one-shot research and persists state/briefings.
+Vesper uses Hermes cron as the only recurring scheduler. Vesper-owned scheduling, state, dispatch, watchdog and briefing logic lives in one native Rust control plane:
 
 ```text
 Hermes cron
@@ -8,286 +8,185 @@ Hermes cron
 ~/.hermes/scripts/vesper-<job>.sh
     ↓
 vesper-hermes-automations trigger <job>
-    ├─ watchdog → local checks → edge-triggered stdout
+    ├─ watchdog → local Rust checks → edge-triggered stdout
     └─ research → systemd-run --user → vesper-hermes-automations execute <job>
                                       ↓
-                                 Hermes one-shot
+                                  Hermes agent
                                       ↓
                            persistent state + briefing
 ```
 
-`systemd-run` is execution containment only, not another scheduler.
+`systemd-run` is execution containment only, not another scheduler. A fixed unit name is used per task so the same job is not dispatched twice while it is already active.
+
+## implementation
+
+First-party Vesper Hermes code is Rust:
+
+```text
+home/yargc/packages/hermes-rs/
+├── main.rs
+├── cron.rs
+├── prompts.rs
+├── state.rs
+└── util.rs
+```
+
+`home/yargc/packages/hermes-core.nix` builds one binary and exposes three command names:
+
+```text
+vesper-hermes
+vesper-hermes-automations
+vesper-research
+```
+
+Vesper does not carry first-party Python Hermes code. Upstream Hermes may internally use Python; that implementation stays upstream and is not vendored into this repository.
 
 ## declarative registry
 
-Schedules live in `home/yargc/hermes-jobs.nix`. Home Manager writes `~/.config/vesper/hermes-jobs.json`, installs physical wrappers under `~/.hermes/scripts/`, then runs:
+Schedules live in `home/yargc/hermes-jobs.nix`. Home Manager writes `~/.config/vesper/hermes-jobs.json`, installs physical scripts under `~/.hermes/scripts/`, then reconciles Vesper-owned records with:
 
 ```bash
 vesper-hermes-automations sync-cron --prune
 ```
 
-Only machine-owned `vesper:*` jobs are reconciled/pruned. Dispatch jobs use `deliver=local`; Morning Check sends its completed message explicitly through Hermes Telegram delivery. Watchdogs use Telegram and remain zero-token while healthy.
+Only `vesper:*` records are pruned. A legacy Sabah/Morning Check record is migrated into the declarative `vesper:morning-check` job instead of creating a duplicate.
 
-## daily pipeline
+Validate the registry without running research:
+
+```bash
+vesper-hermes-automations validate-registry
+```
+
+## scheduled jobs
 
 | time | job | behavior |
 |---|---|---|
-| `08:30` | `unknown-frontier-github` | GitHub coding-agent + Monero/privacy frontier scout |
-| `08:35` | `unknown-frontier-reddit` | Reddit RSS/Atom intake + selective deep research |
-| `08:40` | `unknown-frontier-x` | X profiles/search with XCancel/Nitter-compatible fallback |
-| `08:45` | `free-ai-radar` | Linux.do-first legitimate coding-agent cost/free-tier radar |
-| `09:00` | `unknown-frontier-synthesis` | fresh scout fan-in + counter-reviewed synthesis |
-| `09:30` | `agenda` | compact important current agenda |
-| `10:00` | `morning-check` | projects/todos/research → Telegram |
-| `15:00` | `upstream-edge-radar` | early warning for coding-agent/Vesper/privacy upstreams |
+| `08:30` | `unknown-frontier-github` | GitHub coding-agent + Monero/privacy scout |
+| `08:35` | `unknown-frontier-reddit` | Reddit RSS/web + comment/thread scout |
+| `08:40` | `unknown-frontier-x` | X with direct/mirror fallback |
+| `08:45` | `unknown-frontier-web` | clearnet + Tor/onion scout |
+| `08:50` | `free-ai-radar` | legitimate free/cheap coding-agent capability radar |
+| `09:10` | `unknown-frontier-synthesis` | scout synthesis + counter-review |
+| `09:30` | `agenda` | compact current agenda |
+| `10:00` | `morning-check` | local projects + research → Telegram |
+| `15:00` | `upstream-edge-radar` | upstream change radar |
 | `23:30` | `second-brain-dream` | durable knowledge consolidation |
+
+Sunday also runs `user-pain-miner`, `project-archaeologist`, `skill-evolution-review` and `ai-usage-economist`.
 
 ## research profile
 
-The frontier is intentionally opinionated.
+Priority order:
 
-Priority 1 is **vibe coding / agentic software engineering**: Codex, Claude Code, OpenCode, Hermes, agent harnesses, skills, MCP, context engineering, orchestration, evals, practical workflows and overlooked developer tooling.
+1. coding agents / vibe coding / developer-agent infrastructure
+2. Monero / privacy / Tor / OPSEC
+3. Nix/Linux/security/open source when it improves the first two or the workstation
 
-Priority 2 is **Monero / privacy**: Monero, Cuprate, wallets, atomic swaps, private payments, Tor/onion, SimpleX, GrapheneOS/privacy engineering and adjacent infrastructure.
+Generic local-model benchmarking, price chatter and repeated mainstream launch coverage are not standing targets.
 
-Priority 3 is **Nix/Linux/security/open source** where it improves the workstation or the two priorities above.
+## frontier coverage
 
-Generic local-LLM/model-quantization/inference hobby material is not a standing target. `r/LocalLLaMA` is explicitly excluded from the default source graph. Model/inference material survives only when it materially changes coding-agent quality/cost/privacy/deployment.
+The normal daily frontier target is `600` canonical candidate inspections with `48` deeper reads, split approximately as:
 
-## high-volume research funnel
+| scout | candidates | deep reads |
+|---|---:|---:|
+| GitHub | 180 | 15 |
+| Reddit | 150 | 12 |
+| X | 150 | 12 |
+| web/onion | 120 | 9 |
 
-The default frontier target is `600` distinct canonical candidate items/URLs, configurable through `VESPER_FRONTIER_CANDIDATE_TARGET` and clamped to `200..1000`. Default deep-read target is `48`, configurable and clamped to `24..60`.
+These are targets, not fabricated success metrics. Each scout must report actual coverage and limitations. Synthesis works from persisted scout reports and should call out missing/stale input rather than inventing coverage.
 
-```text
-RSS/search/metadata/mirror intake
-        ↓
-canonicalize + dedupe
-        ↓
-anchor / learned / exploration candidate pools
-        ↓
-cheap relevance + novelty triage
-        ↓
-24-60 strongest deep reads
-        ↓
-primary-source verification
-        ↓
-counter-review
-        ↓
-synthesis + durable learning
+## Reddit, X and Tor
+
+Reddit and X scouts are allowed shell access because cheap RSS/mirror intake is useful before expensive deep reading. Seed communities/accounts are bootstrap hints rather than an allowlist.
+
+X mirror copies are one evidentiary identity. A mirror is transport, not corroboration.
+
+For onion pages the web scout can call:
+
+```bash
+vesper-hermes-automations tor-fetch 'http://example.onion/path/'
 ```
 
-Hundreds of candidate inspections therefore do not mean hundreds of full pages dumped into one model context.
+The helper only accepts an actual `.onion` authority and fetches through the local Tor SOCKS endpoint at `127.0.0.1:9050` with remote hostname resolution. Normal clearnet web tooling must not pretend it reached an onion service.
 
-## central sources without source lock-in
+## durable state
 
-Protected central sources are guaranteed inspection seeds, not an allowlist.
-
-### Reddit anchors
-
-Vibe coding / agentic development:
-
-- `r/vibecoding`
-- `r/ClaudeCode`
-- `r/codex`
-- `r/opencodeCLI`
-- `r/cursor`
-
-Monero/privacy/security:
-
-- `r/MoneroMeansMoney`
-- `r/Monero`
-- `r/privacy`
-- `r/Tor`
-- `r/netsec`
-
-Workstation:
-
-- `r/NixOS`
-
-`r/LocalLLaMA` is a user-excluded source and is retired during source-registry migration rather than rediscovered into probation.
-
-### X anchors
-
-Coding/dev: `@Teknium`, `@thdxr`, `@XOpenSource`, `@ZixuanLi_`.
-
-Monero/privacy/payments: `@eigenwallet`, `@kyc_rip`, `@XBToshi`, `@schmidt1024`, `@XMRHub_org`, `@CR1337`, `@linuxuser1996`, `@Examare1`, `@ZcashLabs`.
-
-Threat/privacy communications: `@akaclandestine`, `@DailyDarkWeb`, `@SimpleXChat`.
-
-### GitHub anchor neighborhoods
-
-Coding-agent starting points:
-
-- `NousResearch/hermes-agent`
-- `openai/codex`
-- `anthropics/claude-code`
-- `anomalyco/opencode`
-
-Monero/privacy starting points:
-
-- `monero-project/monero`
-- `Cuprate/cuprate`
-
-The GitHub scout expands outward through issues, PRs, commits, forks, authors, dependencies and small adjacent repositories.
-
-## adaptive candidate allocation
-
-Social intake separates final candidates into pools instead of concatenating anchor feeds and truncating them:
-
-- about **45% anchors**
-- about **30% learned dynamic sources**
-- about **25% exploration/query tail**
-
-Unused quota is redistributed if a pool is blocked/empty. Selection inside each pool is round-robin across source identities/queries, preventing one prolific subreddit/account from monopolizing the candidate budget.
-
-This fixes the failure mode where central feeds alone could fill the daily target and starve autonomous discovery.
-
-## Reddit: RSS + AI
-
-Reddit RSS/Atom is the cheap sensor layer. Anchor `new.rss` and selected `comments.rss` feeds are fetched separately, learned sources get their own intake, and general exploration can use combined feeds.
-
-After canonicalization and pool selection, Hermes deep-reads only promising threads/comment branches. Community claims are followed to repositories/docs/issues/PRs/papers when they matter.
-
-Latest deterministic intake:
+Research state:
 
 ```text
-~/.local/state/vesper/research/unknown-frontier-ai/intake/reddit-latest.json
+~/.local/state/vesper/research/
 ```
 
-## X: mandatory surface + mirrors
-
-X remains mandatory. The playbook prefers direct X when available; deterministic intake uses XCancel/Nitter-compatible profile/search RSS, falling back to HTML on the same mirror and then the next configured mirror.
+Briefings:
 
 ```text
-VESPER_X_MIRRORS=https://xcancel.com,https://nitter.net
+~/.local/share/vesper/briefings/
 ```
 
-X/Twitter/XCancel/Nitter copies of one status normalize to one canonical `x.com/<user>/status/<id>` identity. A mirror is transport, not independent corroboration.
+The Rust control plane writes atomic JSON records, Markdown briefings, run status and a rebuilt briefing index. Caelestia consumes the briefing index through the Rust AI Hub rather than invoking a Python runtime.
 
-Latest intake:
+## adaptive source state
 
-```text
-~/.local/state/vesper/research/unknown-frontier-ai/intake/x-latest.json
-```
-
-## self-evolving source graph
-
-Runtime state lives at:
+Useful evidence-bearing report URLs reinforce one shared source registry:
 
 ```text
 ~/.local/state/vesper/research/unknown-frontier-ai/source-registry.json
 ```
 
-Protected anchors remain anchors. New sources begin at `probation`. Merely appearing in `candidateSources` does **not** earn a useful hit. A source gets hit/score credit only when its URL survives research as an evidence-bearing candidate/source.
+A source starts at `probation`, becomes `trusted` after repeated useful hits and `promoted` after further repeated evidence. A mention in a prompt or candidate list is not enough; the URL must survive into the final report evidence.
 
-Normal lifecycle:
+Inspect it with:
 
-```text
-discovered → probation → trusted → promoted → decay/review → probation/retired
+```bash
+vesper-research sources
+vesper-hermes-automations links
 ```
 
-Repeated zero-value failures and long periods without useful output can retire learned sources. Explicitly user-excluded sources stay retired. Retired non-excluded sources may later be rediscovered, but only at probation.
-
-## skill evolution is eval-gated
-
-The researcher has two speeds of self-improvement.
-
-Fast/reversible state can change automatically: source tiers, scores, mirror health, query candidates, heuristic confidence and dead-end state.
-
-Nix-owned active skill instructions use a slower process:
-
-```text
-trajectory evidence
-    ↓
-candidate rule / skill draft
-    ↓
-representative evals
-    ↓
-with-skill vs current/baseline comparison
-    ↓
-promote / keep-testing / reject / rollback
-```
-
-The official pinned Anthropic `skill-creator` is exposed to Hermes for this evaluation-oriented workflow. The research skill also ships a representative eval set under:
-
-```text
-home/yargc/skills/hermes-research-radar/evals/evals.json
-```
-
-Eval cases cover vibe-coding novelty, Monero community→primary-source verification, X mirror failure, Reddit RSS breadth, LocalLLaMA noise rejection, anchor saturation/exploration preservation and evidence-gated source promotion.
-
-Research skill structure:
-
-```text
-home/yargc/skills/hermes-research-radar/
-├── SKILL.md
-├── evals/
-│   └── evals.json
-└── references/
-    ├── research-pipeline.md
-    ├── source-governance.md
-    ├── central-sources.md
-    ├── reddit-rss.md
-    ├── x-research.md
-    └── research-evolution.md
-```
-
-The weekly `skill-evolution-review` reads the active research skill, evals, adaptive source registry, recent frontier run state, heuristics and skill drafts. It produces an evidence-backed promotion/testing/retirement queue but does not mutate the active Nix-owned skill automatically.
-
-## frontier fan-in
-
-Scouts are separate cron entries and write timestamped envelopes under:
-
-```text
-~/.local/state/vesper/research/unknown-frontier-ai/scouts/
-```
-
-Synthesis uses only fresh envelopes, waits a bounded interval for missing scouts, then reports missing/stale sources explicitly. If no fresh scout exists, synthesis fails instead of silently recycling yesterday's research.
+The current Rust registry intentionally keeps this mechanism small. It does not expose the removed Python-era `links --prune`, `links --all`, wave-local intake databases or 84-hour GC API.
 
 ## watchdogs
 
-`vesper-health-watch` checks Vesper doctor state, failed user/system units, disk utilization and Restic state when present.
+`vesper-health-watch` checks:
 
-`cron-skill-integrity-watch` checks declarative cron records, enabled state, schedule, physical script paths, `no_agent=true`, duplicate names, skill references and Hermes scheduler health.
+- `vesper-doctor`
+- failed user/system units
+- root filesystem usage threshold
 
-Both are edge-triggered and silent while healthy.
+`cron-skill-integrity-watch` checks:
 
-## weekly jobs
+- registry validity
+- missing Hermes jobs
+- enabled-state drift
+- script drift
+- `no_agent=true`
+- physical script presence
+- Hermes cron stalled state
 
-| time Sunday | job |
-|---|---|
-| `11:00` | `user-pain-miner` |
-| `12:30` | `project-archaeologist` |
-| `14:00` | `skill-evolution-review` |
-| `15:30` | `ai-usage-economist` |
-
-`user-pain-miner` requires recurrence evidence. `project-archaeologist` scans bounded local Git roots. `ai-usage-economist` separates measured usage from model-routing suggestions.
-
-## validation and CI
-
-```bash
-vesper-hermes-automations validate-registry
-```
-
-GitHub Actions evaluates the Nix registry and runs the Python contract suite. Contracts cover schedule/task wiring, 200–1000 coverage bounds, source interests/exclusions, source-registry promotion behavior, old LocalLLaMA migration, 45/30/25 candidate-pool preservation, skill/reference/eval presence, X/Reddit canonicalization and Hermes no-agent script mode.
+Watchdog output is edge-triggered. An unchanged fault stays silent; a changed fault emits once; recovery emits once.
 
 ## commands
 
 ```bash
+vesper-hermes status --json
+vesper-hermes list
+vesper-hermes read <id>
+vesper-hermes inbox
+vesper-hermes run unknown-frontier-ai
+
 vesper-hermes-automations jobs
 vesper-hermes-automations validate-registry
 vesper-hermes-automations sync-cron --prune
-vesper-hermes-automations dispatch frontier-daily
-vesper-hermes-automations execute unknown-frontier-github
-vesper-hermes-automations execute unknown-frontier-reddit
-vesper-hermes-automations execute unknown-frontier-x
-vesper-hermes-automations execute unknown-frontier-synthesis
+vesper-hermes-automations trigger agenda
+vesper-hermes-automations execute agenda
+vesper-hermes-automations links
+vesper-hermes-automations tor-fetch 'http://example.onion/'
 
-vesper-hermes status
-vesper-hermes list
-vesper-hermes inbox
-
-hermes cron status
-hermes cron list
-hermes cron run <job>
+vesper-research "query" --pages 600
+vesper-research sources
 ```
+
+## CI
+
+The smoke workflow now rejects any first-party `.py` file before evaluation. It compiles both Rust control planes, validates the Hermes job registry, parses Nix and Hyprland Lua, evaluates Home Manager, builds the Caelestia surface before the complete Vesper system, then builds the separately exposed packages.
