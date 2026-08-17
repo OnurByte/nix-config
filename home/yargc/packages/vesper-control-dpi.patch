@@ -1,0 +1,52 @@
+--- a/vesper-control.rs
++++ b/vesper-control.rs
+@@ -278,8 +278,7 @@ fn network_status() {
+     let (wifi, bluetooth) = radio_status();
+     let connection = active_connection().unwrap_or_default();
+-    let zapret = success("systemctl", &["is-active", "--quiet", "zapret2.service"])
+-        || success("systemctl", &["is-active", "--quiet", "zapret2"]);
++    let zapret = success("systemctl", &["is-active", "--quiet", "nfqws2@default.service"]);
+     let proxy = config_root().join("proxy.env").exists();
+     println!(
+         "{{\"airplane\":{},\"wifi\":{},\"bluetooth\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{}}}",
+@@ -306,6 +305,27 @@ fn airplane(enabled: bool) -> Result<(), String> {
+     Ok(())
+ }
+ 
++fn dpi_set(enabled: bool) -> Result<(), String> {
++    let action = if enabled { "start" } else { "stop" };
++    let result = Command::new("systemctl")
++        .args([action, "nfqws2@default.service"])
++        .output()
++        .map_err(|error| format!("failed to run systemctl: {error}"))?;
++    if result.status.success() {
++        Ok(())
++    } else {
++        let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
++        Err(if stderr.is_empty() {
++            format!("failed to {action} Zapret2")
++        } else {
++            stderr
++        })
++    }
++}
++
+ fn wifi_qr() -> Result<PathBuf, String> {
+@@ -689,6 +709,7 @@ fn usage() -> ! {
+            network status\n\
+            network airplane on|off\n\
++           network dpi on|off\n\
+            network wifi-qr\n\
+            proxy status|set|clear\n\
+@@ -729,6 +750,12 @@ fn main() {
+             "off" => airplane(false).unwrap_or_else(|error| print_error(&error)),
+             _ => usage(),
+         },
++        [group, action, value] if group == "network" && action == "dpi" => match value.as_str() {
++            "on" => dpi_set(true).unwrap_or_else(|error| print_error(&error)),
++            "off" => dpi_set(false).unwrap_or_else(|error| print_error(&error)),
++            _ => usage(),
++        },
+         [group, action] if group == "network" && action == "wifi-qr" => {
+             let path = wifi_qr().unwrap_or_else(|error| print_error(&error));
+             println!("{}", path.display());
