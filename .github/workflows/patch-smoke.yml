@@ -52,8 +52,8 @@ jobs:
             cp home/yargc/packages/vesper-control.rs /tmp/vesper-control.rs
             cp home/yargc/packages/vesper-provider-registry.rs /tmp/vesper-provider-registry.rs
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-provider-registry.patch
-            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-proxy-hardening.patch
+            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-app-permissions.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-credential-aliases.patch
