@@ -19,6 +19,8 @@ from hermes_automation_common import (
     now,
 )
 
+WATCHDOG_TASKS = {"vesper-health-watch", "cron-skill-integrity-watch"}
+
 
 def slug(value: str) -> str:
     return "".join(ch if ch.isalnum() or ch == "-" else "-" for ch in value.lower()).strip("-")[:50]
@@ -30,17 +32,20 @@ def runtime_binary() -> str:
 
 def dispatch_job(name: str) -> None:
     registry = load_registry()
-    if name not in registry:
+    if name not in registry and name not in {"unknown-frontier-github", "unknown-frontier-reddit", "unknown-frontier-x", "unknown-frontier-synthesis", "frontier-daily"}:
         raise RuntimeError(f"unknown Hermes job: {name}")
     binary = shutil.which("systemd-run")
     if not binary:
         raise RuntimeError("systemd-run is not available")
     unit = f"vesper-hermes-{slug(name)}-{int(time.time())}-{os.getpid()}"
-    completed = subprocess.run([
-        binary, "--user", "--no-block", "--collect", "--quiet", f"--unit={unit}",
-        "--property=Nice=10", "--property=IOSchedulingClass=best-effort", "--property=KillMode=mixed",
-        runtime_binary(), "execute", name,
-    ], text=True, capture_output=True, check=False)
+    try:
+        completed = subprocess.run([
+            binary, "--user", "--no-block", "--collect", "--quiet", f"--unit={unit}",
+            "--property=Nice=10", "--property=IOSchedulingClass=best-effort", "--property=KillMode=mixed",
+            runtime_binary(), "execute", name,
+        ], text=True, capture_output=True, timeout=30, check=False)
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"timed out dispatching {name}") from exc
     if completed.returncode != 0:
         raise RuntimeError(f"failed to dispatch {name}: {(completed.stderr or completed.stdout).strip()}")
 
@@ -72,20 +77,91 @@ def record_run(name: str, status: str, started, *, error: str = "") -> None:
     atomic_json(STATE_ROOT / "runs" / name / "latest.json", payload)
 
 
+def _command_output(argv: list[str], timeout: int = 20) -> tuple[int, str]:
+    try:
+        completed = subprocess.run(argv, text=True, capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return 124, ""
+    return completed.returncode, ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+
+
+def _failed_units(scope: str) -> list[str]:
+    argv = ["systemctl"]
+    if scope == "user":
+        argv.append("--user")
+    argv.extend(["--failed", "--no-legend", "--plain"])
+    rc, text = _command_output(argv)
+    if rc != 0 or not text:
+        return []
+    return [line.strip() for line in text.splitlines() if line.strip() and "0 loaded units listed" not in line][:8]
+
+
+def _restic_timer_state() -> list[str]:
+    found: list[str] = []
+    for scope in ("user", "system"):
+        argv = ["systemctl"]
+        if scope == "user":
+            argv.append("--user")
+        argv.extend(["list-timers", "--all", "--no-legend", "--plain"])
+        rc, text = _command_output(argv)
+        if rc != 0:
+            continue
+        for line in text.splitlines():
+            if "restic" in line.lower():
+                found.append(f"{scope}: {line.strip()}")
+    return found[:8]
+
+
 def _health_watch() -> str:
+    problems: list[str] = []
     doctor = shutil.which("vesper-doctor")
     if not doctor:
-        return "[Hermes health] vesper-doctor is not available"
-    completed = subprocess.run([doctor, "--json"], text=True, capture_output=True, timeout=90, check=False)
-    if completed.returncode != 0:
-        return f"[Hermes health] vesper-doctor failed rc={completed.returncode}\n{(completed.stderr or completed.stdout)[-3000:]}"
-    payload = extract_json_relaxed(completed.stdout)
-    if not isinstance(payload, dict):
-        return "[Hermes health] could not parse vesper-doctor JSON"
-    if payload.get("healthy") is True:
-        return ""
-    warnings = [str(check.get("message") or check.get("key") or "warning") for check in payload.get("checks", []) if isinstance(check, dict) and check.get("level") == "warn"]
-    return "" if not warnings else "[Hermes health]\n" + "\n".join(f"- {item}" for item in warnings[:12])
+        problems.append("vesper-doctor is not available")
+    else:
+        try:
+            completed = subprocess.run([doctor, "--json"], text=True, capture_output=True, timeout=90, check=False)
+        except subprocess.TimeoutExpired:
+            completed = subprocess.CompletedProcess([doctor, "--json"], 124, "", "timed out")
+        if completed.returncode != 0:
+            problems.append(f"vesper-doctor failed rc={completed.returncode}: {(completed.stderr or completed.stdout)[-1200:]}")
+        else:
+            payload = extract_json_relaxed(completed.stdout)
+            if not isinstance(payload, dict):
+                problems.append("could not parse vesper-doctor JSON")
+            elif payload.get("healthy") is not True:
+                checks = payload.get("checks", [])
+                messages = [
+                    str(check.get("message") or check.get("key") or "health check warning")
+                    for check in checks
+                    if isinstance(check, dict) and str(check.get("level") or "").lower() in {"warn", "warning", "error", "critical"}
+                ]
+                problems.extend(messages[:10] or ["vesper-doctor reports unhealthy state"])
+
+    for scope in ("user", "system"):
+        units = _failed_units(scope)
+        if units:
+            problems.append(f"{scope} failed units: " + " | ".join(units))
+
+    threshold = max(1, min(99, int(os.environ.get("VESPER_DISK_ALERT_PERCENT", "90"))))
+    checked: set[str] = set()
+    for path in (Path("/"), Path.home()):
+        try:
+            resolved = str(path.resolve())
+            if resolved in checked:
+                continue
+            checked.add(resolved)
+            usage = shutil.disk_usage(path)
+            pct = int(round((usage.used / usage.total) * 100)) if usage.total else 0
+            if pct >= threshold:
+                problems.append(f"disk {path}: {pct}% used (threshold {threshold}%)")
+        except OSError:
+            continue
+
+    restic_timers = _restic_timer_state()
+    if restic_timers and problems:
+        problems.append("restic timers: " + " | ".join(restic_timers))
+
+    return "" if not problems else "[Hermes health]\n" + "\n".join(f"- {item}" for item in problems[:20])
 
 
 def jobs_store() -> tuple[Path, list[dict[str, Any]]]:
@@ -103,7 +179,18 @@ def _cron_integrity_watch() -> str:
     if not jobs_path.exists():
         return f"[Hermes cron integrity] jobs store missing: {jobs_path}"
     problems: list[str] = []
-    by_name = {str(job.get("name")): job for job in jobs}
+    by_name: dict[str, dict[str, Any]] = {}
+    duplicate_names: set[str] = set()
+    for job in jobs:
+        name = str(job.get("name") or "")
+        if not name:
+            continue
+        if name in by_name:
+            duplicate_names.add(name)
+        by_name[name] = job
+    for name in sorted(duplicate_names):
+        problems.append(f"duplicate job name {name}")
+
     for short_name, spec in registry.items():
         desired_name = str(spec.get("cronName") or f"vesper:{short_name}")
         job = by_name.get(desired_name)
@@ -125,6 +212,8 @@ def _cron_integrity_watch() -> str:
         actual_script = str(job.get("script") or "")
         if expected_script and expected_script not in actual_script:
             problems.append(f"script drift {desired_name}: {actual_script!r}")
+        if job.get("no_agent") is not True:
+            problems.append(f"mode drift {desired_name}: expected no_agent=true")
 
     roots = [HERMES_HOME / "skills", HERMES_HOME / "skills" / "vesper", Path.home() / ".agents" / "skills"]
     for job in jobs:
@@ -136,7 +225,7 @@ def _cron_integrity_watch() -> str:
             if not any((root / name).exists() for root in roots):
                 problems.append(f"missing skill {name} referenced by {job.get('name') or job.get('id')}")
 
-    status = subprocess.run([hermes_bin(), "cron", "status"], text=True, capture_output=True, timeout=30, check=False)
+    status = _run([hermes_bin(), "cron", "status"], timeout=30)
     text = (status.stdout or "") + (status.stderr or "")
     if status.returncode != 0 or "will NOT fire" in text or "STALLED" in text:
         problems.append("Hermes cron scheduler/gateway is unhealthy")
@@ -146,13 +235,40 @@ def _cron_integrity_watch() -> str:
 def run_watchdog(name: str) -> str:
     if name == "vesper-health-watch":
         return _health_watch()
-    if name == "cron-integrity-watch":
+    if name in {"cron-skill-integrity-watch", "cron-integrity-watch"}:
         return _cron_integrity_watch()
     raise RuntimeError(f"unknown watchdog: {name}")
 
 
-def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(argv, text=True, capture_output=True, check=False)
+def _run(argv: list[str], timeout: int = 45) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(argv, text=True, capture_output=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout if isinstance(exc.stdout, str) else ""
+        stderr = exc.stderr if isinstance(exc.stderr, str) else ""
+        return subprocess.CompletedProcess(argv, 124, stdout, (stderr + "\ncommand timed out").strip())
+
+
+def cron_edit_argv(hermes: str, ref: str, cron_name: str, schedule: str, prompt: str, deliver: str, script_path: Path) -> list[str]:
+    return [
+        hermes, "cron", "edit", ref,
+        "--name", cron_name,
+        "--schedule", schedule,
+        "--prompt", prompt,
+        "--deliver", deliver,
+        "--script", str(script_path),
+        "--no-agent",
+    ]
+
+
+def cron_create_argv(hermes: str, cron_name: str, schedule: str, prompt: str, deliver: str, script_path: Path) -> list[str]:
+    return [
+        hermes, "cron", "create", schedule, prompt,
+        "--name", cron_name,
+        "--deliver", deliver,
+        "--script", str(script_path),
+        "--no-agent",
+    ]
 
 
 def _reconcile_enabled(hermes: str, ref: str, desired_enabled: bool, currently_enabled: bool) -> tuple[bool, str]:
@@ -205,8 +321,7 @@ def sync_cron(prune: bool = False) -> dict[str, Any]:
 
         if existing:
             ref = str(existing.get("id") or cron_name)
-            argv = [hermes, "cron", "edit", ref, "--name", cron_name, "--schedule", schedule, "--prompt", prompt, "--deliver", deliver, "--script", str(script_path), "--no-agent"]
-            result = _run(argv)
+            result = _run(cron_edit_argv(hermes, ref, cron_name, schedule, prompt, deliver, script_path))
             if result.returncode != 0:
                 errors.append(f"{short_name}: edit failed: {(result.stderr or result.stdout).strip()[-3000:]}")
                 continue
@@ -219,8 +334,7 @@ def sync_cron(prune: bool = False) -> dict[str, Any]:
             elif action == "pause":
                 paused.append(short_name)
         else:
-            argv = [hermes, "cron", "create", schedule, prompt, "--name", cron_name, "--deliver", deliver, "--script", str(script_path), "--no-agent"]
-            result = _run(argv)
+            result = _run(cron_create_argv(hermes, cron_name, schedule, prompt, deliver, script_path))
             if result.returncode != 0:
                 errors.append(f"{short_name}: create failed: {(result.stderr or result.stdout).strip()[-3000:]}")
                 continue

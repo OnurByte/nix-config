@@ -36,12 +36,26 @@ jobs:
           python3 -m py_compile \
             home/yargc/packages/hermes-runtime.py \
             home/yargc/packages/hermes_automation_common.py \
+            home/yargc/packages/hermes_automation_contract.py \
             home/yargc/packages/hermes_automation_reports.py \
             home/yargc/packages/hermes_automation_scheduler.py \
             home/yargc/packages/hermes_tasks_daily.py \
             home/yargc/packages/hermes_tasks_weekly.py \
             home/yargc/packages/hermes_automation_tasks.py \
-            home/yargc/packages/hermes-automations.py
+            home/yargc/packages/hermes-automations.py \
+            home/yargc/packages/test_hermes_automations.py
+
+      - name: Test Hermes automation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          registry="$RUNNER_TEMP/hermes-jobs.json"
+          nix eval --json --file home/yargc/hermes-jobs.nix > "$registry"
+          VESPER_HERMES_JOB_REGISTRY="$registry" \
+            python3 -m unittest discover \
+              -s home/yargc/packages \
+              -p 'test_hermes_automations.py' \
+              -v
 
       - name: Parse Hyprland Lua
         shell: bash

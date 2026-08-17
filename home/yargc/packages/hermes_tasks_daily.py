@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from hermes_automation_common import STATE_ROOT, atomic_json, invoke_json, invoke_text
+from hermes_automation_common import STATE_ROOT, atomic_json, invoke_json, invoke_text, now
 from hermes_automation_reports import recent_briefings, research_prompt, state_context, write_report
+
+FRONTIER_SOURCES = ("github", "reddit", "x")
+FRONTIER_MAX_AGE_SECONDS = int(os.environ.get("VESPER_FRONTIER_MAX_AGE_SECONDS", "21600"))
+FRONTIER_FANIN_WAIT_SECONDS = int(os.environ.get("VESPER_FRONTIER_FANIN_WAIT_SECONDS", "300"))
+FRONTIER_FANIN_POLL_SECONDS = max(2, int(os.environ.get("VESPER_FRONTIER_FANIN_POLL_SECONDS", "10")))
 
 
 def _scout_prompt(source: str) -> str:
@@ -30,32 +37,102 @@ Never invent URLs.
 """
 
 
-def frontier_daily() -> dict[str, Any]:
-    scout_dir = STATE_ROOT / "unknown-frontier-ai" / "scouts"
-    scout_dir.mkdir(parents=True, exist_ok=True)
+def _scout_path(source: str) -> Path:
+    return STATE_ROOT / "unknown-frontier-ai" / "scouts" / f"{source}.json"
+
+
+def frontier_scout(source: str) -> dict[str, Any]:
+    if source not in FRONTIER_SOURCES:
+        raise RuntimeError(f"unsupported frontier source: {source}")
+    report = invoke_json(_scout_prompt(source), web_only=True)
+    envelope = {
+        "source": source,
+        "generatedAt": now().isoformat(timespec="seconds"),
+        "report": report,
+    }
+    atomic_json(_scout_path(source), envelope)
+    return envelope
+
+
+def unknown_frontier_github() -> dict[str, Any]:
+    return frontier_scout("github")
+
+
+def unknown_frontier_reddit() -> dict[str, Any]:
+    return frontier_scout("reddit")
+
+
+def unknown_frontier_x() -> dict[str, Any]:
+    return frontier_scout("x")
+
+
+def _fresh_scouts(max_age_seconds: int = FRONTIER_MAX_AGE_SECONDS) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    cutoff = time.time() - max_age_seconds
     outputs: dict[str, dict[str, Any]] = {}
     failures: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(invoke_json, _scout_prompt(source), web_only=True): source for source in ("github", "reddit", "x")}
-        for future in as_completed(futures):
-            source = futures[future]
-            try:
-                report = future.result()
-                outputs[source] = report
-                atomic_json(scout_dir / f"{source}.json", report)
-            except Exception as exc:
-                failures[source] = str(exc)[-4000:]
+    for source in FRONTIER_SOURCES:
+        path = _scout_path(source)
+        if not path.exists():
+            failures[source] = "missing"
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                failures[source] = "stale"
+                continue
+            value = json.loads(path.read_text(errors="replace"))
+            report = value.get("report") if isinstance(value, dict) else None
+            if not isinstance(report, dict):
+                failures[source] = "invalid"
+                continue
+            outputs[source] = report
+        except Exception as exc:
+            failures[source] = f"read failed: {exc}"
+    return outputs, failures
+
+
+def frontier_synthesis() -> dict[str, Any]:
+    deadline = time.monotonic() + max(0, FRONTIER_FANIN_WAIT_SECONDS)
+    outputs: dict[str, dict[str, Any]] = {}
+    failures: dict[str, str] = {}
+    while True:
+        outputs, failures = _fresh_scouts()
+        if len(outputs) == len(FRONTIER_SOURCES) or time.monotonic() >= deadline:
+            break
+        time.sleep(FRONTIER_FANIN_POLL_SECONDS)
+
     if not outputs:
-        raise RuntimeError("all unknown-frontier scouts failed: " + json.dumps(failures, ensure_ascii=False))
-    extra = json.dumps({"scouts": outputs, "failures": failures}, ensure_ascii=False, indent=2)[:90000]
-    report = invoke_json(research_prompt(
-        "unknown-frontier-ai",
-        "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and rank only discoveries worth attention. Prefer a few technically dense discoveries over a long list.",
-        extra,
-    ), web_only=True)
+        raise RuntimeError("no fresh unknown-frontier scouts available: " + json.dumps(failures, ensure_ascii=False))
+
+    extra = json.dumps({"scouts": outputs, "missingOrStale": failures}, ensure_ascii=False, indent=2)[:90000]
+    report = invoke_json(
+        research_prompt(
+            "unknown-frontier-ai",
+            "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and rank only discoveries worth attention. Prefer a few technically dense discoveries over a long list. Explicitly flag when a source scout was missing or stale instead of silently treating an older run as current.",
+            extra,
+        ),
+        web_only=True,
+    )
     report["scoutFailures"] = failures
     report["scoutsCompleted"] = sorted(outputs)
     return write_report(report, "unknown-frontier-ai")
+
+
+def frontier_daily() -> dict[str, Any]:
+    """Compatibility/manual run: bounded fan-out followed by the same durable fan-in."""
+    max_workers = max(1, min(len(FRONTIER_SOURCES), int(os.environ.get("VESPER_FRONTIER_MAX_WORKERS", "2"))))
+    failures: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = {pool.submit(frontier_scout, source): source for source in FRONTIER_SOURCES}
+        for future in as_completed(futures):
+            source = futures[future]
+            try:
+                future.result()
+            except Exception as exc:
+                failures[source] = str(exc)[-4000:]
+    outputs, stale = _fresh_scouts()
+    if not outputs:
+        raise RuntimeError("all unknown-frontier scouts failed: " + json.dumps(failures | stale, ensure_ascii=False))
+    return frontier_synthesis()
 
 
 def free_ai_radar() -> dict[str, Any]:
@@ -131,6 +208,10 @@ Sections:
 
 
 DAILY_TASKS = {
+    "unknown-frontier-github": unknown_frontier_github,
+    "unknown-frontier-reddit": unknown_frontier_reddit,
+    "unknown-frontier-x": unknown_frontier_x,
+    "unknown-frontier-synthesis": frontier_synthesis,
     "frontier-daily": frontier_daily,
     "free-ai-radar": free_ai_radar,
     "agenda": agenda,

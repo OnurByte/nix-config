@@ -116,11 +116,28 @@ def _resolve_vault() -> Path | None:
     if configured:
         path = Path(configured).expanduser()
         return path if (path / ".obsidian").is_dir() else None
+
+    likely = [
+        Path.home() / "Documents" / "Obsidian",
+        Path.home() / "Documents" / "Notes",
+        Path.home() / "Notes",
+    ]
+    for path in likely:
+        if (path / ".obsidian").is_dir():
+            return path
+
+    ignored = {"node_modules", ".git", ".cache", ".direnv", "target", "vendor", ".venv", "venv"}
     for root in (Path.home() / "Documents", Path.home() / "Notes"):
-        if root.is_dir():
-            for path in root.glob("**/.obsidian"):
-                if path.is_dir():
-                    return path.parent
+        if not root.is_dir():
+            continue
+        root_depth = len(root.parts)
+        for current, dirs, _files in os.walk(root):
+            path = Path(current)
+            dirs[:] = [name for name in dirs if name not in ignored]
+            if ".obsidian" in dirs:
+                return path
+            if len(path.parts) - root_depth >= 3:
+                dirs[:] = []
     return None
 
 

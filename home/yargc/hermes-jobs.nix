@@ -1,10 +1,26 @@
 {
-  frontier-daily = {
+  unknown-frontier-github = {
     schedule = "30 8 * * *";
     mode = "dispatch";
-    task = "frontier-daily";
+    task = "unknown-frontier-github";
     deliver = "local";
-    description = "parallel GitHub Reddit and X frontier scouts followed by one verified synthesis";
+    description = "GitHub unknown-frontier scout";
+  };
+
+  unknown-frontier-reddit = {
+    schedule = "35 8 * * *";
+    mode = "dispatch";
+    task = "unknown-frontier-reddit";
+    deliver = "local";
+    description = "Reddit unknown-frontier scout";
+  };
+
+  unknown-frontier-x = {
+    schedule = "40 8 * * *";
+    mode = "dispatch";
+    task = "unknown-frontier-x";
+    deliver = "local";
+    description = "X unknown-frontier scout";
   };
 
   free-ai-radar = {
@@ -13,6 +29,14 @@
     task = "free-ai-radar";
     deliver = "local";
     description = "linux.do-first legitimate free AI and cost-saving radar";
+  };
+
+  unknown-frontier-synthesis = {
+    schedule = "0 9 * * *";
+    mode = "dispatch";
+    task = "unknown-frontier-synthesis";
+    deliver = "local";
+    description = "bounded fan-in of fresh GitHub Reddit and X scout state";
   };
 
   agenda = {
@@ -47,10 +71,10 @@
     description = "zero-token workstation health alert that stays silent when healthy";
   };
 
-  cron-integrity-watch = {
+  cron-skill-integrity-watch = {
     schedule = "17 */6 * * *";
     mode = "watchdog";
-    task = "cron-integrity-watch";
+    task = "cron-skill-integrity-watch";
     deliver = "telegram";
     description = "zero-token scheduler registry script and skill integrity check";
   };

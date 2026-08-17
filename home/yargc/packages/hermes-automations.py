@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 from hermes_automation_common import STATE_ROOT, atomic_json, load_json, load_registry, now
-from hermes_automation_scheduler import dispatch_job, job_lock, record_run, run_watchdog, sync_cron
+from hermes_automation_contract import validate_registry
+from hermes_automation_scheduler import WATCHDOG_TASKS, dispatch_job, job_lock, record_run, run_watchdog, sync_cron
 from hermes_automation_tasks import TASKS, run_task
 
 
@@ -31,6 +32,7 @@ def parser() -> argparse.ArgumentParser:
     sync = sub.add_parser("sync-cron")
     sync.add_argument("--prune", action="store_true")
 
+    sub.add_parser("validate-registry")
     sub.add_parser("jobs")
     return p
 
@@ -69,6 +71,16 @@ def failure_notice(name: str, message: str) -> None:
         pass
 
 
+def _validate_or_print(registry: dict[str, dict]) -> int:
+    errors = validate_registry(registry, task_names=TASKS, watchdog_names=WATCHDOG_TASKS)
+    if errors:
+        for error in errors:
+            print(error, file=sys.stderr)
+        return 2
+    print(f"ok: {len(registry)} declarative Hermes jobs")
+    return 0
+
+
 def main() -> int:
     args = parser().parse_args()
     registry = load_registry()
@@ -77,7 +89,14 @@ def main() -> int:
         print(json.dumps(registry, ensure_ascii=False, indent=2))
         return 0
 
+    if args.command == "validate-registry":
+        return _validate_or_print(registry)
+
     if args.command == "sync-cron":
+        validation = validate_registry(registry, task_names=TASKS, watchdog_names=WATCHDOG_TASKS)
+        if validation:
+            print(json.dumps({"ok": False, "errors": validation}, ensure_ascii=False, indent=2))
+            return 2
         result = sync_cron(prune=args.prune)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result.get("ok") else 2
