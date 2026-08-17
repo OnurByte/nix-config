@@ -1,6 +1,6 @@
 ---
 name: hermes-research-radar
-description: Run Vesper's high-volume daily Hermes research system: broad 200-1000-item discovery, source-specialized GitHub/Reddit/X scouts, evidence-ranked deep reading, primary-source verification, durable learning, Linux.do free-AI radar and second-brain handoff.
+description: Run Vesper's high-volume daily Hermes research system: broad 200-1000-item discovery, protected central sources, self-expanding source graphs, source-specialized GitHub/Reddit/X scouts, evidence-ranked deep reading, primary-source verification, durable learning, Linux.do free-AI radar and second-brain handoff.
 platforms: [linux]
 ---
 
@@ -16,6 +16,7 @@ Read only the references relevant to the lane being executed:
 
 - `references/research-pipeline.md` — mandatory for every research lane
 - `references/source-governance.md` — mandatory before synthesis/final reporting
+- `references/central-sources.md` — mandatory for frontier scouts; protected anchors plus source-evolution policy
 - `references/reddit-rss.md` — mandatory for Reddit research
 - `references/x-research.md` — mandatory for X/Twitter research
 
@@ -45,6 +46,17 @@ The free-AI lane answers:
 `what legitimate new free tier, free model, open-source replacement or cost-saving workflow became useful?`
 
 Never collapse those questions into one ranking function.
+
+## Central anchors + autonomous expansion
+
+The source graph has two simultaneous obligations:
+
+1. **protected central anchors** are inspected every normal run and cannot be silently optimized away;
+2. **autonomous exploration** discovers adjacent accounts, subreddits, repositories, authors, sites and vocabulary, then feeds useful discoveries back into later runs.
+
+Central sources are a floor, not a ceiling. They prevent the adaptive researcher from drifting away from the user's highest-value communities while leaving meaningful budget for discovering sources the user did not already know.
+
+New sources begin on probation. Repeatedly useful sources can receive more future intake budget. Repeatedly noisy/dead sources lose adaptive budget, but explicit protected anchors remain anchors even when temporarily quiet.
 
 ## Hard coverage contract
 
@@ -80,19 +92,20 @@ Penalize hype, duplicate coverage, generic news, engagement-only popularity and 
 
 ## Persistent adaptive state
 
-Keep lane-specific state plus a small shared source graph. Retain at least:
+Keep lane-specific state plus a shared source registry. Retain at least:
 
 - delivered/known findings
 - unresolved candidates
 - seen canonical URLs
-- source/account/subreddit/repository registry
-- source success/failure and freshness history
+- protected central sources
+- discovered source/account/subreddit/repository registry
+- source tier, hit/failure history and freshness
 - active discovery heuristics with evidence
 - open questions
 - mirror/feed health where applicable
 - coverage statistics from recent runs
 
-User-provided feeds, accounts, subreddits and repositories are seeds, not an allowlist. Discover adjacent sources automatically, but place newly discovered sources on probation until they repeatedly produce useful downstream findings.
+User-provided feeds, accounts, subreddits and repositories are seeds/anchors, not an allowlist. Discover adjacent sources automatically, but keep new sources on probation until they demonstrate repeated downstream value.
 
 A heuristic evolves through:
 

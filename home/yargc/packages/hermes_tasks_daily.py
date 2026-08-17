@@ -11,7 +11,7 @@ from typing import Any
 
 from hermes_automation_common import STATE_ROOT, atomic_json, invoke_json, invoke_text, now
 from hermes_automation_reports import recent_briefings, research_prompt, research_skill_context, state_context, write_report
-from hermes_research_intake import compact_intake, reddit_rss_intake, x_mirror_intake
+from hermes_research_intake import compact_intake, reddit_rss_intake, reinforce_source_registry, x_mirror_intake
 
 FRONTIER_SOURCES = ("github", "reddit", "x")
 FRONTIER_MAX_AGE_SECONDS = int(os.environ.get("VESPER_FRONTIER_MAX_AGE_SECONDS", "21600"))
@@ -38,12 +38,12 @@ def _scout_prompt(source: str, intake: dict[str, Any] | None = None) -> str:
         "reddit": "Use the supplied RSS/Atom intake as the cheap first pass, then search/fetch only where it adds coverage or verification. Inspect recent/low-score posts, comment branches and niche communities. Extract reproducible techniques, fixes, workflows and primary links.",
         "x": "X/Twitter is mandatory. Use direct X when accessible; otherwise use XCancel and configured Nitter-compatible mirrors, with HTML/search fallback when RSS is blocked. Search low-attention builder/researcher posts, replies/quotes, demos, code links, patches and concrete techniques. Verify important claims against primary sources.",
     }
-    references = ["research-pipeline.md", "source-governance.md"]
+    references = ["research-pipeline.md", "source-governance.md", "central-sources.md"]
     if source == "reddit":
         references.append("reddit-rss.md")
     if source == "x":
         references.append("x-research.md")
-    skill = research_skill_context(references, max_chars=38000)
+    skill = research_skill_context(references, max_chars=42000)
     intake_text = compact_intake(intake, max_chars=90000) if intake else "No deterministic intake was supplied; build broad intake with the web tools and track it honestly."
     candidate_target = FRONTIER_CANDIDATE_BUDGET[source]
     deep_target = FRONTIER_DEEP_READ_BUDGET[source]
@@ -58,6 +58,8 @@ Coverage contract for this scout:
 - deep-read target: about {deep_target} strongest items
 - the full daily bundle target is {FRONTIER_TOTAL_CANDIDATE_TARGET} candidates and {FRONTIER_TOTAL_DEEP_READ_TARGET} deep reads across GitHub + Reddit + X
 - deterministic RSS/mirror intake counts as cheap candidate inspection, not as a full deep read
+- central anchors are mandatory inspection seeds but are not an allowlist
+- discovered sources may receive future budget only when they repeatedly produce useful evidence-bearing candidates
 - if access failures prevent the target, report the actual count and limitation; never invent coverage
 
 ----- RESEARCH PROCEDURE -----
@@ -112,6 +114,7 @@ def frontier_scout(source: str) -> dict[str, Any]:
     if intake:
         coverage["intakeCandidates"] = int(intake.get("canonicalCandidates") or 0)
         coverage["intakeErrors"] = len(intake.get("errors") or [])
+    reinforce_source_registry(source, report)
     envelope = {
         "source": source,
         "generatedAt": now().isoformat(timespec="seconds"),
@@ -198,7 +201,7 @@ def frontier_synthesis() -> dict[str, Any]:
             "unknown-frontier-ai",
             "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and rank only discoveries worth attention. Prefer a few technically dense discoveries over a long list. Run a counter-review before final selection. X is a mandatory discovery surface when its scout is available. Explicitly flag missing/stale scouts and any coverage shortfall rather than silently treating old or inaccessible data as current.",
             extra,
-            skill_references=("research-pipeline.md", "source-governance.md", "x-research.md", "reddit-rss.md"),
+            skill_references=("research-pipeline.md", "source-governance.md", "central-sources.md", "x-research.md", "reddit-rss.md"),
         ),
         web_only=True,
     )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import sys
 import unittest
 from pathlib import Path
@@ -11,7 +12,13 @@ from hermes_automation_common import load_registry
 from hermes_automation_contract import validate_registry
 from hermes_automation_scheduler import WATCHDOG_TASKS, cron_create_argv, cron_edit_argv
 from hermes_automation_tasks import TASKS
-from hermes_research_intake import _canonical_reddit_url, _canonical_x_url
+import hermes_research_intake as research_intake
+from hermes_research_intake import (
+    CENTRAL_REDDIT_ANCHORS,
+    CENTRAL_X_ANCHORS,
+    _canonical_reddit_url,
+    _canonical_x_url,
+)
 from hermes_tasks_daily import (
     FRONTIER_CANDIDATE_BUDGET,
     FRONTIER_DEEP_READ_BUDGET,
@@ -68,18 +75,79 @@ class HermesAutomationContractTests(unittest.TestCase):
             self.assertGreater(FRONTIER_CANDIDATE_BUDGET[source], 0)
             self.assertGreater(FRONTIER_DEEP_READ_BUDGET[source], 0)
 
+    def test_central_sources_are_protected_by_contract(self) -> None:
+        self.assertIn("MoneroMeansMoney", CENTRAL_REDDIT_ANCHORS)
+        self.assertIn("Monero", CENTRAL_REDDIT_ANCHORS)
+        self.assertIn("LocalLLaMA", CENTRAL_REDDIT_ANCHORS)
+        for account in (
+            "Teknium",
+            "thdxr",
+            "XOpenSource",
+            "eigenwallet",
+            "SimpleXChat",
+            "akaclandestine",
+            "DailyDarkWeb",
+        ):
+            self.assertIn(account, CENTRAL_X_ANCHORS)
+        self.assertGreaterEqual(len(CENTRAL_REDDIT_ANCHORS), 6)
+        self.assertGreaterEqual(len(CENTRAL_X_ANCHORS), 12)
+
+    def test_source_registry_learns_without_demoting_anchors(self) -> None:
+        previous_path = research_intake.SOURCE_REGISTRY_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            research_intake.SOURCE_REGISTRY_PATH = Path(tmp) / "source-registry.json"
+            try:
+                initial = research_intake.load_source_registry()
+                anchor = initial["sources"]["reddit:moneromeansmoney"]
+                self.assertTrue(anchor["protected"])
+                self.assertEqual("anchor", anchor["tier"])
+
+                report = {
+                    "candidates": [
+                        {
+                            "title": "useful candidate",
+                            "urls": ["https://x.com/newbuilder/status/123"],
+                        }
+                    ],
+                    "sources": [],
+                    "statePatch": {},
+                }
+                research_intake.reinforce_source_registry("x", report)
+                research_intake.reinforce_source_registry("x", report)
+                learned = research_intake.load_source_registry()["sources"]["x:newbuilder"]
+                self.assertEqual("trusted", learned["tier"])
+                self.assertEqual(2, learned["hits"])
+
+                research_intake.reinforce_source_registry("x", report)
+                research_intake.reinforce_source_registry("x", report)
+                promoted = research_intake.load_source_registry()["sources"]["x:newbuilder"]
+                self.assertEqual("promoted", promoted["tier"])
+                self.assertEqual(4, promoted["hits"])
+
+                anchor_after = research_intake.load_source_registry()["sources"]["reddit:moneromeansmoney"]
+                self.assertTrue(anchor_after["protected"])
+                self.assertEqual("anchor", anchor_after["tier"])
+            finally:
+                research_intake.SOURCE_REGISTRY_PATH = previous_path
+
     def test_research_skill_references_exist(self) -> None:
         skill = HERE.parent / "skills" / "hermes-research-radar"
         expected = {
             skill / "SKILL.md",
             skill / "references" / "research-pipeline.md",
             skill / "references" / "source-governance.md",
+            skill / "references" / "central-sources.md",
             skill / "references" / "reddit-rss.md",
             skill / "references" / "x-research.md",
         }
         self.assertTrue(all(path.is_file() for path in expected))
         skill_text = (skill / "SKILL.md").read_text(errors="replace")
         self.assertIn("200-1000", skill_text)
+        self.assertIn("protected central anchors", skill_text)
+        central_text = (skill / "references" / "central-sources.md").read_text(errors="replace")
+        self.assertIn("MoneroMeansMoney", central_text)
+        self.assertIn("@Teknium", central_text)
+        self.assertIn("probation -> trusted -> promoted", central_text)
         self.assertIn("X / Twitter", (skill / "references" / "x-research.md").read_text(errors="replace"))
         self.assertIn("RSS", (skill / "references" / "reddit-rss.md").read_text(errors="replace"))
 
