@@ -25,11 +25,36 @@ let
     ];
     text = ''
       credential="$(${vesperControl}/bin/vesper-control consumer credential hermes)"
-      if [ "$credential" = "native" ]; then
-        exec ${hermesAgent}/bin/hermes "$@"
-      fi
       exec ${vesperControl}/bin/vesper-control credential exec "$credential" -- \
         ${hermesAgent}/bin/hermes "$@"
+    '';
+  };
+
+  hermesJobsStatus = writeShellApplication {
+    name = "vesper-hermes-jobs-status";
+    runtimeInputs = [ coreutils jq ];
+    text = ''
+      registry="''${VESPER_HERMES_JOB_REGISTRY:-$HOME/.config/vesper/hermes-jobs.json}"
+      state="''${VESPER_RESEARCH_STATE_DIR:-$HOME/.local/state/vesper/research}"
+
+      if [ ! -f "$registry" ]; then
+        printf '{}\n'
+        exit 0
+      fi
+
+      {
+        ${jq}/bin/jq -c 'to_entries[]' "$registry" | while IFS= read -r entry; do
+          task="$(printf '%s\n' "$entry" | ${jq}/bin/jq -r '.value.task // .key')"
+          last='{}'
+          if [[ "$task" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            latest="$state/runs/$task/latest.json"
+            if [ -f "$latest" ]; then
+              last="$(${jq}/bin/jq -c 'if type == "object" then . else {} end' "$latest" 2>/dev/null || printf '{}')"
+            fi
+          fi
+          printf '%s\n' "$entry" | ${jq}/bin/jq -c --argjson last "$last" '.value.lastRun = $last'
+        done
+      } | ${jq}/bin/jq -s 'from_entries'
     '';
   };
 in
@@ -72,6 +97,7 @@ stdenv.mkDerivation {
     ln -s vesper-hermes-core $out/bin/vesper-hermes
     ln -s vesper-hermes-core $out/bin/vesper-hermes-automations
     ln -s vesper-hermes-core $out/bin/vesper-research
+    ln -s ${hermesJobsStatus}/bin/vesper-hermes-jobs-status $out/bin/vesper-hermes-jobs-status
 
     runHook postInstall
   '';
