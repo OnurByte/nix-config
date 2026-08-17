@@ -56,6 +56,7 @@ jobs:
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-proxy-hardening.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing.patch
+            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing-private.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-app-permissions.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-credential-aliases.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-exec-separator.patch
@@ -118,4 +119,5 @@ jobs:
             fi
 
             grep -F "nfqws2@default.service" /tmp/vesper-control.rs >/dev/null
+            grep -F "from_mode(0o600)" /tmp/vesper-control.rs >/dev/null
           '
