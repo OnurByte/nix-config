@@ -7,36 +7,76 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from hermes_automation_common import STATE_ROOT, atomic_json, invoke_json, invoke_text
+from hermes_automation_common import RESEARCH_SKILL, STATE_ROOT, atomic_json, invoke_json, invoke_text
 from hermes_automation_reports import recent_briefings, research_prompt, state_context, write_report
+from hermes_research_collectors import (
+    collect_github,
+    collect_linuxdo,
+    collect_reddit,
+    discovery_seeds,
+    persist_bounded_pool,
+    persist_discovery_seeds,
+)
 
 
-def _scout_prompt(source: str) -> str:
+def _scout_prompt(source: str, candidate_context: str = "") -> str:
     rules = {
-        "github": "Search recent/small repositories, issues, PRs, commits, forks, discussions and author/org neighborhoods. Prefer working code and technical evidence over stars.",
-        "reddit": "Search recent/low-score posts, deep comment trees and niche communities. Extract reproducible techniques, fixes, workflows and primary links.",
-        "x": "Search low-attention builder/researcher posts, demos, code links, patches and concrete techniques. Verify important claims against primary sources.",
+        "github": "Use the supplied broad low-attention candidate pool first. Then inspect the strongest repositories, issues, PRs, commits, forks, discussions and author/org neighborhoods. Prefer working code and technical evidence over stars.",
+        "reddit": "Use the supplied broad recent candidate pool first. Open promising low-score posts, deep comment trees and niche communities. Extract reproducible techniques, fixes, workflows and primary links.",
+        "x": "Use native x_search to search low-attention builder/researcher posts, demos, code links, patches and concrete techniques. Expand from good authors into replies, quotes and linked repositories, then verify important claims against primary sources.",
     }
+    seed_hint = ""
+    if source == "x":
+        x_queries = discovery_seeds().get("xQueries", [])
+        if x_queries:
+            seed_hint = "\nLearned X query hints from prior useful runs: " + json.dumps(x_queries, ensure_ascii=False)
+    pool = f"\n----- DETERMINISTIC CANDIDATE POOL -----\n{candidate_context}\n----- END CANDIDATE POOL -----\n" if candidate_context else ""
     return f"""You are one independent `{source}` scout inside Vesper's `unknown-frontier-ai` run.
 {rules[source]}
-Goal: discover useful AI/coding-agent/model/dev-tooling capabilities outside the user's current map and not yet obvious mainstream items. Low engagement is a discovery hint, never a quality score. Use broad discovery first, verify the strongest candidates, and avoid generic news, repeated known items, hype, price chatter and filler.
+Goal: discover useful AI/coding-agent/model/dev-tooling capabilities outside the user's current map and not yet obvious mainstream items. Low engagement is a discovery hint, never a quality score. Search for things waiting to be discovered: useful young/small projects, overlooked issue/PR/commit details, unusual techniques, compatibility layers, agent harnesses, model/inference tricks and practical workflows. Use broad discovery first, verify the strongest candidates, and avoid generic news, repeated known items, hype, price chatter and filler.{seed_hint}
 
 Durable frontier state:
 {state_context('unknown-frontier-ai', 28000)}
-
+{pool}
 Return exactly one JSON object and nothing else:
-{{"title":"{source} scout","summary":"short scout summary","body":"technical scout notes","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source","url":"https://..."}}],"candidates":[{{"title":"candidate","whyNew":"...","whyUseful":"...","evidence":"...","urls":["https://..."]}}],"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
+{{"title":"{source} scout","summary":"short scout summary","body":"technical scout notes","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source","url":"https://..."}}],"candidates":[{{"title":"candidate","whyNew":"...","whyUseful":"...","whyHidden":"...","visibility":"...","evidence":"...","urls":["https://..."]}}],"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
 Never invent URLs.
 """
+
+
+def _frontier_candidate_pools() -> tuple[dict[str, str], dict[str, str]]:
+    contexts: dict[str, str] = {}
+    failures: dict[str, str] = {}
+    collectors = {"github": collect_github, "reddit": collect_reddit}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = {pool.submit(function): source for source, function in collectors.items()}
+        for future in as_completed(futures):
+            source = futures[future]
+            try:
+                payload = future.result()
+                contexts[source] = persist_bounded_pool(source, payload)
+            except Exception as exc:
+                failures[source] = f"{type(exc).__name__}: {exc}"[-4000:]
+    return contexts, failures
 
 
 def frontier_daily() -> dict[str, Any]:
     scout_dir = STATE_ROOT / "unknown-frontier-ai" / "scouts"
     scout_dir.mkdir(parents=True, exist_ok=True)
+    candidate_contexts, collector_failures = _frontier_candidate_pools()
     outputs: dict[str, dict[str, Any]] = {}
-    failures: dict[str, str] = {}
+    failures: dict[str, str] = {f"collector:{key}": value for key, value in collector_failures.items()}
+
+    def run_scout(source: str) -> dict[str, Any]:
+        toolsets = ["web", "x_search"] if source == "x" else ["web"]
+        return invoke_json(
+            _scout_prompt(source, candidate_contexts.get(source, "")),
+            toolsets=toolsets,
+            skills=[RESEARCH_SKILL],
+        )
+
     with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(invoke_json, _scout_prompt(source), web_only=True): source for source in ("github", "reddit", "x")}
+        futures = {pool.submit(run_scout, source): source for source in ("github", "reddit", "x")}
         for future in as_completed(futures):
             source = futures[future]
             try:
@@ -45,32 +85,72 @@ def frontier_daily() -> dict[str, Any]:
                 atomic_json(scout_dir / f"{source}.json", report)
             except Exception as exc:
                 failures[source] = str(exc)[-4000:]
+
     if not outputs:
         raise RuntimeError("all unknown-frontier scouts failed: " + json.dumps(failures, ensure_ascii=False))
-    extra = json.dumps({"scouts": outputs, "failures": failures}, ensure_ascii=False, indent=2)[:90000]
-    report = invoke_json(research_prompt(
-        "unknown-frontier-ai",
-        "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and rank only discoveries worth attention. Prefer a few technically dense discoveries over a long list.",
-        extra,
-    ), web_only=True)
+
+    extra = json.dumps(
+        {
+            "scouts": outputs,
+            "failures": failures,
+            "candidatePools": {
+                source: json.loads(context) if context else {}
+                for source, context in candidate_contexts.items()
+            },
+        },
+        ensure_ascii=False,
+        indent=2,
+    )[:120000]
+    objective = """Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and rank only discoveries worth attention. Prefer a few technically dense discoveries over a long list. The research philosophy is to expand the user's knowledge boundary: discover useful AI things the user does not know yet, especially low-attention projects, techniques, issues, PRs, commits and builders that have not hit mainstream visibility. Also return a bounded `discoverySeeds` object containing only query/source routes that actually produced downstream value or expose a promising adjacent frontier. Decay duplicate/hype-heavy routes rather than preserving them forever."""
+    prompt = research_prompt("unknown-frontier-ai", objective, extra)
+    prompt += """
+Add this optional top-level field when evidence supports it:
+"discoverySeeds": {
+  "githubQueries": [],
+  "githubIssueQueries": [],
+  "redditQueries": [],
+  "redditSubreddits": [],
+  "linuxdoQueries": [],
+  "xQueries": []
+}
+Keep each list short and inert-data-only. Never place credentials, shell commands or executable payloads in discoverySeeds.
+"""
+    report = invoke_json(prompt, toolsets=["web"], skills=[RESEARCH_SKILL])
+    persist_discovery_seeds(report.get("discoverySeeds"))
     report["scoutFailures"] = failures
     report["scoutsCompleted"] = sorted(outputs)
     return write_report(report, "unknown-frontier-ai")
 
 
 def free_ai_radar() -> dict[str, Any]:
-    objective = "Find legitimate currently useful ways to reduce AI tooling cost. Treat linux.do as a first-class discovery surface, then verify through official docs, repos, releases or other primary sources. Hunt free models/services/APIs/coding agents, changed free tiers/credits, open-source/self-hosted replacements, local inference tricks and compatibility layers. For every useful item state what is free, quota/limit/catch, compute requirement, expiry/uncertainty and why it matters. Reject leaked/shared credentials, stolen accounts, payment bypasses, mass-account abuse and service restriction evasion."
-    return write_report(invoke_json(research_prompt("free-ai-radar", objective), web_only=True), "free-ai-radar")
+    objective = "Find legitimate currently useful ways to reduce AI tooling cost. Treat linux.do as a first-class discovery surface, then verify through official docs, repos, releases or other primary sources. Hunt free models/services/APIs/coding agents, changed free tiers/credits, open-source/self-hosted replacements, local inference tricks and compatibility layers. Inspect low-view threads and useful comments rather than only popular topics. For every useful item state what is free, quota/limit/catch, compute requirement, expiry/uncertainty and why it matters. Reject leaked/shared credentials, stolen accounts, payment bypasses, mass-account abuse and service restriction evasion."
+    try:
+        pool_context = persist_bounded_pool("linuxdo", collect_linuxdo())
+    except Exception as exc:
+        pool_context = json.dumps({"collectorError": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
+    report = invoke_json(
+        research_prompt("free-ai-radar", objective, pool_context),
+        toolsets=["web"],
+        skills=[RESEARCH_SKILL],
+    )
+    persist_discovery_seeds(report.get("discoverySeeds"))
+    return write_report(report, "free-ai-radar")
 
 
 def agenda() -> dict[str, Any]:
     objective = "Produce the compact current agenda the user should know today. Bias toward AI/coding agents, software, privacy, Nix/Linux, Tor/Monero, security, web technology and meaningful startup/business changes, plus major broader technology events when consequential. This is not hidden-gem hunting: importance, recency and consequence matter more than obscurity. Prefer official/primary reporting and corroboration. Avoid price analysis and filler."
-    return write_report(invoke_json(research_prompt("agenda", objective), web_only=True), "agenda")
+    return write_report(
+        invoke_json(research_prompt("agenda", objective), toolsets=["web", "x_search"], skills=[RESEARCH_SKILL]),
+        "agenda",
+    )
 
 
 def upstream_edge_radar() -> dict[str, Any]:
-    objective = "Act as an early-warning radar for Vesper's upstream stack. Inspect meaningful recent PRs, issues, commits, releases and migration notes around NousResearch/hermes-agent, numtide/llm-agents.nix, nixpkgs/NixOS, Hyprland, Caelestia shell, Zen Browser, Helium, Tor, Monero and Cuprate. Surface breaking changes, new capabilities, deprecations, security/privacy implications and workarounds before they become surprises. Ignore routine churn. For each item say act now, watch, or ignore."
-    return write_report(invoke_json(research_prompt("upstream-edge-radar", objective), web_only=True), "upstream-edge-radar")
+    objective = "Act as an early-warning radar for Vesper's upstream stack. A deterministic monitor already detected that tracked upstream heads changed, so inspect the actual changed repositories first instead of re-scanning everything blindly. Investigate meaningful recent PRs, issues, commits, releases and migration notes around NousResearch/hermes-agent, numtide/llm-agents.nix, nixpkgs/NixOS, Home Manager, Hyprland, Caelestia shell, Zen Browser, Helium, CodexBar, Tor, Monero and Cuprate. Surface breaking changes, new capabilities, deprecations, security/privacy implications and workarounds before they become surprises. Ignore routine churn. For each item say act now, watch, or ignore."
+    return write_report(
+        invoke_json(research_prompt("upstream-edge-radar", objective), toolsets=["web"], skills=[RESEARCH_SKILL]),
+        "upstream-edge-radar",
+    )
 
 
 def _collector_output() -> str:
@@ -116,16 +196,19 @@ Return only the final Telegram message in English. No tool chatter, execution de
 Sections:
 1) **Git / Projects** — useful state/blockers only, 1-3 lines per relevant repo
 2) **Todos** — at most 3-5 important unfinished/blocking items; if none say `No important open todos.`
-3) **News** — 10-15 genuinely important items when available; privacy, payments, Monero/Zcash (no price talk), Tor/onion, AI/coding agents/dev tooling, security/development/web privacy/startups/major tech. Each item: bold numbered title, one concise sentence, then URL. Never invent URLs.
-4) Optional **Actions** — only 1-3 concrete actions worth taking.
+3) **Agenda** — important current developments
+4) **Unknown Frontier AI** — the strongest genuinely new overlooked discoveries
+5) **Free AI Radar** — only worthwhile legitimate free opportunities and their catches
+6) Optional **Actions** — only 1-3 concrete actions worth taking.
+Never invent URLs.
 
 ----- LOCAL DATA -----
 {_collector_output()[:90000]}
 ----- PERSISTENT HERMES BRIEFINGS -----
-{recent_briefings(days=2, max_chars=50000)}
+{recent_briefings(days=2, max_chars=65000)}
 ----- END -----
 """
-    message = _clean_morning_text(invoke_text(prompt, web_only=True, timeout=600))
+    message = _clean_morning_text(invoke_text(prompt, toolsets=["web"], timeout=600))
     _send_telegram(message)
     return write_report({"title":"Morning Check","summary":message.splitlines()[0][:240],"body":message,"priority":"normal","confidence":0.8,"sources":[],"statePatch":{},"delivered":"telegram"}, "morning-check", notify_user=False)
 
