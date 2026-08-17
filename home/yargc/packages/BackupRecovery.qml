@@ -12,6 +12,7 @@ PageBase {
     id: root
     property var backup: ({ backup: {}, repositoryCheck: {}, snapper: {}, btrfsScrub: {}, retention: {} })
     property string errorText: ""
+    property string actionMessage: ""
     title: qsTr("Backup & Recovery")
 
     function refresh() {
@@ -39,6 +40,22 @@ PageBase {
         onExited: (code, status) => {
             if (code !== 0)
                 root.errorText = statusError.text.trim();
+        }
+    }
+
+    Process {
+        id: safeCheck
+        command: ["@vesperControl@", "recovery", "check"]
+        stderr: StdioCollector { id: safeCheckError }
+        onExited: (code, status) => {
+            if (code === 0) {
+                root.actionMessage = qsTr("Restic repository verification started");
+                root.errorText = "";
+            } else {
+                root.actionMessage = "";
+                root.errorText = safeCheckError.text.trim() || qsTr("Could not start repository verification");
+            }
+            root.refresh();
         }
     }
 
@@ -71,13 +88,27 @@ PageBase {
             icon: root.backup.repositoryCheck?.failed ? "error" : "fact_check"
             label: qsTr("Repository check")
             subtext: root.backup.repositoryCheck?.lastRun || qsTr("no completed check reported")
-            value: root.backup.repositoryCheck?.failed ? qsTr("failed") : (root.backup.repositoryCheck?.lastResult || qsTr("unknown"))
+            value: root.backup.repositoryCheck?.jobActive
+                ? qsTr("running")
+                : (root.backup.repositoryCheck?.failed ? qsTr("failed") : (root.backup.repositoryCheck?.lastResult || qsTr("unknown")))
         }
         InfoRow {
             icon: "event_repeat"
             label: qsTr("Next repository check")
             subtext: root.backup.repositoryCheck?.nextRun || qsTr("next check unavailable")
             value: root.backup.repositoryCheck?.timerActive ? qsTr("scheduled") : qsTr("inactive")
+        }
+        RowButton {
+            icon: "fact_check"
+            text: qsTr("Verify repository now")
+            subtext: qsTr("starts only the read-only Restic check service; it does not create, prune or restore backups")
+            visible: root.backup.safeCheckActionAvailableInSettings === true
+            disabled: safeCheck.running || root.backup.repositoryCheck?.jobActive === true
+            onClicked: {
+                root.actionMessage = "";
+                root.errorText = "";
+                safeCheck.running = true;
+            }
         }
         InfoRow {
             icon: "history"
@@ -132,6 +163,16 @@ PageBase {
         StyledText {
             Layout.fillWidth: true
             Layout.topMargin: Tokens.spacing.medium
+            visible: root.actionMessage
+            text: root.actionMessage
+            color: Colours.palette.m3primary
+            font: Tokens.font.body.small
+            wrapMode: Text.WordWrap
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            Layout.topMargin: root.actionMessage ? 0 : Tokens.spacing.medium
             visible: root.errorText
             text: root.errorText
             color: Colours.palette.m3error
