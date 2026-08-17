@@ -1,6 +1,6 @@
 --- a/vesper-control.rs
 +++ b/vesper-control.rs
-@@ -278,8 +278,7 @@ fn network_status() {
+@@ -278,7 +278,6 @@ fn network_status() {
      let (wifi, bluetooth) = radio_status();
      let connection = active_connection().unwrap_or_default();
 -    let zapret = success("systemctl", &["is-active", "--quiet", "zapret2.service"])
@@ -9,7 +9,7 @@
      let proxy = config_root().join("proxy.env").exists();
      println!(
          "{{\"airplane\":{},\"wifi\":{},\"bluetooth\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{}}}",
-@@ -306,6 +305,27 @@ fn airplane(enabled: bool) -> Result<(), String> {
+@@ -306,4 +305,22 @@ fn airplane(enabled: bool) -> Result<(), String> {
      Ok(())
  }
  
@@ -32,13 +32,13 @@
 +}
 +
  fn wifi_qr() -> Result<PathBuf, String> {
-@@ -689,6 +709,7 @@ fn usage() -> ! {
+@@ -689,4 +706,5 @@ fn usage() -> ! {
             network status\n\
             network airplane on|off\n\
 +           network dpi on|off\n\
             network wifi-qr\n\
             proxy status|set|clear\n\
-@@ -729,6 +750,12 @@ fn main() {
+@@ -729,6 +747,11 @@ fn main() {
              "off" => airplane(false).unwrap_or_else(|error| print_error(&error)),
              _ => usage(),
          },
