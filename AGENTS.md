@@ -56,6 +56,8 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 
 ## Reliability contract
 
+- First-party Vesper runtime/control-plane code must not be Python. Do not add tracked `.py` files or a global Python/uv/ruff development stack. Use Rust for native Vesper services and CLIs, with Nix/QML/Lua/jq in their existing roles. Upstream packages may internally depend on Python; do not vendor that implementation into this repository.
+- CI must fail if a first-party `.py` file appears again.
 - Vesper is a single laptop, not a reusable host framework. Do not introduce multi-host abstractions without a real second host.
 - The verified disk is GPT -> 4 GiB EFI + LUKS2 -> Btrfs. Preserve that model unless a destructive reinstall is explicitly requested.
 - `hosts/vesper/hardware-configuration.nix` now contains the verified live storage topology; it is not an installer and must not gain formatting/partitioning commands.
@@ -86,15 +88,17 @@ Prefer small declarative changes over installer scripts, duplicated desktop laye
 
 ## Change checklist
 
-1. Parse every changed `.nix` file with `nix-instantiate --parse`.
-2. Parse every Hyprland Lua file with `luac -p`.
-3. Run `nix flake metadata --no-write-lock-file`.
-4. Evaluate `.#nixosConfigurations.vesper.config.networking.hostName` and expect `vesper`.
-5. Evaluate the complete Home Manager activation derivation with `nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath'`.
-6. Build `.#nixosConfigurations.vesper.config.system.build.toplevel`; the hardware topology is now concrete, so this must not be skipped.
-7. If touching T3 Code Nightly, build `.#t3code-nightly`.
-8. If touching TurnLens, build `.#turnlens`.
-9. If touching Cuprate, build `.#cuprated`.
-10. If touching Caelestia/QML/CodexBar, build the configured Caelestia package.
-11. If touching storage or backup logic, update `docs/INSTALL.md` or `docs/BACKUP.md` when the operational contract changes.
-12. Keep README user-facing; implementation guardrails belong here.
+1. Reject tracked first-party `.py` files.
+2. Parse every changed `.nix` file with `nix-instantiate --parse`.
+3. Compile changed first-party Rust control-plane code.
+4. Parse every Hyprland Lua file with `luac -p`.
+5. Run `nix flake metadata --no-write-lock-file`.
+6. Evaluate `.#nixosConfigurations.vesper.config.networking.hostName` and expect `vesper`.
+7. Evaluate the complete Home Manager activation derivation with `nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath'`.
+8. If touching Caelestia/QML/CodexBar, build the configured Caelestia package before the full system build.
+9. Build `.#nixosConfigurations.vesper.config.system.build.toplevel`; the hardware topology is concrete, so this must not be skipped.
+10. If touching T3 Code Nightly, build `.#t3code-nightly`.
+11. If touching TurnLens, build `.#turnlens`.
+12. If touching Cuprate, build `.#cuprated`.
+13. If touching storage or backup logic, update `docs/INSTALL.md` or `docs/BACKUP.md` when the operational contract changes.
+14. Keep README user-facing; implementation guardrails belong here.
