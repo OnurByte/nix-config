@@ -55,6 +55,14 @@
     description = "zero-token scheduler registry script and skill integrity check";
   };
 
+  cron-retention = {
+    schedule = "15 3 * * 1";
+    mode = "dispatch";
+    task = "cron-retention";
+    deliver = "local";
+    description = "deterministic weekly cleanup of ephemeral Hermes cron sessions outputs and candidate pools";
+  };
+
   second-brain-dream = {
     schedule = "30 23 * * *";
     mode = "dispatch";
