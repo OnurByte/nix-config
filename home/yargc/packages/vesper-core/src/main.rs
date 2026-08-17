@@ -76,6 +76,7 @@ fn main() {
         [group, action] if group == "wellbeing" && (action == "on" || action == "off") => wellbeing::set_enabled(action == "on").unwrap_or_else(|error| fail(error)),
         [group, action, value] if group == "wellbeing" && action == "focus" => wellbeing::set_focus(on_off(value)).unwrap_or_else(|error| fail(error)),
         [group, action] if group == "wellbeing" && action == "report" => println!("{}", wellbeing::report_json()),
+        [group, action] if group == "wellbeing" && action == "export" => println!("{}", wellbeing::export_report().unwrap_or_else(|error| fail(error))),
         [group, action, id] if group == "wellbeing" && action == "app" => println!("{}", wellbeing::app_json(id)),
         [group, action, id, field, value] if group == "wellbeing" && action == "app-set" => wellbeing::set_app_policy(id, field, value).unwrap_or_else(|error| fail(error)),
         [group, action, seconds] if group == "wellbeing" && action == "goal" => {
