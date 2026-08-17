@@ -42,8 +42,8 @@ jobs:
 
             /tmp/vesper-control app-status org.example.App.desktop > /tmp/app.json
             jq -e ".sandbox == \"flatpak\" and .enforcementBackend == \"Flatpak-enforced\"" /tmp/app.json >/dev/null
-            jq -e ".permissionItems[] | select(.id == \"network\" and .packaged == true and .userOverride == \"deny\" and .effective == false)" /tmp/app.json >/dev/null
-            jq -e ".permissionItems[] | select(.id == \"home\" and .packaged == true and .effective == true)" /tmp/app.json >/dev/null
+            jq -e ".permissionItems[] | select(.id == \"network\" and .category == \"shared\" and .packaged == true and .userOverride == \"deny\" and .effective == false)" /tmp/app.json >/dev/null
+            jq -e ".permissionItems[] | select(.id == \"home\" and .category == \"filesystems\" and .packaged == true and .effective == true)" /tmp/app.json >/dev/null
             jq -e ".portalPermissions | contains(\"notifications\")" /tmp/app.json >/dev/null
 
             /tmp/vesper-control app-permission org.example.App.desktop network on
@@ -56,6 +56,38 @@ jobs:
             grep -Fx "override --user --filesystem=/srv/data org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
             /tmp/vesper-control app-dbus org.example.App.desktop session org.example.Service talk
             grep -Fx "override --user --talk-name=org.example.Service org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-env org.example.App.desktop MODE test
+            grep -Fx "override --user --env=MODE=test org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-unset-env org.example.App.desktop MODE
+            grep -Fx "override --user --unset-env=MODE org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+
+            override="$HOME/.local/share/flatpak/overrides/org.example.App"
+            mkdir -p "$(dirname "$override")"
+            cat > "$override" <<EOF
+[Context]
+shared=!network;ipc;
+sockets=!x11;wayland;
+filesystems=!home;xdg-download;
+[Environment]
+MODE=test
+[Session Bus Policy]
+org.example.Service=talk
+[System Bus Policy]
+org.example.System=talk
+EOF
+
+            /tmp/vesper-control app-reset-permission org.example.App.desktop network
+            grep -Fx "shared=ipc;" "$override"
+            grep -Fx "sockets=!x11;wayland;" "$override"
+            /tmp/vesper-control app-reset-category org.example.App.desktop sockets
+            ! grep -q "^sockets=" "$override"
+            grep -Fx "filesystems=!home;xdg-download;" "$override"
+            /tmp/vesper-control app-reset-category org.example.App.desktop environment
+            ! grep -q "^MODE=" "$override"
+            /tmp/vesper-control app-reset-category org.example.App.desktop session-bus
+            ! grep -q "^org.example.Service=" "$override"
+            grep -Fx "org.example.System=talk" "$override"
+
             /tmp/vesper-control app-reset-permissions org.example.App.desktop
             grep -Fx "override --user --reset org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
           '
