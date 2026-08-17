@@ -9,11 +9,7 @@ let
   home = config.home.homeDirectory;
   jobs = import ./hermes-jobs.nix;
   hermesAgent = import ./packages/hermes-agent.nix { inherit inputs pkgs; };
-  hermesRuntime = pkgs.callPackage ./packages/hermes-runtime.nix { };
-  hermesAutomations = pkgs.callPackage ./packages/hermes-automations.nix {
-    inherit hermesAgent;
-  };
-  hermesResearch = pkgs.callPackage ./packages/hermes-research-cli.nix {
+  hermesCore = pkgs.callPackage ./packages/hermes-core.nix {
     inherit hermesAgent;
   };
 
@@ -24,21 +20,20 @@ let
 
   # Hermes resolves cron script paths before enforcing containment under
   # ~/.hermes/scripts. Home Manager home.file entries are symlinks into the
-  # Nix store, so they would be rejected as symlink escapes at fire time.
-  # Build immutable sources here, then copy them into the scripts directory
-  # as real files during activation.
+  # Nix store, so build immutable sources here and copy physical wrappers at
+  # activation time.
   jobScriptSources = lib.mapAttrs (
     name: _spec:
     pkgs.writeShellScript "vesper-hermes-${name}" ''
       set -euo pipefail
       ${researchEnv}
-      exec ${hermesAutomations}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
+      exec ${hermesCore}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
     ''
   ) jobs;
 
   compatibilityScript = pkgs.writeShellScript "vesper-hermes-morning-check-compat" ''
     set -euo pipefail
-    exec ${hermesAutomations}/bin/vesper-hermes-automations trigger morning-check
+    exec ${hermesCore}/bin/vesper-hermes-automations trigger morning-check
   '';
 
   installJobScripts = lib.concatStringsSep "\n" (
@@ -52,27 +47,16 @@ let
   );
 in
 {
-  home.packages = [
-    hermesRuntime
-    hermesAutomations
-    hermesResearch
-  ];
+  home.packages = [ hermesCore ];
 
   home.sessionVariables = {
     VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
-
-    # `r/opsec` is a high-signal discovery/comment seed without making it an
-    # immortal source. The existing defaults are repeated because these env
-    # variables intentionally replace, rather than append to, Python defaults.
     VESPER_REDDIT_SEEDS = "opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev";
     VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
   };
 
   home.file.".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
 
-  # Install physical files, not Home Manager symlinks. Hermes deliberately
-  # resolves symlinks and rejects anything whose resolved target escapes its
-  # scripts directory.
   home.activation.hermesCronScripts = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     mkdir -p "${home}/.hermes/scripts"
     ${installJobScripts}
@@ -86,11 +70,11 @@ in
     done
   '';
 
-  # Hermes remains the only scheduler. This activation step only reconciles
-  # machine-owned `vesper:*` records after the physical scripts are installed.
-  # A missing local Hermes setup must not make an otherwise valid NixOS switch fail.
+  # Hermes remains the only recurring scheduler. Reconcile only Vesper-owned
+  # records after physical wrappers exist. A missing local Hermes setup should
+  # not make an otherwise valid NixOS activation fail.
   home.activation.hermesCronSync = lib.hm.dag.entryAfter [ "hermesCronScripts" ] ''
-    if ! ${hermesAutomations}/bin/vesper-hermes-automations sync-cron --prune; then
+    if ! ${hermesCore}/bin/vesper-hermes-automations sync-cron --prune; then
       echo "warning: Hermes cron reconciliation failed; run 'vesper-hermes-automations sync-cron --prune' after Hermes is configured" >&2
     fi
   '';
