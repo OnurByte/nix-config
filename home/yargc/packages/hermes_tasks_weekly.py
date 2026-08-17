@@ -41,7 +41,6 @@ def _discover_repos(limit: int = 60) -> list[Path]:
         root_depth = len(root.parts)
         for current, dirs, _files in os.walk(root):
             path = Path(current)
-            # Detect repository ownership before pruning .git from traversal.
             if ".git" in dirs:
                 resolved = path.resolve()
                 if resolved not in seen:
@@ -145,6 +144,19 @@ def ai_usage_economist() -> dict[str, Any]:
     )
 
 
+def weekly_intelligence_review() -> dict[str, Any]:
+    objective = "Create one decision-oriented weekly intelligence review from the supplied Vesper briefings. Do not repeat every report. Select the highest-leverage discoveries, recurring user pain, project opportunities, upstream changes, agent-cost optimizations and skill-learning decisions. Organize the body as: What changed; What is worth building or fixing; Projects to act on; Agent and AI efficiency; Skills to evolve; Top 3 actions for next week. Preserve useful source links and separate evidence from inference."
+    context = recent_briefings(days=7, max_chars=120000)
+    return write_report(
+        invoke_json(
+            research_prompt("weekly-intelligence-review", objective, context),
+            toolsets=["file"],
+            skills=[RESEARCH_SKILL],
+        ),
+        "weekly-intelligence-review",
+    )
+
+
 def _resolve_vault() -> Path | None:
     configured = os.environ.get("OBSIDIAN_VAULT_PATH", "").strip()
     if configured:
@@ -179,5 +191,6 @@ WEEKLY_TASKS = {
     "project-archaeologist": project_archaeologist,
     "skill-evolution-review": skill_evolution_review,
     "ai-usage-economist": ai_usage_economist,
+    "weekly-intelligence-review": weekly_intelligence_review,
     "second-brain-dream": second_brain_dream,
 }
