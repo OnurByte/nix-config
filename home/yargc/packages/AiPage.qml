@@ -138,6 +138,13 @@ PageBase {
             onClicked: root.nState.openSubPage(2)
         }
 
+        NavRow {
+            icon: "route"
+            text: qsTr("Runtime Credentials")
+            subtext: qsTr("map OpenCode and Hermes to Vesper credential aliases without storing plaintext")
+            onClicked: root.nState.openSubPage(3)
+        }
+
         SectionHeader {
             text: qsTr("Skills")
         }

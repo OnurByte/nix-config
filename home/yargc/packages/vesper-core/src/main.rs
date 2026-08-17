@@ -1,4 +1,5 @@
 mod apps;
+mod consumers;
 mod icons;
 mod json;
 mod network;
@@ -54,6 +55,13 @@ fn main() {
         [group, action, id, name, policy] if group == "notifications" && action == "set" => {
             notifications::set_policy(id, name, policy).unwrap_or_else(|error| fail(error));
         }
+        [group, action] if group == "consumer" && action == "status" => println!("{}", consumers::status_json()),
+        [group, action, consumer] if group == "consumer" && action == "credential" => {
+            println!("{}", consumers::credential_for(consumer).unwrap_or_else(|error| fail(error)));
+        }
+        [group, action, consumer, credential] if group == "consumer" && action == "set" => {
+            consumers::set_credential(consumer, credential).unwrap_or_else(|error| fail(error));
+        }
         [group, action] if group == "wellbeing" && action == "status" => println!("{}", if wellbeing::enabled() { "on" } else { "off" }),
         [group, action] if group == "wellbeing" && (action == "on" || action == "off") => {
             wellbeing::set_enabled(action == "on").unwrap_or_else(|error| fail(error));
@@ -79,7 +87,7 @@ fn main() {
         [group, action] if group == "icons" && action == "reconcile" => icons::reconcile().unwrap_or_else(|error| fail(error)),
         [group, action, id] if group == "icons" && action == "regenerate" => icons::regenerate(id).unwrap_or_else(|error| fail(error)),
         [group, action, key, value] if group == "icons" && action == "set" => icons::set_config(key, value).unwrap_or_else(|error| fail(error)),
-        [command] if command == "control-version" => println!("0.6.0"),
+        [command] if command == "control-version" => println!("0.7.0"),
         _ => legacy(&args),
     }
 }

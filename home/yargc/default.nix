@@ -7,6 +7,7 @@
   imports = [
     inputs.spicetify-nix.homeManagerModules.spicetify
     inputs.sops-nix.homeManagerModules.sops
+    ./ai-consumers.nix
     ./apps.nix
     ./caelestia.nix
     ./cli.nix

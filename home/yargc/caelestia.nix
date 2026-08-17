@@ -58,6 +58,8 @@ let
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/AiAppIcons.qml} modules/nexus/pages/AiAppIcons.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/AiRuntimeCredentials.qml} modules/nexus/pages/AiRuntimeCredentials.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/SystemHealth.qml} modules/nexus/pages/SystemHealth.qml \
         --subst-var-by vesperDoctor ${vesperDoctor}/bin/vesper-doctor
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \

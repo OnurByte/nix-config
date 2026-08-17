@@ -1,4 +1,5 @@
 {
+  callPackage,
   coreutils,
   curl,
   ghostty,
@@ -11,10 +12,30 @@
   rustc,
   stdenv,
   systemd,
+  writeShellApplication,
 }:
+let
+  vesperControl = callPackage ./vesper-control.nix { };
+
+  hermesCredentialProxy = writeShellApplication {
+    name = "hermes";
+    runtimeInputs = [
+      coreutils
+      vesperControl
+    ];
+    text = ''
+      credential="$(${vesperControl}/bin/vesper-control consumer credential hermes)"
+      if [ "$credential" = "native" ]; then
+        exec ${hermesAgent}/bin/hermes "$@"
+      fi
+      exec ${vesperControl}/bin/vesper-control credential exec "$credential" -- \
+        ${hermesAgent}/bin/hermes "$@"
+    '';
+  };
+in
 stdenv.mkDerivation {
   pname = "vesper-hermes-core";
-  version = "2.0.0";
+  version = "2.1.0";
 
   src = ./hermes-rs;
 
@@ -27,6 +48,11 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
+    # API-key-only Vesper research defaults to the Hermes xAI provider. Native
+    # Hermes OAuth remains available only when the consumer mapping is set to
+    # `native`; no official client auth material is read or copied by Vesper.
+    substituteInPlace main.rs \
+      --replace-fail '"xai-oauth".to_string()' '"xai".to_string()'
     rustc --edition=2021 -C opt-level=2 main.rs -o vesper-hermes-core
     runHook postBuild
   '';
@@ -36,12 +62,13 @@ stdenv.mkDerivation {
 
     install -Dm755 vesper-hermes-core $out/bin/vesper-hermes-core
     wrapProgram $out/bin/vesper-hermes-core \
+      --set-default HERMES_RESEARCH_PROVIDER xai \
       --prefix PATH : ${lib.makeBinPath [
         coreutils
         curl
         ghostty
         git
-        hermesAgent
+        hermesCredentialProxy
         jq
         libnotify
         systemd
