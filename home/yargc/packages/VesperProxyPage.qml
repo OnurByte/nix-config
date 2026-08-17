@@ -11,7 +11,8 @@ import qs.modules.nexus.common
 PageBase {
     id: root
 
-    property var proxy: ({ configured: false, http: "", https: "", socks: "", noProxy: "", authSupported: false, pacSupported: false, appliesTo: "new-processes" })
+    property var proxy: ({ configured: false, http: "", https: "", socks: "", noProxy: "", authSupported: false, pacSupported: false, perAppSupported: false, flatpakPropagation: "not-guaranteed", appliesTo: "new-processes", requiresRelaunch: true, effectiveHttpsProxyKind: "direct", effectiveHttpsProxy: "" })
+    property var testResult: ({})
     property string message: ""
 
     title: qsTr("Proxy")
@@ -64,7 +65,28 @@ PageBase {
         stderr: StdioCollector { id: changeError }
         onExited: (code, status) => {
             root.message = code === 0 ? qsTr("Proxy configuration updated") : changeError.text.trim();
+            root.testResult = ({});
             root.refresh();
+        }
+    }
+
+    Process {
+        id: test
+        command: ["@vesperControl@", "proxy", "test"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.testResult = JSON.parse(text);
+                    root.message = "";
+                } catch (e) {
+                    root.message = qsTr("Proxy diagnostic returned invalid data");
+                }
+            }
+        }
+        stderr: StdioCollector { id: testError }
+        onExited: (code, status) => {
+            if (code !== 0)
+                root.message = testError.text.trim() || qsTr("Proxy diagnostic failed");
         }
     }
 
@@ -79,8 +101,15 @@ PageBase {
         InfoRow {
             icon: "language"
             label: qsTr("Environment proxy")
-            subtext: qsTr("HTTP, HTTPS, SOCKS and NO_PROXY are independent; changes apply to newly launched processes")
+            subtext: qsTr("HTTP, HTTPS, SOCKS and NO_PROXY are independent; changes only affect processes launched after the updated environment is observed")
             value: root.proxy.configured ? qsTr("configured") : qsTr("off")
+        }
+
+        InfoRow {
+            icon: "restart_alt"
+            label: qsTr("Relaunch required")
+            subtext: qsTr("already-running applications are not rewritten or transparently re-proxied")
+            value: root.proxy.requiresRelaunch ? qsTr("yes") : qsTr("no")
         }
 
         InfoRow {
@@ -161,7 +190,50 @@ PageBase {
             IconTextButton { isRound: true; icon: "save"; text: qsTr("Save"); disabled: change.running || !noProxyField.text.trim(); onClicked: root.setField("no-proxy", noProxyField.text) }
         }
 
-        SectionHeader { text: qsTr("Policy") }
+        SectionHeader { text: qsTr("Effective status") }
+        InfoRow {
+            icon: "route"
+            label: qsTr("HTTPS egress path")
+            subtext: root.proxy.effectiveHttpsProxy || qsTr("no HTTPS/ALL proxy configured; HTTPS requests are direct unless the application has its own proxy")
+            value: root.proxy.effectiveHttpsProxyKind || qsTr("direct")
+        }
+        InfoRow {
+            icon: "apps"
+            label: qsTr("Flatpak propagation")
+            subtext: qsTr("global environment.d settings are not claimed to override every Flatpak application's sandbox environment")
+            value: root.proxy.flatpakPropagation || qsTr("not guaranteed")
+        }
+
+        RowButton {
+            icon: "network_check"
+            text: qsTr("Test egress")
+            subtext: qsTr("connect to a fixed IP endpoint using the effective HTTPS proxy path and report the observed public IP")
+            disabled: test.running
+            onClicked: {
+                root.testResult = ({});
+                test.running = true;
+            }
+        }
+
+        InfoRow {
+            visible: root.testResult.ok !== undefined
+            icon: root.testResult.ok ? "check_circle" : "error"
+            label: qsTr("Observed egress")
+            subtext: root.testResult.error || qsTr("connectivity succeeded; this is not a DNS/IP leak-proof claim")
+            value: root.testResult.ok
+                ? (root.testResult.externalIp || qsTr("unknown IP"))
+                : qsTr("failed")
+        }
+
+        InfoRow {
+            visible: root.testResult.ok !== undefined
+            icon: "route"
+            label: qsTr("Test path")
+            subtext: root.testResult.effectiveHttpsProxy || qsTr("direct HTTPS")
+            value: root.testResult.effectiveHttpsProxyKind || qsTr("direct")
+        }
+
+        SectionHeader { text: qsTr("Unsupported until enforceable") }
         InfoRow {
             icon: "key_off"
             label: qsTr("Authenticated proxy")
@@ -171,8 +243,14 @@ PageBase {
         InfoRow {
             icon: "description"
             label: qsTr("PAC")
-            subtext: qsTr("not exposed because this backend currently manages environment variables, not browser/system PAC engines")
+            subtext: qsTr("not exposed because this backend manages environment variables, not browser/system PAC engines")
             value: root.proxy.pacSupported ? qsTr("available") : qsTr("unsupported")
+        }
+        InfoRow {
+            icon: "select_window"
+            label: qsTr("Per-app proxy")
+            subtext: qsTr("not shown as a control until there is an enforcement path that works across the intended application class")
+            value: root.proxy.perAppSupported ? qsTr("available") : qsTr("unsupported")
         }
 
         RowButton {
