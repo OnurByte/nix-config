@@ -97,7 +97,7 @@
          {
 --- a/modules/nexus/PageCompRegistry.qml
 +++ b/modules/nexus/PageCompRegistry.qml
-@@ -59,6 +59,9 @@ QtObject {
+@@ -59,5 +59,8 @@ QtObject {
                  Component {
                      SavedNetworksPage {}
                  }
@@ -139,7 +139,7 @@
              text: qsTr("Library")
 --- a/modules/nexus/pages/apps/AppInfo.qml
 +++ b/modules/nexus/pages/apps/AppInfo.qml
-@@ -117,6 +117,11 @@ PageBase {
+@@ -117,5 +117,10 @@ PageBase {
              labelComp.Layout.preferredWidth: Math.max(labelComp.implicitWidth, appId.labelComp.implicitWidth)
          }
 +
@@ -152,7 +152,7 @@
      component WrapInfoRow: ConnectedRect {
 --- a/modules/nexus/pages/NetworkPage.qml
 +++ b/modules/nexus/pages/NetworkPage.qml
-@@ -298,6 +298,11 @@ PageBase {
+@@ -298,5 +298,10 @@ PageBase {
                  root.nState.openSubPage(4); // Add/edit provider sub-page
              }
          }
