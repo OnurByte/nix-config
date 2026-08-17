@@ -5,21 +5,25 @@
 }:
 let
   codexbar = inputs.codexbar.packages.${pkgs.system}.default;
-  codexbarUi = pkgs.callPackage ./packages/codexbar-ui.nix {
-    src = inputs.codexbar-ui-src;
-    inherit codexbar;
-  };
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
   hermesRuntime = pkgs.callPackage ./packages/hermes-runtime.nix { };
+  aiHub = pkgs.callPackage ./packages/ai-hub.nix {
+    inherit
+      codexbar
+      agentCockpit
+      hermesRuntime
+      ;
+  };
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ./packages/caelestia-codexbar.patch ];
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
-        --subst-var-by codexbarStatus ${codexbarUi}/bin/codexbar-status \
-        --subst-var-by codexbarPopup ${codexbarUi}/bin/codexbar-popup
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+      substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       substitute ${./packages/AgentCockpit.qml} modules/bar/components/AgentCockpit.qml \
         --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
@@ -178,7 +182,8 @@ in
   home.packages = [
     agentCockpit
     privacyHud
-    codexbarUi
+    aiHub
+    codexbar
     pkgs.adw-gtk3
     pkgs.papirus-icon-theme
   ];
@@ -226,6 +231,4 @@ in
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
   home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;
-
-  xdg.dataFile."codexbar-waybar/icons".source = "${codexbarUi}/share/codexbar-waybar/icons";
 }

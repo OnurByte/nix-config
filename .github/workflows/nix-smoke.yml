@@ -31,9 +31,10 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
-      - name: Parse Hermes automation Python
+      - name: Parse Vesper Python
         run: |
           python3 -m py_compile \
+            home/yargc/packages/ai-hub.py \
             home/yargc/packages/hermes-runtime.py \
             home/yargc/packages/hermes_automation_common.py \
             home/yargc/packages/hermes_automation_contract.py \

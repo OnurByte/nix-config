@@ -1,6 +1,6 @@
 --- a/modules/bar/Bar.qml
 +++ b/modules/bar/Bar.qml
-@@ -130,6 +130,47 @@ ColumnLayout {
+@@ -130,6 +130,48 @@ ColumnLayout {
                      }
                  }
              }
@@ -42,9 +42,38 @@
 +                delegate: EntryWrapper {
 +                    CodexUsage {
 +                        objectName: "taskbarAiUsage"
++                        screenState: root.screenState
 +                    }
 +                }
 +            }
              DelegateChoice {
                  roleValue: "clock"
                  delegate: EntryWrapper {
+--- a/modules/dashboard/Content.qml
++++ b/modules/dashboard/Content.qml
+@@ -30,6 +30,12 @@ Item {
+                 text: qsTr("Performance"),
+                 enabled: Config.dashboard.showPerformance
+             },
++            {
++                component: aiHubComponent,
++                iconName: "smart_toy",
++                text: qsTr("AI"),
++                enabled: true
++            },
+             {
+                 component: weatherComponent,
+                 iconName: "cloud",
+@@ -164,6 +170,12 @@ Item {
+ 
+                 Performance {}
+             }
++
++            Component {
++                id: aiHubComponent
++
++                AiHub {}
++            }
+ 
+             Component {
+                 id: weatherComponent

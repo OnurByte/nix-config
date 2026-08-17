@@ -1,16 +1,23 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
+import Caelestia.Config
 import qs.components
 import qs.services
 
 StyledRect {
     id: root
 
+    required property ScreenState screenState
+
     property int percentage: -1
+    property string provider: ""
     property string usageState: "stale"
     property string details: "AI usage is loading"
 
+    readonly property int aiTab: (Config.dashboard.showDashboard ? 1 : 0)
+        + (Config.dashboard.showMedia ? 1 : 0)
+        + (Config.dashboard.showPerformance ? 1 : 0)
     readonly property color accent: usageState === "critical"
         ? Colours.palette.m3error
         : usageState === "warning"
@@ -22,46 +29,60 @@ StyledRect {
     radius: Tokens.rounding.full
     color: Qt.alpha(Colours.tPalette.m3surfaceContainerHigh, mouse.containsMouse ? 0.52 : 0.28)
     border.width: 1
-    border.color: Qt.alpha(Colours.palette.m3outline, mouse.containsMouse ? 0.28 : 0.16)
+    border.color: Qt.alpha(root.accent, mouse.containsMouse ? 0.36 : 0.18)
 
-    function refresh(): void {
-        if (!usage.running)
+    function refresh(force) {
+        if (force) {
+            if (!forceRefresh.running)
+                forceRefresh.running = true;
+        } else if (!usage.running) {
             usage.running = true;
+        }
     }
 
-    Component.onCompleted: refresh()
+    function applyPayload(text) {
+        try {
+            const value = JSON.parse(text);
+            const summary = value.summary || {};
+            root.percentage = Number.isFinite(Number(summary.maxUsedPercent))
+                ? Math.round(Number(summary.maxUsedPercent))
+                : -1;
+            root.provider = summary.maxProvider || "";
+            root.usageState = value.stale ? "stale" : (summary.class || "ok");
+            root.details = root.provider
+                ? `${root.provider} · ${root.percentage}% used`
+                : `${summary.providerCount || 0} AI providers`;
+        } catch (e) {
+            root.percentage = -1;
+            root.provider = "";
+            root.usageState = "stale";
+            root.details = "AI Hub data unavailable";
+        }
+    }
+
+    Component.onCompleted: refresh(false)
 
     Timer {
         interval: 30000
         repeat: true
         running: true
-        onTriggered: root.refresh()
+        onTriggered: root.refresh(false)
     }
 
     Process {
         id: usage
-        command: ["@codexbarStatus@"]
+        command: ["@aiHub@", "status"]
         stdout: StdioCollector {
-            onStreamFinished: {
-                try {
-                    const value = JSON.parse(text);
-                    root.percentage = Number.isFinite(Number(value.percentage))
-                        ? Math.round(Number(value.percentage))
-                        : -1;
-                    root.usageState = value.class || "stale";
-                    root.details = value.tooltip || "AI provider usage";
-                } catch (e) {
-                    root.percentage = -1;
-                    root.usageState = "stale";
-                    root.details = "CodexBar data unavailable";
-                }
-            }
+            onStreamFinished: root.applyPayload(text)
         }
     }
 
     Process {
-        id: popup
-        command: ["@codexbarPopup@"]
+        id: forceRefresh
+        command: ["@aiHub@", "refresh"]
+        stdout: StdioCollector {
+            onStreamFinished: root.applyPayload(text)
+        }
     }
 
     ColumnLayout {
@@ -71,8 +92,9 @@ StyledRect {
 
         MaterialIcon {
             Layout.alignment: Qt.AlignHCenter
-            text: "smart_toy"
+            text: root.usageState === "critical" ? "robot_2" : "smart_toy"
             color: root.accent
+            fill: root.usageState === "critical" ? 1 : 0
             font.pointSize: 14
         }
 
@@ -92,10 +114,12 @@ StyledRect {
         cursorShape: Qt.PointingHandCursor
 
         onClicked: event => {
-            if (event.button === Qt.RightButton)
-                root.refresh();
-            else if (!popup.running)
-                popup.running = true;
+            if (event.button === Qt.RightButton) {
+                root.refresh(true);
+            } else {
+                root.screenState.dashboardTab = root.aiTab;
+                root.screenState.dashboard = true;
+            }
         }
     }
 }
