@@ -1,0 +1,52 @@
+diff --git a/modules/IdleMonitors.qml b/modules/IdleMonitors.qml
+index 7fb826b..b64eef9 100644
+--- a/modules/IdleMonitors.qml
++++ b/modules/IdleMonitors.qml
+@@ -12,6 +12,8 @@ Scope {
+     id: root
+ 
+     required property Lock lock
++    property int idleMonitorCount: 0
++    readonly property bool isIdle: idleMonitorCount > 0
+     readonly property bool hasPlayer: Players.list.some(p => p.isPlaying)
+     readonly property bool isCharging: !UPower.onBattery
+     readonly property bool enabled: {
+@@ -23,6 +25,11 @@ Scope {
+         return true;
+     }
+ 
++    function handleIdleStateChange(isIdle: bool): void {
++        const delta = isIdle ? 1 : -1;
++        idleMonitorCount = Math.max(0, idleMonitorCount + delta);
++    }
++
+     function handleIdleAction(action: var): void {
+         if (!action)
+             return;
+@@ -38,6 +45,14 @@ Scope {
+             Quickshell.execDetached(action);
+     }
+ 
++    IpcHandler {
++        target: "idle"
++
++        function isIdle(): bool {
++            return root.isIdle;
++        }
++    }
++
+     Connections {
+         function onAboutToSleep(): void {
+             if (GlobalConfig.general.idle.lockBeforeSleep)
+@@ -72,7 +87,10 @@ Scope {
+             }
+             timeout: modelData.timeout
+             respectInhibitors: modelData.respectInhibitors ?? true
+-            onIsIdleChanged: root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction)
++            onIsIdleChanged: {
++                root.handleIdleStateChange(isIdle);
++                root.handleIdleAction(isIdle ? modelData.idleAction : modelData.returnAction);
++            }
+         }
+     }
+ }
