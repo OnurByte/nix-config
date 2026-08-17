@@ -10,7 +10,7 @@ let
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
   vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
-  aiHub = pkgs.callPackage ./packages/ai-hub.nix {
+  ai = pkgs.callPackage ./packages/ai.nix {
     inherit
       codexbar
       agentCockpit
@@ -18,8 +18,8 @@ let
       ;
   };
   mcpServerNames = builtins.attrNames config.programs.mcp.servers;
-  caelestiaPatch = pkgs.writeText "caelestia-ai-hub.patch" (
-    builtins.readFile ./packages/caelestia-ai-hub.patch + "\n"
+  caelestiaAiPatch = pkgs.writeText "caelestia-ai.patch" (
+    builtins.readFile ./packages/caelestia-ai.patch + "\n"
   );
   caelestiaWellbeingPatch = pkgs.writeText "caelestia-wellbeing-ipc.patch" (
     builtins.readFile ./packages/caelestia-wellbeing-ipc.patch + "\n"
@@ -30,25 +30,25 @@ let
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
-      caelestiaPatch
+      caelestiaAiPatch
       caelestiaWellbeingPatch
       caelestiaSettingsNamePatch
     ];
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
-      substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
+        --subst-var-by ai ${ai}/bin/vesper-ai
+      substitute ${./packages/Ai.qml} modules/dashboard/Ai.qml \
+        --subst-var-by ai ${ai}/bin/vesper-ai
       substitute ${./packages/AgentCockpit.qml} modules/bar/components/AgentCockpit.qml \
         --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
         --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
       substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
+        --subst-var-by ai ${ai}/bin/vesper-ai
       substitute ${./packages/AiPage.qml} modules/nexus/pages/AiPage.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
+        --subst-var-by ai ${ai}/bin/vesper-ai
       substitute ${./packages/AiCredentials.qml} modules/nexus/pages/AiCredentials.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \
@@ -253,7 +253,7 @@ in
   home.packages = [
     agentCockpit
     privacyHud
-    aiHub
+    ai
     vesperControl
     codexbar
     pkgs.adw-gtk3
