@@ -21,6 +21,7 @@
     ./neovim.nix
     ./privacy.nix
     ./secrets.nix
+    ./settings.nix
     ./skills.nix
     ./zsh.nix
   ];
