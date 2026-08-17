@@ -4,11 +4,11 @@ use std::fs;
 use crate::json::escape;
 use crate::paths::{atomic_write_private, config_root};
 
-const CONSUMERS: &[(&str, &str)] = &[
-    ("opencode", "native"),
-    ("hermes", "xai"),
-    ("icon-curator", "openai"),
-    ("github-mcp", "github"),
+const CONSUMERS: &[(&str, &str, bool)] = &[
+    ("opencode", "native", true),
+    ("hermes", "xai", false),
+    ("icon-curator", "openai", false),
+    ("github-mcp", "github", false),
 ];
 
 fn path() -> std::path::PathBuf {
@@ -23,11 +23,15 @@ fn valid_token(value: &str) -> bool {
             .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
 }
 
-fn default_for(consumer: &str) -> Option<&'static str> {
+fn consumer_def(consumer: &str) -> Option<(&'static str, bool)> {
     CONSUMERS
         .iter()
-        .find(|(name, _)| *name == consumer)
-        .map(|(_, credential)| *credential)
+        .find(|(name, _, _)| *name == consumer)
+        .map(|(_, default, allows_native)| (*default, *allows_native))
+}
+
+fn default_for(consumer: &str) -> Option<&'static str> {
+    consumer_def(consumer).map(|(default, _)| default)
 }
 
 fn load() -> BTreeMap<String, String> {
@@ -36,7 +40,8 @@ fn load() -> BTreeMap<String, String> {
         let Some((consumer, credential)) = line.split_once('\t') else {
             continue;
         };
-        if default_for(consumer).is_some() && (credential == "native" || valid_token(credential)) {
+        let Some((_, allows_native)) = consumer_def(consumer) else { continue; };
+        if valid_token(credential) && (credential != "native" || allows_native) {
             values.insert(consumer.to_string(), credential.to_string());
         }
     }
@@ -63,9 +68,12 @@ pub fn credential_for(consumer: &str) -> Result<String, String> {
 }
 
 pub fn set_credential(consumer: &str, credential: &str) -> Result<(), String> {
-    let default = default_for(consumer).ok_or_else(|| format!("unknown AI consumer: {consumer}"))?;
-    if credential != "native" && !valid_token(credential) {
-        return Err("credential selection must be 'native' or a safe credential alias".to_string());
+    let (default, allows_native) = consumer_def(consumer).ok_or_else(|| format!("unknown AI consumer: {consumer}"))?;
+    if !valid_token(credential) {
+        return Err("credential selection must be a safe credential alias".to_string());
+    }
+    if credential == "native" && !allows_native {
+        return Err(format!("{consumer} requires a Vesper API-key credential alias"));
     }
 
     let mut values = load();
@@ -81,16 +89,17 @@ pub fn status_json() -> String {
     let values = load();
     let items = CONSUMERS
         .iter()
-        .map(|(consumer, default)| {
+        .map(|(consumer, default, allows_native)| {
             let selected = values
                 .get(*consumer)
                 .map(String::as_str)
                 .unwrap_or(default);
             format!(
-                "{{\"consumer\":\"{}\",\"credential\":\"{}\",\"defaultCredential\":\"{}\",\"nativeAuth\":{}}}",
+                "{{\"consumer\":\"{}\",\"credential\":\"{}\",\"defaultCredential\":\"{}\",\"allowsNative\":{},\"nativeAuth\":{}}}",
                 escape(consumer),
                 escape(selected),
                 escape(default),
+                if *allows_native { "true" } else { "false" },
                 if selected == "native" { "true" } else { "false" }
             )
         })
@@ -103,9 +112,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_do_not_force_subscription_clients_into_api_key_mode() {
-        assert_eq!(default_for("opencode"), Some("native"));
-        assert_eq!(default_for("hermes"), Some("xai"));
+    fn api_key_consumers_cannot_fall_back_to_native_auth() {
+        assert_eq!(consumer_def("opencode"), Some(("native", true)));
+        assert_eq!(consumer_def("hermes"), Some(("xai", false)));
+        assert_eq!(consumer_def("icon-curator"), Some(("openai", false)));
+        assert_eq!(consumer_def("github-mcp"), Some(("github", false)));
     }
 
     #[test]
