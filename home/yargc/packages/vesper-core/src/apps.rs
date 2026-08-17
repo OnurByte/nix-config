@@ -1,4 +1,9 @@
+use std::env;
+use std::fs;
+use std::path::PathBuf;
+
 use crate::json::{bool_lit, escape};
+use crate::paths::{atomic_write_private, home};
 use crate::process::{output, success};
 use crate::wellbeing;
 
@@ -63,6 +68,14 @@ fn flatpak_id(id: &str) -> &str {
     id.strip_suffix(".desktop").unwrap_or(id)
 }
 
+fn valid_flatpak_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 255
+        && id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+}
+
 fn value_item_matches(value: &str, item: &str) -> Option<bool> {
     let value = value.trim();
     if value.is_empty() {
@@ -112,9 +125,10 @@ fn permission_json(def: PermissionDef, packaged: &str, overrides: &str, effectiv
     let override_state = item_state(overrides, def.key, def.item);
     let effective_state = item_state(effective, def.key, def.item).unwrap_or(false);
     format!(
-        "{{\"id\":\"{}\",\"label\":\"{}\",\"packaged\":{},\"userOverride\":\"{}\",\"effective\":{},\"backend\":\"Flatpak-enforced\"}}",
+        "{{\"id\":\"{}\",\"label\":\"{}\",\"category\":\"{}\",\"packaged\":{},\"userOverride\":\"{}\",\"effective\":{},\"backend\":\"Flatpak-enforced\"}}",
         escape(def.id),
         escape(def.label),
+        escape(def.key),
         json_nullable_bool(packaged_state),
         permission_override_name(override_state),
         bool_lit(effective_state)
@@ -174,6 +188,9 @@ fn flag_for(def: PermissionDef, enabled: bool) -> String {
 
 fn ensure_flatpak(id: &str) -> Result<&str, String> {
     let id = flatpak_id(id);
+    if !valid_flatpak_id(id) {
+        return Err("invalid Flatpak application id".to_string());
+    }
     if success("flatpak", &["info", id]) {
         Ok(id)
     } else {
@@ -186,6 +203,132 @@ pub fn set_permission(id: &str, permission: &str, enabled: bool) -> Result<(), S
     let def = permission_def(permission).ok_or_else(|| format!("unsupported Flatpak permission: {permission}"))?;
     let flag = flag_for(def, enabled);
     output("flatpak", &["override", "--user", &flag, id]).map(|_| ())
+}
+
+fn user_data_root() -> PathBuf {
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/share"))
+}
+
+fn app_override_path(id: &str) -> PathBuf {
+    user_data_root().join("flatpak/overrides").join(id)
+}
+
+fn remove_context_item(text: &str, key: &str, item: &str) -> String {
+    let mut section = String::new();
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            section = trimmed[1..trimmed.len() - 1].to_string();
+            out.push(line.to_string());
+            continue;
+        }
+        if section == "Context" {
+            if let Some((line_key, values)) = line.split_once('=') {
+                if line_key.trim() == key {
+                    let kept = values
+                        .split(';')
+                        .filter(|value| {
+                            let value = value.trim();
+                            if value.is_empty() {
+                                return false;
+                            }
+                            let value = value.strip_prefix('!').unwrap_or(value);
+                            value.split(':').next().unwrap_or(value) != item
+                        })
+                        .collect::<Vec<_>>();
+                    if !kept.is_empty() {
+                        out.push(format!("{}={};", line_key.trim(), kept.join(";")));
+                    }
+                    continue;
+                }
+            }
+        }
+        out.push(line.to_string());
+    }
+    if out.is_empty() { String::new() } else { format!("{}\n", out.join("\n")) }
+}
+
+fn remove_key_from_section(text: &str, section_name: &str, key: Option<&str>) -> String {
+    let mut section = String::new();
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            section = trimmed[1..trimmed.len() - 1].to_string();
+            out.push(line.to_string());
+            continue;
+        }
+        if section == section_name {
+            match key {
+                None => continue,
+                Some(expected) => {
+                    if line
+                        .split_once('=')
+                        .map(|(line_key, _)| line_key.trim() == expected)
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push(line.to_string());
+    }
+    if out.is_empty() { String::new() } else { format!("{}\n", out.join("\n")) }
+}
+
+fn has_override_assignments(text: &str) -> bool {
+    text.lines().any(|line| {
+        let line = line.trim();
+        !line.is_empty() && !line.starts_with('#') && !line.starts_with(';') && !line.starts_with('[') && line.contains('=')
+    })
+}
+
+fn write_app_override(id: &str, text: &str) -> Result<(), String> {
+    let path = app_override_path(id);
+    if !has_override_assignments(text) {
+        return match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        };
+    }
+    atomic_write_private(&path, text.as_bytes())
+}
+
+pub fn reset_permission(id: &str, permission: &str) -> Result<(), String> {
+    let id = ensure_flatpak(id)?;
+    let def = permission_def(permission).ok_or_else(|| format!("unsupported Flatpak permission: {permission}"))?;
+    let path = app_override_path(id);
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    write_app_override(id, &remove_context_item(&text, def.key, def.item))
+}
+
+pub fn reset_category(id: &str, category: &str) -> Result<(), String> {
+    let id = ensure_flatpak(id)?;
+    let path = app_override_path(id);
+    let text = match fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let updated = match category {
+        "shared" | "sockets" | "devices" | "features" | "filesystems" => {
+            remove_key_from_section(&text, "Context", Some(category))
+        }
+        "environment" => remove_key_from_section(&text, "Environment", None),
+        "session-bus" => remove_key_from_section(&text, "Session Bus Policy", None),
+        "system-bus" => remove_key_from_section(&text, "System Bus Policy", None),
+        _ => return Err("unknown Flatpak override category".to_string()),
+    };
+    write_app_override(id, &updated)
 }
 
 fn valid_filesystem(value: &str) -> bool {
@@ -294,5 +437,23 @@ mod tests {
         assert!(!valid_env_name("BAD-NAME"));
         assert!(valid_env_value("value with spaces; stays one argv"));
         assert!(!valid_env_value("line1\nline2"));
+    }
+
+    #[test]
+    fn removes_one_context_item_without_destroying_siblings() {
+        let source = "[Context]\nshared=network;ipc;\nsockets=wayland;!x11;\n";
+        let updated = remove_context_item(source, "shared", "network");
+        assert!(updated.contains("shared=ipc;"));
+        assert!(updated.contains("sockets=wayland;!x11;"));
+        assert!(!updated.contains("shared=network"));
+    }
+
+    #[test]
+    fn category_reset_preserves_other_sections() {
+        let source = "[Context]\nfilesystems=home;xdg-download;\nsockets=wayland;\n[Environment]\nMODE=test\n";
+        let updated = remove_key_from_section(source, "Context", Some("filesystems"));
+        assert!(!updated.contains("filesystems="));
+        assert!(updated.contains("sockets=wayland;"));
+        assert!(updated.contains("MODE=test"));
     }
 }
