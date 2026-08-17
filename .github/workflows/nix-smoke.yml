@@ -22,6 +22,16 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
 
+      - name: Reject first-party Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t python_files < <(find . -type f -name '*.py' -not -path './.git/*' -print)
+          if [ "${#python_files[@]}" -ne 0 ]; then
+            printf 'Vesper first-party Python is forbidden:\n%s\n' "${python_files[*]}" >&2
+            exit 1
+          fi
+
       - name: Parse every Nix file
         shell: bash
         run: |
@@ -37,49 +47,32 @@ jobs:
           nix shell nixpkgs#rustc nixpkgs#jq -c bash -c '
             set -euo pipefail
             rustc --edition=2021 --emit=metadata home/yargc/packages/ai-hub.rs -o /tmp/vesper-ai-hub.rmeta
-            printf "%s\n%s\n%s\n" \
+            printf "%s\n%s\n%s\n%s\n" \
               "{\"host\":{},\"providers\":[]}" \
               "{\"count\":0,\"agents\":[]}" \
               "{\"unread\":0,\"high\":0}" \
+              "{\"state\":\"ok\"}" \
               | jq -s -e -f home/yargc/packages/ai-hub.jq >/dev/null
           '
 
-      - name: Parse Hermes Python
-        run: |
-          python3 -m py_compile \
-            home/yargc/packages/hermes-runtime.py \
-            home/yargc/packages/hermes_automation_common.py \
-            home/yargc/packages/hermes_automation_contract.py \
-            home/yargc/packages/hermes_automation_reports.py \
-            home/yargc/packages/hermes_automation_scheduler.py \
-            home/yargc/packages/hermes_research_intake.py \
-            home/yargc/packages/hermes_research_web.py \
-            home/yargc/packages/hermes_research_link_registry.py \
-            home/yargc/packages/hermes_research_adhoc.py \
-            home/yargc/packages/hermes_tasks_daily.py \
-            home/yargc/packages/hermes_tasks_weekly.py \
-            home/yargc/packages/hermes_automation_tasks.py \
-            home/yargc/packages/hermes-automations.py \
-            home/yargc/packages/hermes-research-cli.py \
-            home/yargc/packages/test_hermes_automations.py \
-            home/yargc/packages/test_hermes_research_adhoc.py
-
-      - name: Test Hermes automation contracts
+      - name: Check Hermes Rust control plane
         shell: bash
         run: |
-          set -euo pipefail
-          registry="$RUNNER_TEMP/hermes-jobs.json"
-          nix eval --json --file home/yargc/hermes-jobs.nix > "$registry"
-          VESPER_HERMES_JOB_REGISTRY="$registry" \
-            python3 -m unittest discover \
-              -s home/yargc/packages \
-              -p 'test_hermes*.py' \
-              -v
+          nix shell nixpkgs#rustc nixpkgs#jq -c bash -c '
+            set -euo pipefail
+            rustc --edition=2021 home/yargc/packages/hermes-rs/main.rs -o /tmp/vesper-hermes-core
+            ln -sf /tmp/vesper-hermes-core /tmp/vesper-hermes-automations
+            registry="$RUNNER_TEMP/hermes-jobs.json"
+            nix eval --json --file home/yargc/hermes-jobs.nix > "$registry"
+            PATH="/tmp:$PATH" VESPER_HERMES_JOB_REGISTRY="$registry" \
+              /tmp/vesper-hermes-automations validate-registry
+          '
 
       - name: Parse Hyprland Lua
         shell: bash
         run: |
           nix shell nixpkgs#lua -c bash -c '
+            set -euo pipefail
             for file in home/yargc/hypr/*.lua; do
               echo "parsing $file"
               luac -p "$file"
@@ -94,6 +87,9 @@ jobs:
 
       - name: Evaluate Home Manager activation
         run: nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath' >/dev/null
+
+      - name: Build Caelestia surface
+        run: nix build --no-link '.#nixosConfigurations.vesper.config.home-manager.users.yargc.programs.caelestia.package'
 
       - name: Build complete Vesper system
         shell: bash
@@ -124,6 +120,3 @@ jobs:
 
       - name: Build Cuprate package
         run: nix build --no-link .#cuprated
-
-      - name: Build Caelestia surface
-        run: nix build --no-link '.#nixosConfigurations.vesper.config.home-manager.users.yargc.programs.caelestia.package'
