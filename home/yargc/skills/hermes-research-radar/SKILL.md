@@ -1,213 +1,115 @@
 ---
 name: hermes-research-radar
-description: Run Vesper's daily multi-lane Hermes research system: AI unknown-frontier discovery, daily agenda, Linux.do free-AI radar, persistent learning and second-brain handoff.
+description: Run Vesper's high-volume daily Hermes research system: broad 200-1000-item discovery, source-specialized GitHub/Reddit/X scouts, evidence-ranked deep reading, primary-source verification, durable learning, Linux.do free-AI radar and second-brain handoff.
 platforms: [linux]
 ---
 
 # Hermes Research Radar
 
-Run Hermes scheduled research as a persistent, adaptive research system rather than a stateless feed reader.
+Treat research as a pipeline, not as one large search prompt.
 
-## daily architecture — one daily check, multiple independent jobs
+The objective is to inspect a broad information frontier cheaply, spend model/context budget only on promising material, verify important claims against primary evidence, then preserve only durable high-value findings.
 
-A daily check is a bundle of separate research lanes. Do not collapse them into one generic digest and do not let one lane's ranking rules contaminate another.
+## Load references before research
 
-The normal daily bundle contains at least:
+Read only the references relevant to the lane being executed:
 
-1. `unknown-frontier-ai` — discover useful AI things that have not broken through yet
-2. `agenda` — report the important current agenda, whether popular or obscure
-3. `free-ai-radar` — hunt useful legitimate free-AI opportunities, with Linux.do as a first-class source
+- `references/research-pipeline.md` — mandatory for every research lane
+- `references/source-governance.md` — mandatory before synthesis/final reporting
+- `references/reddit-rss.md` — mandatory for Reddit research
+- `references/x-research.md` — mandatory for X/Twitter research
 
-These jobs should be scheduled for the same daily scheduler window and may run in parallel. Hermes' own cron remains the only scheduler; do not duplicate the schedule in GitHub Actions, systemd timers or another cron implementation.
+Do not dump every reference into the model context when a lane does not need it.
 
-When Hermes delegation is available, use it inside a lane for source-specialized fan-out. In particular, `unknown-frontier-ai` should normally delegate Reddit, GitHub and X/Twitter exploration to separate workers and synthesize their results only after each worker has searched independently.
+## Daily architecture
 
-Every lane gets its own state, scoring, output and deduplication history. A failure or empty result in one lane must not suppress the others.
+The normal bundle keeps independent lanes with independent state and ranking:
 
-## lane 1 — unknown frontier AI
+1. `unknown-frontier-github`
+2. `unknown-frontier-reddit`
+3. `unknown-frontier-x`
+4. `unknown-frontier-synthesis`
+5. `free-ai-radar`
+6. `agenda`
 
-### philosophy: know the unknown
+The unknown-frontier scouts answer:
 
-The job is not to summarize AI news. Its purpose is to expand the user's knowledge frontier by finding useful AI-related things that the user probably does not know yet and that the wider community may also have missed.
+`what useful AI/software capability exists outside the user's current map of the world?`
 
-The guiding question is:
+The agenda lane answers:
 
-`what useful AI thing exists outside the user's current map of the world?`
+`what important thing happened or changed that should not be missed today?`
 
-Core discovery surfaces are:
+The free-AI lane answers:
 
-- Reddit
-- GitHub
-- X / Twitter
+`what legitimate new free tier, free model, open-source replacement or cost-saving workflow became useful?`
 
-Start from those three independently. Follow promising edges outward to primary sources, personal sites, documentation, papers, package registries or small communities when verification or deeper discovery requires it, but do not replace the three core scouts with a generic web-news search.
+Never collapse those questions into one ranking function.
 
-Hunt especially for:
+## Hard coverage contract
 
-- young or obscure AI repositories with working code but few stars/forks
-- low-upvote Reddit posts and deep comments containing reproducible techniques, benchmarks, fixes, prompts, integrations or unusual workflows
+For a normal unknown-frontier daily bundle, target **200-1000 distinct candidate items/URLs total** across GitHub, Reddit and X. The default runtime target is intentionally around the middle of that range and is split across the three scouts.
+
+This is a discovery budget, not a requirement to fully inject 200-1000 pages into an LLM context.
+
+Use a funnel:
+
+`cheap intake -> normalize/dedupe -> heuristic/LLM triage -> deep read -> primary verification -> synthesis -> durable state`
+
+A candidate may be an RSS entry, post, tweet, repository, issue, PR, commit, discussion, paper, documentation page or linked primary artifact. Count a URL once after canonicalization.
+
+Deep-read only the strongest subset, normally **24-60 items total** unless the run remains unusually novel. Following one or two evidence-bearing links from a strong candidate is encouraged.
+
+If source access prevents the target from being reached, never fabricate coverage. Report actual coverage and the limiting failure mode.
+
+## Frontier philosophy
+
+Low attention is a discovery hint, not a quality score.
+
+Prefer:
+
+- young/small repositories with working code
+- overlooked issues, PRs, commits, forks and discussions
+- low-score Reddit posts and deep comments with reproducible details
 - low-like/repost X posts from builders/researchers that point to code, demos, patches, data or concrete techniques
-- overlooked GitHub issues, PRs, commits, forks and discussions that reveal capabilities before release notes or mainstream discussion
-- useful wrappers, harnesses, agent tooling, model integrations, inference tricks, developer workflows and research utilities that have not achieved broad distribution
-- small projects that solve a real problem better than a better-known alternative
-- surprising connections between projects, people or techniques that are not already represented in persistent research state
-- evidence that a previously-held assumption has changed or stopped being true
+- small communities and author neighborhoods that repeatedly produce useful early signals
+- surprising cross-source connections
+- evidence that a previously held assumption stopped being true
 
-Low engagement is a search hint, not a quality score. Never fill the report with junk merely because nobody noticed it.
+Penalize hype, duplicate coverage, generic news, engagement-only popularity and claims that cannot be traced to evidence.
 
-A useful mental ranking model is:
+## Persistent adaptive state
 
-`frontier score = unknown-to-user + relevance + utility + novelty + evidence + technical density + early-signal value + independence + information gain - hype - duplication - popularity bias`
+Keep lane-specific state plus a small shared source graph. Retain at least:
 
-Normalize attention relative to age, niche size and the normal engagement level of the source. Do not use one fixed star/upvote/like threshold across platforms.
+- delivered/known findings
+- unresolved candidates
+- seen canonical URLs
+- source/account/subreddit/repository registry
+- source success/failure and freshness history
+- active discovery heuristics with evidence
+- open questions
+- mirror/feed health where applicable
+- coverage statistics from recent runs
 
-### breadth requirement
+User-provided feeds, accounts, subreddits and repositories are seeds, not an allowlist. Discover adjacent sources automatically, but place newly discovered sources on probation until they repeatedly produce useful downstream findings.
 
-This lane is deliberately broad and expensive. Do not stop after the first search page or after finding a few acceptable links.
+A heuristic evolves through:
 
-Use a large discovery funnel before deep verification. As a soft target when source access and budget permit:
+`observation -> candidate heuristic -> repeated trials -> active heuristic -> decay/review -> retained/scoped/retired`
 
-- inspect roughly 40-100+ candidate items per core source
-- deeply open/expand roughly 15-30+ promising items per core source
-- inspect comment trees, issue/PR discussion, commit history, forks, linked repositories and author neighborhoods when they carry signal
-- traverse one or two hops beyond strong findings to discover adjacent unknown sources
+Do not promote one lucky hit into permanent behavior.
 
-These are coverage targets, not quotas to pad. If a surface has little useful activity, move the unused budget to another promising branch. If novelty remains high, continue beyond the target rather than stopping mechanically.
+## Reporting
 
-Deliberately search the low-attention tail: newest/recent views, low-score posts, comment trees below top-level content, recently-created repositories, small-star projects, newly-active issues/PRs, forks, dependency graphs, author/source expansion and niche query variants. Trending/top/hot results are context, not the main hunting ground.
+Every scout should expose real coverage, limitations and evidence quality. Final reports should be written from distilled notes/evidence, never from an unbounded dump of raw search results.
 
-Maintain rough frontier states:
+Important claims must trace to the source that owns the claim whenever possible. Community/social sources are excellent discovery surfaces but are not automatically proof.
 
-- `known` — already delivered, explicitly known or repeatedly observed
-- `adjacent` — related to known material but with a potentially new angle
-- `unknown` — a new tool, source, concept, capability, technique or relationship not represented in research state
+If nothing meaningful was found, report that honestly instead of padding the result.
 
-Spend most effort around the `adjacent -> unknown` boundary. Prefer a handful of high-information-gain discoveries over dozens of familiar items.
+## Safety for free-AI discovery
 
-## lane 2 — agenda
+Free-AI research may recommend legitimate free tiers, official promotions, open-source/self-hosted alternatives, local inference and compatibility layers.
 
-The agenda lane answers a different question:
-
-`what important thing happened or changed that the user should know today?`
-
-Do not apply the hidden-gem requirement here. Popularity is neither a penalty nor a reward; importance, recency, consequence and relevance are what matter.
-
-Cover meaningful current developments with an AI/software/privacy/Nix/Linux bias plus major broader technology events when they materially matter. Prefer primary reporting, official announcements and independent corroboration for consequential claims.
-
-The agenda report should be compact. It exists so frontier discovery does not cause genuinely important mainstream developments to be missed.
-
-Keep agenda state separate from frontier state. A widely-covered major model release may be high priority in `agenda` and low priority in `unknown-frontier-ai`; that is correct.
-
-## lane 3 — Linux.do free-AI radar
-
-Treat `linux.do` as a first-class discovery surface for useful legitimate free-AI opportunities and early tooling discussion.
-
-Look for:
-
-- genuinely free AI models, services, APIs, coding agents and developer tools
-- new or changed free tiers, quotas, credits and official promotions
-- open-source/self-hosted replacements for paid AI products
-- wrappers, bridges, compatibility layers and CLI/API integrations around legitimate free services
-- local inference, browser-integrated AI and lightweight serving tricks
-- overlooked GitHub projects linked from Linux.do discussions
-- practical configuration tricks that reduce AI tooling cost without degrading the workflow
-- reports that a previously free method stopped working, became limited or changed terms
-
-Do not only read high-view threads. Search recent and low-view threads, comments, author histories and related topics. Follow promising Linux.do findings to the original repository, official documentation, release, issue/PR, author account, Reddit discussion or X post and prefer the primary source when verifying the claim.
-
-A free-AI finding must be legitimate. Do not recommend stolen/shared credentials, leaked API keys, account theft, payment bypasses, abusive mass-account creation, evasion of service restrictions or other unauthorized access.
-
-For every useful free-AI finding state:
-
-- what is actually free
-- the quota/limit/catch
-- whether it requires self-hosting or meaningful local compute
-- expiration or uncertainty when known
-- why it is useful
-- confidence
-- primary source when available
-
-Useful new free-AI discoveries may be high-priority notifications even when the source thread has little engagement.
-
-## persistent state
-
-Read and update durable state before and after research. Keep lane-specific state plus a small shared source graph.
-
-At minimum retain:
-
-- recent runs and delivered findings per lane
-- a compact representation of what is already known
-- unresolved candidates and adjacent topics
-- source registry and source graph
-- per-source/method signal and failure history
-- active discovery heuristics and their evidence
-- freshness window, research budget and exploration rate
-- previously seen URLs, repositories, authors, concepts and claims
-- per-source hidden-gem hit rate rather than raw traffic
-- free-AI opportunities already reported and their current status
-
-User-provided feeds, subreddits, repositories, accounts, channels and sites are seeds, not an allowlist.
-
-## general research loop
-
-For each lane:
-
-1. orient from its own persistent state and objective
-2. identify what is already known and where new information could exist
-3. intake cheaply from search/RSS/API/metadata where useful
-4. fan out widely before spending expensive deep-reading budget
-5. expand promising candidates through comments, links, authors, repositories, issues/PRs/commits, citations and related-source graphs
-6. verify important findings against code, primary sources or independent evidence
-7. rank using the lane's own scoring rules
-8. deliver only findings worth attention
-9. update source/heuristic state from what actually produced downstream value
-
-For frontier discovery, start around 70-75% exploitation / 25-30% exploration. Increase exploration when results repeat, source overlap rises, novelty falls, a topic moves quickly, results cluster inside one graph or several runs fail to produce meaningful information gain.
-
-Reserve exploration budget for completely new accounts, subreddits, authors, repositories, organizations, vocabulary and query patterns so the system does not trap itself inside its previous successes.
-
-## self-improvement
-
-A discovery rule must evolve through:
-
-`observation -> candidate heuristic -> repeated trials -> active heuristic -> decay/review -> retained, scoped or retired`
-
-Track scope, evidence, successes, failures, confidence, timestamps and last successful use. Do not promote a one-off trick directly into permanent behavior.
-
-Learn positive heuristics such as which small communities, authors, repository neighborhoods, issue labels, query forms, vocabulary shifts or cross-source paths repeatedly produce useful obscure findings. Learn negative heuristics too: routes that repeatedly produce duplicates, hype or already-known information should receive less budget.
-
-Reward heuristics for downstream usefulness and information gain, not for producing a high volume of links.
-
-Potential reusable procedures go to `$VESPER_SKILL_DRAFT_DIR` (default `~/.local/share/vesper/skill-drafts/`). Drafts stay inactive until reviewed and promoted into the canonical `~/.agents/skills` tree.
-
-## reports and second-brain handoff
-
-Write durable results under `$VESPER_BRIEFING_DIR` (default `~/.local/share/vesper/briefings/`) as Markdown and JSON when practical.
-
-Keep daily lane reports separate, for example:
-
-- `unknown-frontier-ai`
-- `agenda`
-- `free-ai-radar`
-
-Each report record should carry at least:
-
-- `title`
-- `summary`
-- `body`
-- `lane`
-- `priority`
-- `sources`
-- `createdAt`
-- `unread`
-- `confidence`
-
-Frontier records should additionally include `visibility`, `whyHidden`, `whyUseful`, `whyNew` and `informationGain`.
-
-Free-AI records should additionally include `freeTier`, `limits`, `expiresAt` when relevant and a clear statement of the catch.
-
-After the lanes finish, hand durable knowledge to the Vesper Obsidian/second-brain workflow. Do not dump every scraped item into Obsidian: store the reports, high-value discoveries, durable facts, open questions and meaningful source relationships.
-
-Use Hermes built-in memory only for compact facts that deserve to be present in future sessions. Use Obsidian for the larger long-term knowledge graph and use skills for reusable procedures.
-
-If a lane finds nothing meaningful, report that honestly rather than padding it with familiar material.
+Do not recommend leaked/shared credentials, stolen accounts, payment bypasses, abusive mass-account creation or evasion of service restrictions.

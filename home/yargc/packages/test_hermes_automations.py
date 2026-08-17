@@ -11,7 +11,14 @@ from hermes_automation_common import load_registry
 from hermes_automation_contract import validate_registry
 from hermes_automation_scheduler import WATCHDOG_TASKS, cron_create_argv, cron_edit_argv
 from hermes_automation_tasks import TASKS
-from hermes_tasks_daily import FRONTIER_SOURCES
+from hermes_research_intake import _canonical_reddit_url, _canonical_x_url
+from hermes_tasks_daily import (
+    FRONTIER_CANDIDATE_BUDGET,
+    FRONTIER_DEEP_READ_BUDGET,
+    FRONTIER_SOURCES,
+    FRONTIER_TOTAL_CANDIDATE_TARGET,
+    FRONTIER_TOTAL_DEEP_READ_TARGET,
+)
 
 
 class HermesAutomationContractTests(unittest.TestCase):
@@ -49,6 +56,46 @@ class HermesAutomationContractTests(unittest.TestCase):
         self.assertEqual(("github", "reddit", "x"), FRONTIER_SOURCES)
         for source in FRONTIER_SOURCES:
             self.assertIn(f"unknown-frontier-{source}", TASKS)
+
+    def test_frontier_coverage_contract(self) -> None:
+        self.assertGreaterEqual(FRONTIER_TOTAL_CANDIDATE_TARGET, 200)
+        self.assertLessEqual(FRONTIER_TOTAL_CANDIDATE_TARGET, 1000)
+        self.assertEqual(FRONTIER_TOTAL_CANDIDATE_TARGET, sum(FRONTIER_CANDIDATE_BUDGET.values()))
+        self.assertGreaterEqual(FRONTIER_TOTAL_DEEP_READ_TARGET, 24)
+        self.assertLessEqual(FRONTIER_TOTAL_DEEP_READ_TARGET, 60)
+        self.assertEqual(FRONTIER_TOTAL_DEEP_READ_TARGET, sum(FRONTIER_DEEP_READ_BUDGET.values()))
+        for source in FRONTIER_SOURCES:
+            self.assertGreater(FRONTIER_CANDIDATE_BUDGET[source], 0)
+            self.assertGreater(FRONTIER_DEEP_READ_BUDGET[source], 0)
+
+    def test_research_skill_references_exist(self) -> None:
+        skill = HERE.parent / "skills" / "hermes-research-radar"
+        expected = {
+            skill / "SKILL.md",
+            skill / "references" / "research-pipeline.md",
+            skill / "references" / "source-governance.md",
+            skill / "references" / "reddit-rss.md",
+            skill / "references" / "x-research.md",
+        }
+        self.assertTrue(all(path.is_file() for path in expected))
+        skill_text = (skill / "SKILL.md").read_text(errors="replace")
+        self.assertIn("200-1000", skill_text)
+        self.assertIn("X / Twitter", (skill / "references" / "x-research.md").read_text(errors="replace"))
+        self.assertIn("RSS", (skill / "references" / "reddit-rss.md").read_text(errors="replace"))
+
+    def test_social_mirror_urls_are_canonicalized(self) -> None:
+        expected = "https://x.com/example/status/123456"
+        for url in (
+            "https://x.com/example/status/123456",
+            "https://twitter.com/example/status/123456?s=20",
+            "https://xcancel.com/example/status/123456#m",
+            "https://nitter.net/example/status/123456",
+        ):
+            self.assertEqual(expected, _canonical_x_url(url))
+        self.assertEqual(
+            "https://www.reddit.com/r/programming/comments/abc123/title",
+            _canonical_reddit_url("https://old.reddit.com/r/programming/comments/abc123/title/?utm_source=rss"),
+        )
 
     def test_daily_frontier_pipeline_is_staggered(self) -> None:
         def minute_of_day(name: str) -> int:

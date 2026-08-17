@@ -5,9 +5,9 @@ import shutil
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
-from hermes_automation_common import BRIEFING_ROOT, STATE_ROOT, atomic_json, ensure_dirs, load_json, now
+from hermes_automation_common import BRIEFING_ROOT, HERMES_HOME, STATE_ROOT, atomic_json, ensure_dirs, load_json, now
 
 
 def rebuild_index() -> list[dict[str, Any]]:
@@ -71,6 +71,36 @@ def recent_briefings(days: int = 2, max_chars: int = 70000) -> str:
     return "".join(chunks)
 
 
+def research_skill_context(references: Iterable[str] = (), max_chars: int = 32000) -> str:
+    roots = [
+        Path.home() / ".agents" / "skills" / "hermes-research-radar",
+        HERMES_HOME / "skills" / "vesper" / "hermes-research-radar",
+    ]
+    root = next((path for path in roots if (path / "SKILL.md").exists()), None)
+    if root is None:
+        return "The hermes-research-radar skill files were not readable at runtime; follow the research contract embedded in the task prompt."
+
+    files = [root / "SKILL.md"]
+    for name in references:
+        clean = Path(str(name)).name
+        files.append(root / "references" / clean)
+
+    chunks: list[str] = []
+    used = 0
+    for path in files:
+        if not path.exists():
+            continue
+        text = path.read_text(errors="replace")
+        chunk = f"\n### {path.name}\n{text}\n"
+        if used + len(chunk) > max_chars:
+            chunk = chunk[: max_chars - used]
+        chunks.append(chunk)
+        used += len(chunk)
+        if used >= max_chars:
+            break
+    return "".join(chunks)
+
+
 def _merge_unique(path: Path, incoming: list[Any], limit: int = 500) -> None:
     current = load_json(path, [])
     if not isinstance(current, list):
@@ -115,6 +145,9 @@ def _markdown(report: dict[str, Any]) -> str:
         f"- created: `{report.get('createdAt', '')}`", "",
         str(report.get("summary") or ""), "", str(report.get("body") or ""),
     ]
+    coverage = report.get("coverage") or {}
+    if isinstance(coverage, dict) and coverage:
+        lines.extend(["", "## Coverage", "", "```json", json.dumps(coverage, ensure_ascii=False, indent=2), "```"])
     sources = report.get("sources") or []
     if isinstance(sources, list) and sources:
         lines.extend(["", "## Sources", ""])
@@ -160,14 +193,24 @@ def write_report(report: dict[str, Any], lane: str, *, notify_user: bool = True)
     return report
 
 
-def research_prompt(lane: str, objective: str, extra_context: str = "") -> str:
+def research_prompt(
+    lane: str,
+    objective: str,
+    extra_context: str = "",
+    *,
+    skill_references: Iterable[str] = ("research-pipeline.md", "source-governance.md"),
+) -> str:
+    skill = research_skill_context(skill_references)
     return f"""Run Vesper's persistent Hermes research workflow for lane `{lane}`.
 
 Objective:
 {objective}
 
-The installed `hermes-research-radar` skill defines the general rules: broad discovery before deep verification, primary evidence for important claims, lane-specific deduplication, anti-hype ranking, persistent state and no filler. Treat existing delivered findings as known and only repeat them when something materially changed.
+The installed `hermes-research-radar` skill is part of the execution contract. Follow the relevant procedure below rather than doing one superficial search.
 
+----- RESEARCH SKILL -----
+{skill}
+----- END RESEARCH SKILL -----
 ----- DURABLE STATE -----
 {state_context(lane)}
 ----- END DURABLE STATE -----
@@ -176,6 +219,6 @@ The installed `hermes-research-radar` skill defines the general rules: broad dis
 ----- END EXTRA CONTEXT -----
 
 Return exactly one JSON object and nothing else:
-{{"title":"short title","summary":"1-3 sentence summary","body":"concise but useful report","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source title","url":"https://..."}}],"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
-Never invent URLs. If there is nothing worth surfacing, say so without padding.
+{{"title":"short title","summary":"1-3 sentence summary","body":"concise but useful report","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source title","url":"https://..."}}],"coverage":{{"candidateTarget":0,"candidatesInspected":0,"canonicalCandidates":0,"deepReads":0,"primaryVerifications":0,"surfaces":[],"limitations":[]}},"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
+Never invent URLs or numeric coverage. If there is nothing worth surfacing, say so without padding.
 """

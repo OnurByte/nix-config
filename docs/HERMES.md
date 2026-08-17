@@ -49,14 +49,90 @@ Watchdogs use `deliver=telegram` because their stdout is the alert itself. Healt
 | time | job | behavior |
 |---|---|---|
 | `08:30` | `unknown-frontier-github` | GitHub frontier scout |
-| `08:35` | `unknown-frontier-reddit` | Reddit frontier scout |
-| `08:40` | `unknown-frontier-x` | X frontier scout |
+| `08:35` | `unknown-frontier-reddit` | Reddit RSS/Atom intake + AI deep research |
+| `08:40` | `unknown-frontier-x` | direct X when possible, XCancel/Nitter-compatible fallback |
 | `08:45` | `free-ai-radar` | Linux.do-first legitimate free AI / free-tier / self-hosted radar |
 | `09:00` | `unknown-frontier-synthesis` | bounded fan-in over fresh scout state, then verified synthesis |
 | `09:30` | `agenda` | compact important current agenda |
 | `10:00` | `morning-check` | projects + todos + durable research, delivered to Telegram by the completed worker |
 | `15:00` | `upstream-edge-radar` | early breaking changes and capabilities in Vesper upstreams |
 | `23:30` | `second-brain-dream` | durable knowledge consolidation into the Obsidian workflow |
+
+### high-volume research funnel
+
+The frontier bundle is intentionally not one giant model prompt.
+
+```text
+RSS/search/metadata/mirror intake
+        ↓
+canonicalize + dedupe
+        ↓
+cheap triage
+        ↓
+24-60 strongest deep reads
+        ↓
+primary-source verification
+        ↓
+counter-review
+        ↓
+synthesis + durable state
+```
+
+The default daily frontier target is `600` distinct candidate items/URLs across GitHub, Reddit and X. `VESPER_FRONTIER_CANDIDATE_TARGET` may tune this but is clamped to `200..1000`.
+
+The default deep-read target is `48`, clamped to `24..60` with `VESPER_FRONTIER_DEEP_READ_TARGET`. The distinction is important: hundreds of feed/search candidates can be inspected cheaply without dumping hundreds of complete pages into one LLM context.
+
+Each scout records real coverage metadata. Access failure is a reportable limitation, not permission to fabricate a target count.
+
+Research procedure lives in:
+
+```text
+home/yargc/skills/hermes-research-radar/
+├── SKILL.md
+└── references/
+    ├── research-pipeline.md
+    ├── source-governance.md
+    ├── reddit-rss.md
+    └── x-research.md
+```
+
+The runtime reads the installed Nix-owned skill/reference files into the research prompt, so the scheduled scout is executing the same procedure documented in the skill rather than merely paraphrasing it in Python.
+
+### Reddit: RSS + AI
+
+`hermes_research_intake.py` treats Reddit RSS/Atom as cheap sensor input. It uses combined subreddit `new.rss` feeds for breadth and selected `comments.rss` feeds to catch useful detail buried in discussion trees.
+
+Default seeds are only seeds. The research skill tells Hermes to discover adjacent subreddits/accounts/repos from mentions, crossposts and outgoing links, then keep new sources on probation until they repeatedly produce useful findings.
+
+The intake layer stores the latest machine-readable result under:
+
+```text
+~/.local/state/vesper/research/unknown-frontier-ai/intake/reddit-latest.json
+```
+
+`VESPER_REDDIT_SEEDS` and `VESPER_REDDIT_COMMENT_SEEDS` can override the seed set without editing the Python implementation.
+
+### X: mandatory surface + mirrors
+
+X/Twitter remains a mandatory frontier source. The playbook prefers direct X when accessible, then falls back to XCancel and configured Nitter-compatible mirrors.
+
+The deterministic X intake tries Nitter-compatible search RSS first and falls back to search HTML on the same mirror. Mirror copies are normalized to canonical `x.com/<user>/status/<id>` identities before dedupe, so one tweet reached through X, Twitter, XCancel and Nitter counts once.
+
+The default fallback list is intentionally small and configurable:
+
+```text
+VESPER_X_MIRRORS=https://xcancel.com,https://nitter.net
+```
+
+Public mirror reliability changes over time, so failed RSS/search access is persisted and surfaced rather than assumed healthy forever. `VESPER_X_QUERIES` can override discovery queries.
+
+The latest machine-readable mirror intake is stored under:
+
+```text
+~/.local/state/vesper/research/unknown-frontier-ai/intake/x-latest.json
+```
+
+A mirror is transport, not corroboration. Important claims discovered on X are followed to primary code/docs/commits/releases/papers whenever possible.
 
 ### frontier fan-out / fan-in
 
@@ -113,7 +189,7 @@ vesper-hermes-automations validate-registry
 
 The validator rejects unknown tasks/watchdogs, invalid schedule shape, duplicate cron/script identities and incorrect delivery policy before cron reconciliation.
 
-GitHub Actions evaluates `hermes-jobs.nix` to JSON and runs the Python contract suite. Tests assert the automation surface, scout/synthesis staggering, watchdog delivery policy and `--no-agent`/script flags used by the Hermes CLI integration.
+GitHub Actions evaluates `hermes-jobs.nix` to JSON and runs the Python contract suite. Tests assert the automation surface, frontier coverage bounds, budget allocation, skill/reference presence, X/Reddit canonicalization, scout/synthesis staggering, watchdog delivery policy and `--no-agent`/script flags used by the Hermes CLI integration.
 
 ## commands
 
@@ -123,6 +199,8 @@ vesper-hermes-automations validate-registry
 vesper-hermes-automations sync-cron --prune
 vesper-hermes-automations dispatch frontier-daily
 vesper-hermes-automations execute unknown-frontier-github
+vesper-hermes-automations execute unknown-frontier-reddit
+vesper-hermes-automations execute unknown-frontier-x
 vesper-hermes-automations execute unknown-frontier-synthesis
 
 vesper-hermes status
