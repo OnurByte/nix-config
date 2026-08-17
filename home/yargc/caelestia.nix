@@ -36,9 +36,6 @@ let
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
-      substituteInPlace modules/dashboard/AiHub.qml \
-        --replace-fail 'qsTr("Vesper Hub")' 'qsTr("AI")' \
-        --replace-fail 'AI Hub returned invalid data' 'AI returned invalid data'
       substitute ${./packages/AgentCockpit.qml} modules/bar/components/AgentCockpit.qml \
         --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
