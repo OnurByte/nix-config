@@ -9,11 +9,13 @@ mod paths;
 mod privacy;
 mod process;
 mod providers;
+mod proxy;
 mod recovery;
 mod skills;
 mod wellbeing;
 
 use std::env;
+use std::io::Read;
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
@@ -37,6 +39,14 @@ fn on_off(value: &str) -> bool {
     }
 }
 
+fn stdin_value() -> String {
+    let mut value = String::new();
+    std::io::stdin()
+        .read_to_string(&mut value)
+        .unwrap_or_else(|error| fail(format!("failed to read stdin: {error}")));
+    value.trim().to_string()
+}
+
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.as_slice() {
@@ -44,6 +54,13 @@ fn main() {
         [group, action, value] if group == "network" && action == "airplane" => network::set_airplane(on_off(value)).unwrap_or_else(|error| fail(error)),
         [group, action] if group == "privacy" && action == "status" => println!("{}", privacy::status_json()),
         [group, action] if group == "recovery" && action == "status" => println!("{}", recovery::status_json()),
+
+        [group, action] if group == "proxy" && action == "status" => println!("{}", proxy::status_json()),
+        [group, action] if group == "proxy" && action == "set" => proxy::set_legacy(&stdin_value()).unwrap_or_else(|error| fail(error)),
+        [group, action, kind, value] if group == "proxy" && action == "set" => proxy::set(kind, value).unwrap_or_else(|error| fail(error)),
+        [group, action] if group == "proxy" && action == "clear" => proxy::clear(None).unwrap_or_else(|error| fail(error)),
+        [group, action, kind] if group == "proxy" && action == "clear" => proxy::clear(Some(kind)).unwrap_or_else(|error| fail(error)),
+
         [command, id] if command == "app-status" => println!("{}", apps::status_json(id)),
         [command, id, permission, value] if command == "app-permission" => apps::set_permission(id, permission, on_off(value)).unwrap_or_else(|error| fail(error)),
         [command, id] if command == "app-reset-permissions" => apps::reset_all(id).unwrap_or_else(|error| fail(error)),
