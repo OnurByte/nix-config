@@ -28,6 +28,8 @@ stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
     cp ${./vesper-control.rs} vesper-control.rs
+    cp ${./vesper-provider-registry.rs} vesper-provider-registry.rs
+    patch vesper-control.rs < ${./vesper-control-provider-registry.patch}
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
     patch vesper-control.rs < ${./vesper-control-wellbeing.patch}
     patch vesper-control.rs < ${./vesper-control-credential-aliases.patch}
@@ -54,7 +56,7 @@ stdenv.mkDerivation {
   '';
 
   meta = {
-    description = "Native Vesper settings control plane";
+    description = "Native Vesper Settings control plane";
     license = lib.licenses.mit;
     mainProgram = "vesper-control";
     platforms = lib.platforms.linux;
