@@ -54,6 +54,8 @@ jobs:
           set -euo pipefail
           grep -F 'root, fs::Permissions::from_mode(0o700)' home/yargc/packages/vesper-control.rs >/dev/null
           grep -F 'path, fs::Permissions::from_mode(0o600)' home/yargc/packages/vesper-control.rs >/dev/null
+          grep -F 'Permissions::from_mode(0o700)' home/yargc/packages/vesper-core/src/paths.rs >/dev/null
+          grep -F 'Permissions::from_mode(0o600)' home/yargc/packages/vesper-core/src/paths.rs >/dev/null
           grep -F 'OpenOptionsExt, PermissionsExt' home/yargc/packages/ai.rs >/dev/null
           grep -F 'mode(0o600)' home/yargc/packages/ai.rs >/dev/null
           grep -F 'from_mode(0o700)' home/yargc/packages/ai.rs >/dev/null
@@ -61,11 +63,16 @@ jobs:
       - name: Compile and exercise Vesper control plane
         shell: bash
         run: |
-          nix shell nixpkgs#rustc nixpkgs#jq -c bash -c '
+          nix shell nixpkgs#rustc nixpkgs#cargo nixpkgs#jq -c bash -c '
             set -euo pipefail
-            cp home/yargc/packages/vesper-control.rs /tmp/vesper-control.rs
+
+            cargo test --locked --manifest-path home/yargc/packages/vesper-core/Cargo.toml
+            CARGO_TARGET_DIR=/tmp/vesper-target cargo build --release --locked --manifest-path home/yargc/packages/vesper-core/Cargo.toml
+            cp /tmp/vesper-target/release/vesper-control /tmp/vesper-control
+
+            cp home/yargc/packages/vesper-control.rs /tmp/vesper-control-legacy.rs
             cp home/yargc/packages/vesper-provider-registry.rs /tmp/vesper-provider-registry.rs
-            rustc --edition=2021 /tmp/vesper-control.rs -o /tmp/vesper-control
+            rustc --edition=2021 /tmp/vesper-control-legacy.rs -o /tmp/vesper-control-legacy
 
             export HOME="$TMPDIR/vesper-test-home"
             export XDG_CONFIG_HOME="$HOME/.config"
@@ -76,6 +83,7 @@ jobs:
             chmod +x /tmp/secret-tool
             export PATH="/tmp:$PATH"
 
+            test "$(/tmp/vesper-control control-version)" = 0.3.0
             test "$(/tmp/vesper-control wellbeing status)" = on
             /tmp/vesper-control wellbeing off
             test "$(/tmp/vesper-control wellbeing status)" = off
@@ -122,6 +130,54 @@ jobs:
               exit 1
             fi
 
-            grep -F "nfqws2@default.service" /tmp/vesper-control.rs >/dev/null
-            grep -F "from_mode(0o600)" /tmp/vesper-control.rs >/dev/null
+            radio_root="$TMPDIR/vesper-radio-state"
+            mkdir -p "$radio_root"
+            printf "enabled\n" > "$radio_root/wifi"
+            printf "yes\n" > "$radio_root/bluetooth"
+
+            cat > /tmp/fake-nmcli <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+root="$radio_root"
+case "\$*" in
+  "radio wifi") cat "\$root/wifi" ;;
+  "radio wifi on") printf "enabled\\n" > "\$root/wifi" ;;
+  "radio wifi off") printf "disabled\\n" > "\$root/wifi" ;;
+  "-t -f NAME,TYPE connection show --active") exit 0 ;;
+  *) exit 2 ;;
+esac
+EOF
+            cat > /tmp/fake-bluetoothctl <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+root="$radio_root"
+case "\$*" in
+  "show") if [[ "\$(cat \"\$root/bluetooth\")" == yes ]]; then printf "Powered: yes\\n"; else printf "Powered: no\\n"; fi ;;
+  "power on") printf "yes\\n" > "\$root/bluetooth" ;;
+  "power off") printf "no\\n" > "\$root/bluetooth" ;;
+  *) exit 2 ;;
+esac
+EOF
+            chmod +x /tmp/fake-nmcli /tmp/fake-bluetoothctl
+            export VESPER_CMD_NMCLI=/tmp/fake-nmcli
+            export VESPER_CMD_BLUETOOTHCTL=/tmp/fake-bluetoothctl
+            export VESPER_CMD_SYSTEMCTL=/bin/false
+
+            printf "disabled\n" > "$radio_root/wifi"
+            printf "no\n" > "$radio_root/bluetooth"
+            /tmp/vesper-control network status | jq -e ".airplane == false and .wifi == false and .bluetooth == false" >/dev/null
+            /tmp/vesper-control network airplane off
+            test "$(cat "$radio_root/wifi")" = disabled
+            test "$(cat "$radio_root/bluetooth")" = no
+
+            printf "enabled\n" > "$radio_root/wifi"
+            printf "no\n" > "$radio_root/bluetooth"
+            /tmp/vesper-control network airplane on
+            test "$(cat "$radio_root/wifi")" = disabled
+            test "$(cat "$radio_root/bluetooth")" = no
+            /tmp/vesper-control network status | jq -e ".airplane == true and .airplaneState == \"explicit\"" >/dev/null
+            /tmp/vesper-control network airplane off
+            test "$(cat "$radio_root/wifi")" = enabled
+            test "$(cat "$radio_root/bluetooth")" = no
+            /tmp/vesper-control network status | jq -e ".airplane == false" >/dev/null
           '
