@@ -118,7 +118,7 @@
                  id: weatherComponent
 --- a/modules/nexus/PageRegistry.qml
 +++ b/modules/nexus/PageRegistry.qml
-@@ -58,5 +58,17 @@ QtObject {
+@@ -55,6 +55,30 @@
              description: qsTr("Manage plugins"),
              category: "system"
          },
@@ -134,12 +134,24 @@
 +            description: qsTr("Vesper doctor checks and diagnostics"),
 +            category: "system"
 +        },
++        {
++            label: qsTr("Privacy"),
++            icon: "privacy_tip",
++            description: qsTr("Tor, DPI, firewall, DNS and MAC privacy"),
++            category: "system"
++        },
++        {
++            label: qsTr("Backup & Recovery"),
++            icon: "backup",
++            description: qsTr("Backup job health, schedule and recovery policy"),
++            category: "system"
++        },
  
          // Shell
          {
 --- a/modules/nexus/PageCompRegistry.qml
 +++ b/modules/nexus/PageCompRegistry.qml
-@@ -32,6 +32,7 @@ QtObject {
+@@ -43,6 +43,7 @@
          Component {
              // Network
              StackPage {
@@ -147,7 +159,7 @@
                  Component {
                      NetworkPage {}
                  }
-@@ -59,5 +60,8 @@ QtObject {
+@@ -64,6 +65,9 @@
                  Component {
                      SavedNetworksPage {}
                  }
@@ -156,10 +168,12 @@
 +                }
              }
          },
-@@ -92,5 +96,20 @@ QtObject {
+         Component {
+@@ -98,6 +102,27 @@
+         },
          Component {
              PlaceholderComp {}
-         },
++        },
 +        Component {
 +            StackPage {
 +                routes: ({ apiKeys: 1, appIcons: 2, runtimeCredentials: 3, providers: 4, skillsMcp: 5, hermes: 6 })
@@ -175,9 +189,14 @@
 +        Component {
 +            SystemHealth {}
 +        },
++        Component {
++            PrivacyPage {}
++        },
++        Component {
++            BackupRecovery {}
+         },
  
          // Shell
-         Component {
 --- a/modules/nexus/pages/AppsPage.qml
 +++ b/modules/nexus/pages/AppsPage.qml
 @@ -58,5 +58,9 @@ PageBase {
