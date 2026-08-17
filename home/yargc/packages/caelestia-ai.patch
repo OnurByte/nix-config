@@ -82,7 +82,7 @@
                  id: weatherComponent
 --- a/modules/nexus/PageRegistry.qml
 +++ b/modules/nexus/PageRegistry.qml
-@@ -58,6 +58,12 @@ QtObject {
+@@ -58,6 +58,18 @@ QtObject {
              description: qsTr("Manage plugins"),
              category: "system"
          },
@@ -90,6 +90,12 @@
 +            label: qsTr("AI"),
 +            icon: "smart_toy",
 +            description: qsTr("API keys, agents, skills, MCP, Hermes"),
++            category: "system"
++        },
++        {
++            label: qsTr("System Health"),
++            icon: "health_and_safety",
++            description: qsTr("Vesper doctor checks and diagnostics"),
 +            category: "system"
 +        },
  
@@ -106,7 +112,7 @@
 +                }
              }
          },
-@@ -92,6 +95,20 @@ QtObject {
+@@ -92,6 +95,23 @@ QtObject {
          Component {
              PlaceholderComp {}
          },
@@ -123,6 +129,9 @@
 +                    AiAppIcons {}
 +                }
 +            }
++        },
++        Component {
++            SystemHealth {}
 +        },
  
          // Shell

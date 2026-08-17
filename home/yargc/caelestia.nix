@@ -10,6 +10,7 @@ let
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
   vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
+  vesperDoctor = pkgs.callPackage ./packages/vesper-doctor.nix { };
   ai = pkgs.callPackage ./packages/ai.nix {
     inherit
       codexbar
@@ -57,6 +58,8 @@ let
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/AiAppIcons.qml} modules/nexus/pages/AiAppIcons.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/SystemHealth.qml} modules/nexus/pages/SystemHealth.qml \
+        --subst-var-by vesperDoctor ${vesperDoctor}/bin/vesper-doctor
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperProxyPage.qml} modules/nexus/pages/VesperProxyPage.qml \
