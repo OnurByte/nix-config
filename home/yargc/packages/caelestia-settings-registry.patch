@@ -51,14 +51,14 @@
              }
          },
          Component {
-@@ -98,6 +102,27 @@
+@@ -98,6 +102,28 @@
          },
          Component {
              PlaceholderComp {}
 +        },
 +        Component {
 +            StackPage {
-+                routes: ({ apiKeys: 1, appIcons: 2, runtimeCredentials: 3, providers: 4, skillsMcp: 5, hermes: 6 })
++                routes: ({ apiKeys: 1, appIcons: 2, runtimeCredentials: 3, providers: 4, skillsMcp: 5, hermes: 6, usageQuotas: 7 })
 +                Component { AiPage {} }
 +                Component { AiCredentials {} }
 +                Component { AiAppIcons {} }
@@ -66,6 +66,7 @@
 +                Component { AiProviders {} }
 +                Component { AiSkillsMcp {} }
 +                Component { AiHermes {} }
++                Component { AiUsageQuotas {} }
 +            }
 +        },
 +        Component {
