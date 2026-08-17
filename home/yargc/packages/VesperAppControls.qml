@@ -22,6 +22,7 @@ ColumnLayout {
         portalPermissions: "",
         todaySeconds: 0
     })
+    property string notificationPolicy: "inherit"
     property string message: ""
 
     Layout.fillWidth: true
@@ -52,10 +53,29 @@ ColumnLayout {
         permissionChange.running = true;
     }
 
+    function setNotificationPolicy(policy) {
+        if (!root.app || notificationChange.running)
+            return;
+        root.message = "";
+        notificationChange.command = [
+            "@vesperControl@", "notifications", "set",
+            root.app.id,
+            root.app.name || root.app.id,
+            policy
+        ];
+        notificationChange.running = true;
+    }
+
     function refresh() {
-        if (root.app && !appStatus.running) {
+        if (!root.app)
+            return;
+        if (!appStatus.running) {
             appStatus.command = ["@vesperControl@", "app-status", root.app.id];
             appStatus.running = true;
+        }
+        if (!notificationStatus.running) {
+            notificationStatus.command = ["@vesperControl@", "notifications", "get", root.app.id];
+            notificationStatus.running = true;
         }
     }
 
@@ -73,6 +93,22 @@ ColumnLayout {
                     root.message = qsTr("Could not read app controls");
                 }
             }
+        }
+    }
+
+    Process {
+        id: notificationStatus
+        stdout: StdioCollector {
+            onStreamFinished: root.notificationPolicy = text.trim() || "inherit"
+        }
+    }
+
+    Process {
+        id: notificationChange
+        stderr: StdioCollector { id: notificationError }
+        onExited: (code, status) => {
+            root.message = code === 0 ? "" : notificationError.text.trim();
+            root.refresh();
         }
     }
 
@@ -148,9 +184,7 @@ ColumnLayout {
         visible: root.flatpak
         Layout.fillWidth: true
         spacing: Tokens.spacing.small
-
         Item { Layout.fillWidth: true }
-
         IconTextButton {
             isRound: true
             icon: "block"
@@ -161,7 +195,6 @@ ColumnLayout {
                 filesystemField.text.trim(), "off"
             ])
         }
-
         IconTextButton {
             isRound: true
             icon: "check"
@@ -193,9 +226,7 @@ ColumnLayout {
         visible: root.flatpak
         Layout.fillWidth: true
         spacing: Tokens.spacing.small
-
         Item { Layout.fillWidth: true }
-
         IconTextButton {
             isRound: true
             icon: "block"
@@ -206,7 +237,6 @@ ColumnLayout {
                 "session", dbusField.text.trim(), "deny"
             ])
         }
-
         IconTextButton {
             isRound: true
             icon: "check"
@@ -223,9 +253,7 @@ ColumnLayout {
         visible: root.flatpak
         Layout.fillWidth: true
         spacing: Tokens.spacing.small
-
         Item { Layout.fillWidth: true }
-
         IconTextButton {
             isRound: true
             icon: "block"
@@ -236,7 +264,6 @@ ColumnLayout {
                 "system", dbusField.text.trim(), "deny"
             ])
         }
-
         IconTextButton {
             isRound: true
             icon: "check"
@@ -264,6 +291,44 @@ ColumnLayout {
         subtext: qsTr("return this app to its packaged permission defaults")
         disabled: permissionChange.running
         onClicked: root.runPermission(["@vesperControl@", "app-reset-permissions", root.app.id])
+    }
+
+    SectionHeader {
+        text: qsTr("Notifications")
+    }
+
+    InfoRow {
+        icon: root.notificationPolicy === "block" ? "notifications_off" : "notifications"
+        label: qsTr("Notification policy")
+        subtext: qsTr("packaging-independent · enforced before Caelestia stores or shows the notification")
+        value: root.notificationPolicy
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true
+            icon: "notifications_off"
+            text: qsTr("Block")
+            disabled: notificationChange.running || root.notificationPolicy === "block"
+            onClicked: root.setNotificationPolicy("block")
+        }
+        IconTextButton {
+            isRound: true
+            icon: "notifications_active"
+            text: qsTr("Allow")
+            disabled: notificationChange.running || root.notificationPolicy === "allow"
+            onClicked: root.setNotificationPolicy("allow")
+        }
+        IconTextButton {
+            isRound: true
+            icon: "restart_alt"
+            text: qsTr("Inherit")
+            disabled: notificationChange.running || root.notificationPolicy === "inherit"
+            onClicked: root.setNotificationPolicy("inherit")
+        }
     }
 
     SectionHeader {

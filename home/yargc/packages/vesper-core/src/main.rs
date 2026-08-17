@@ -2,6 +2,7 @@ mod apps;
 mod icons;
 mod json;
 mod network;
+mod notifications;
 mod paths;
 mod process;
 mod wellbeing;
@@ -48,11 +49,16 @@ fn main() {
         [command, id, bus, name, access] if command == "app-dbus" => {
             apps::set_dbus(id, bus, name, access).unwrap_or_else(|error| fail(error));
         }
+        [group, action] if group == "notifications" && action == "status" => println!("{}", notifications::status_json()),
+        [group, action, id] if group == "notifications" && action == "get" => println!("{}", notifications::policy_for(id)),
+        [group, action, id, name, policy] if group == "notifications" && action == "set" => {
+            notifications::set_policy(id, name, policy).unwrap_or_else(|error| fail(error));
+        }
         [group, action] if group == "icons" && action == "status" => println!("{}", icons::status_json()),
         [group, action] if group == "icons" && action == "reconcile" => icons::reconcile().unwrap_or_else(|error| fail(error)),
         [group, action, id] if group == "icons" && action == "regenerate" => icons::regenerate(id).unwrap_or_else(|error| fail(error)),
         [group, action, key, value] if group == "icons" && action == "set" => icons::set_config(key, value).unwrap_or_else(|error| fail(error)),
-        [command] if command == "control-version" => println!("0.4.0"),
+        [command] if command == "control-version" => println!("0.5.0"),
         _ => legacy(&args),
     }
 }
