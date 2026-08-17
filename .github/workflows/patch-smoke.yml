@@ -55,5 +55,5 @@ jobs:
             test "$(/tmp/vesper-control wellbeing status)" = off
             /tmp/vesper-control wellbeing on
             test "$(/tmp/vesper-control wellbeing status)" = on
-            /tmp/vesper-control wellbeing-summary | jq -e '.totalSeconds == 0 and (.apps | type == "array")' >/dev/null
+            /tmp/vesper-control wellbeing-summary | jq -e ".totalSeconds == 0 and (.apps | type == \"array\")" >/dev/null
           '
