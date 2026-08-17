@@ -50,6 +50,7 @@ let
       substitute ${./packages/AiProviders.qml} modules/nexus/pages/AiProviders.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/AiSkillsMcp.qml} modules/nexus/pages/AiSkillsMcp.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/AiHermes.qml} modules/nexus/pages/AiHermes.qml --subst-var-by hermesAutomation ${hermesCore}/bin/vesper-hermes-automations
+      ${pkgs.coreutils}/bin/install -Dm644 ${./packages/AiUsageQuotas.qml} modules/nexus/pages/AiUsageQuotas.qml
       substitute ${./packages/SystemHealth.qml} modules/nexus/pages/SystemHealth.qml --subst-var-by vesperDoctor ${vesperDoctor}/bin/vesper-doctor
       substitute ${./packages/PrivacyPage.qml} modules/nexus/pages/PrivacyPage.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/BackupRecovery.qml} modules/nexus/pages/BackupRecovery.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
