@@ -10,7 +10,7 @@ import qs.modules.nexus.common
 
 PageBase {
     id: root
-    property var privacy: ({ tor: {}, zapret: {}, firewall: {}, network: {} })
+    property var privacy: ({ tor: {}, zapret: {}, firewall: {}, network: {}, metadataSanitizer: {}, onionShare: {}, monero: {}, cuprate: {}, node: {} })
     property string errorText: ""
     title: qsTr("Privacy")
 
@@ -68,6 +68,44 @@ PageBase {
             value: root.privacy.zapret?.active ? qsTr("active") : qsTr("inactive")
         }
 
+        SectionHeader { text: qsTr("Safe sharing") }
+        InfoRow {
+            icon: "cleaning_services"
+            label: qsTr("Metadata sanitizer")
+            subtext: qsTr("mat2 is used on disposable copies before outbound OnionShare file sharing")
+            value: root.privacy.metadataSanitizer?.available ? qsTr("available") : qsTr("missing")
+        }
+        InfoRow {
+            icon: "share"
+            label: qsTr("OnionShare")
+            subtext: root.privacy.onionShare?.safeWrapperAvailable
+                ? qsTr("onionshare-safe wrapper available")
+                : qsTr("safe wrapper unavailable; Settings will not claim automatic sanitization")
+            value: root.privacy.onionShare?.available ? qsTr("installed") : qsTr("missing")
+        }
+
+        SectionHeader { text: qsTr("Monero") }
+        InfoRow {
+            icon: "currency_bitcoin"
+            label: qsTr("monerod")
+            subtext: root.privacy.monero?.walletCliInstalled ? qsTr("reference CLI/wallet stack installed") : qsTr("wallet CLI not detected")
+            value: root.privacy.monero?.monerodRunning ? qsTr("running") : (root.privacy.monero?.monerodInstalled ? qsTr("installed") : qsTr("missing"))
+        }
+        InfoRow {
+            icon: "memory"
+            label: qsTr("Cuprate")
+            subtext: qsTr("Rust node implementation installed for opt-in use")
+            value: root.privacy.cuprate?.running ? qsTr("running") : (root.privacy.cuprate?.installed ? qsTr("installed") : qsTr("missing"))
+        }
+        InfoRow {
+            icon: "account_tree"
+            label: qsTr("Runtime node backend")
+            subtext: root.privacy.node?.selectionManagedByVesper
+                ? qsTr("selected by Vesper")
+                : qsTr("observed from running processes; no fake default-node selector")
+            value: root.privacy.node?.runtimeBackend || qsTr("none")
+        }
+
         SectionHeader { text: qsTr("Network privacy") }
         InfoRow {
             icon: "local_fire_department"
@@ -91,7 +129,7 @@ PageBase {
         InfoRow {
             icon: "deployed_code"
             label: qsTr("Ownership")
-            subtext: qsTr("Tor, Zapret, firewall, DNS policy and MAC policy stay declarative where configured by Nix; unsupported runtime toggles are intentionally not shown")
+            subtext: qsTr("Tor, Zapret, firewall and privacy tooling remain Nix-managed; Settings only exposes controls with a real runtime enforcement path")
             value: qsTr("Nix-first")
         }
 
