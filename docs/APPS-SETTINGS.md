@@ -20,4 +20,8 @@ No usage data is uploaded.
 
 ## adaptive icons
 
-The experimental adaptive icon toggle only enables a review queue. The original packaged icon is never overwritten automatically.
+The current experimental toggle only enables a review queue. The original packaged icon is never overwritten automatically.
+
+This queue is temporary scaffolding. `ADAPTIVE-ICONS.md` defines the replacement implementation: automatic `.desktop` discovery, real `Icon=` source resolution, AI-assisted canonical SVG conversion when needed, deterministic Original/Light/Dark/Tinted/Clear/Glass compilation and a generated freedesktop Vesper icon theme.
+
+In the target UI, Apps keeps only per-application icon status and actions such as regenerate, retry, revert or exclude. Global AI generation controls belong in the AI page and global icon appearance belongs in the theme/appearance page.
