@@ -90,7 +90,7 @@ pub fn mark_all_read() -> Result<(), String> {
 pub fn report_text(report: &str) -> Result<String, String> {
     jq_raw(
         report,
-        r#""# \(.title // "Untitled")\n\nlane: \(.lane // "unknown") · priority: \(.priority // "normal") · confidence: \(.confidence // "unknown")\n\n\(.summary // "")\n\n\(.body // "")\n\nSources:\n\((.sources // []) | map(if type == "string" then . else ((.title // .url // "source") + (if .url then " — " + .url else "" end)) end) | map("- " + .) | join("\n"))""#,
+        r##""# \(.title // "Untitled")\n\nlane: \(.lane // "unknown") · priority: \(.priority // "normal") · confidence: \(.confidence // "unknown")\n\n\(.summary // "")\n\n\(.body // "")\n\nSources:\n\((.sources // []) | map(if type == "string" then . else ((.title // .url // "source") + (if .url then " — " + .url else "" end)) end) | map("- " + .) | join("\n"))""##,
     )
 }
 
@@ -161,7 +161,7 @@ pub fn save_report(task: &str, report: &str) -> Result<String, String> {
     atomic_write(&day.join(format!("{id}.json")), &jq(&normalized, ".")?)?;
     let markdown = jq_raw(
         &normalized,
-        r#""# \(.title // "Hermes briefing")\n\n- lane: `\(.lane // "unknown")`\n- priority: `\(.priority // "normal")`\n- confidence: `\(.confidence // 0.5)`\n- created: `\(.createdAt // "")`\n\n\(.summary // "")\n\n\(.body // "")\n\n## Sources\n\n\((.sources // []) | map(if type == "string" then "- " + . else "- [" + (.title // .url // "source") + "](" + (.url // "") + ")" end) | join("\n"))""#,
+        r##""# \(.title // "Hermes briefing")\n\n- lane: `\(.lane // "unknown")`\n- priority: `\(.priority // "normal")`\n- confidence: `\(.confidence // 0.5)`\n- created: `\(.createdAt // "")`\n\n\(.summary // "")\n\n\(.body // "")\n\n## Sources\n\n\((.sources // []) | map(if type == "string" then "- " + . else "- [" + (.title // .url // "source") + "](" + (.url // "") + ")" end) | join("\n"))""##,
     )?;
     atomic_write(&day.join(format!("{id}.md")), &markdown)?;
     reinforce_sources(&normalized)?;
