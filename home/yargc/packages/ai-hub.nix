@@ -2,16 +2,16 @@
   agentCockpit,
   codexbar,
   coreutils,
-  hermesRuntime,
   jq,
   lib,
   makeWrapper,
+  privacyHud,
   rustc,
   stdenv,
 }:
 stdenv.mkDerivation {
   pname = "vesper-ai-hub";
-  version = "1.0.0";
+  version = "1.1.0";
 
   dontUnpack = true;
 
@@ -37,7 +37,7 @@ stdenv.mkDerivation {
         jq
         codexbar
         agentCockpit
-        hermesRuntime
+        privacyHud
       ]}
 
     runHook postInstall

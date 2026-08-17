@@ -1,16 +1,22 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
+import Caelestia.Config
 import qs.components
 import qs.services
 
 StyledRect {
     id: root
 
+    required property ScreenState screenState
+
     property string privacyState: "idle"
     property string label: "LOC"
     property string details: "Privacy state unavailable"
 
+    readonly property int aiTab: (Config.dashboard.showDashboard ? 1 : 0)
+        + (Config.dashboard.showMedia ? 1 : 0)
+        + (Config.dashboard.showPerformance ? 1 : 0)
     readonly property color accent: privacyState === "alert"
         ? Colours.palette.m3error
         : privacyState === "attention"
@@ -59,11 +65,6 @@ StyledRect {
         }
     }
 
-    Process {
-        id: popup
-        command: ["@privacyHud@", "popup"]
-    }
-
     ColumnLayout {
         id: layout
         anchors.centerIn: parent
@@ -92,10 +93,12 @@ StyledRect {
         cursorShape: Qt.PointingHandCursor
 
         onClicked: event => {
-            if (event.button === Qt.RightButton)
+            if (event.button === Qt.RightButton) {
                 root.refresh();
-            else if (!popup.running)
-                popup.running = true;
+            } else {
+                root.screenState.dashboardTab = root.aiTab;
+                root.screenState.dashboard = true;
+            }
         }
     }
 }

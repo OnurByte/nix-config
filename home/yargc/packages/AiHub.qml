@@ -14,6 +14,7 @@ Item {
         providers: [],
         agents: { count: 0, agents: [] },
         hermes: { unread: 0, high: 0, latestTitle: "" },
+        privacy: { tor: "unknown", mic: "unknown", camera: "unknown", clipboard: "unknown", node: "unknown", class: "unknown", label: "--" },
         stale: true
     })
     property string loadError: ""
@@ -21,12 +22,20 @@ Item {
     readonly property var summary: payload.summary || ({})
     readonly property var agents: payload.agents || ({})
     readonly property var hermes: payload.hermes || ({})
+    readonly property var privacy: payload.privacy || ({})
     readonly property var providers: payload.providers || []
     readonly property color stateColour: summary.class === "critical"
         ? Colours.palette.m3error
         : summary.class === "warning"
             ? Colours.palette.m3tertiary
             : Colours.palette.m3primary
+    readonly property color privacyColour: privacy.class === "alert"
+        ? Colours.palette.m3error
+        : privacy.class === "attention"
+            ? Colours.palette.m3tertiary
+            : privacy.class === "private"
+                ? Colours.palette.m3primary
+                : Colours.palette.m3outline
 
     implicitWidth: 760
     implicitHeight: 520
@@ -57,6 +66,16 @@ Item {
             return value;
         const pad = n => String(n).padStart(2, "0");
         return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function privacyDetail() {
+        const parts = [
+            `tor ${root.privacy.tor || "unknown"}`,
+            `mic ${root.privacy.mic || "unknown"}`,
+            `cam ${root.privacy.camera || "unknown"}`,
+            `xmr ${root.privacy.node || "off"}`
+        ];
+        return parts.join(" · ");
     }
 
     Component.onCompleted: refresh(false)
@@ -103,7 +122,7 @@ Item {
             spacing: 0
 
             StyledText {
-                text: qsTr("AI Hub")
+                text: qsTr("Vesper Hub")
                 font: Tokens.font.title.large
                 color: Colours.palette.m3onSurface
             }
@@ -147,13 +166,15 @@ Item {
         }
     }
 
-    RowLayout {
+    GridLayout {
         id: summaries
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: header.bottom
         anchors.topMargin: Tokens.spacing.large
-        spacing: Tokens.spacing.medium
+        columns: 2
+        columnSpacing: Tokens.spacing.medium
+        rowSpacing: Tokens.spacing.medium
 
         SummaryCard {
             Layout.fillWidth: true
@@ -186,10 +207,19 @@ Item {
             detail: root.hermes.latestTitle || "no briefings yet"
             accent: (root.hermes.high || 0) > 0 ? Colours.palette.m3error : Colours.palette.m3tertiary
         }
+
+        SummaryCard {
+            Layout.fillWidth: true
+            iconName: "shield_lock"
+            title: qsTr("Privacy")
+            value: root.privacy.label || "--"
+            detail: root.privacyDetail()
+            accent: root.privacyColour
+        }
     }
 
     Flickable {
-        id: providersView
+        id: contentView
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: summaries.bottom
@@ -197,14 +227,39 @@ Item {
         anchors.topMargin: Tokens.spacing.large
         clip: true
         contentWidth: width
-        contentHeight: providerColumn.implicitHeight
+        contentHeight: contentColumn.implicitHeight
         flickableDirection: Flickable.VerticalFlick
         boundsBehavior: Flickable.StopAtBounds
 
         ColumnLayout {
-            id: providerColumn
-            width: providersView.width
+            id: contentColumn
+            width: contentView.width
             spacing: Tokens.spacing.medium
+
+            StyledText {
+                Layout.fillWidth: true
+                visible: (root.agents.agents || []).length > 0
+                text: qsTr("Active agents")
+                color: Colours.palette.m3onSurfaceVariant
+                font: Tokens.font.title.small
+            }
+
+            Repeater {
+                model: root.agents.agents || []
+
+                delegate: AgentCard {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    agentData: modelData
+                }
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                text: qsTr("AI providers")
+                color: Colours.palette.m3onSurfaceVariant
+                font: Tokens.font.title.small
+            }
 
             StyledText {
                 Layout.fillWidth: true
@@ -279,6 +334,64 @@ Item {
                     text: summaryCard.detail
                     elide: Text.ElideRight
                     color: Colours.palette.m3onSurface
+                    font: Tokens.font.body.small
+                }
+            }
+        }
+    }
+
+    component AgentCard: StyledRect {
+        id: agentCard
+        required property var agentData
+
+        implicitHeight: agentContent.implicitHeight + Tokens.padding.medium * 2
+        radius: Tokens.rounding.large
+        color: Colours.tPalette.m3surfaceContainer
+        border.width: 1
+        border.color: Qt.alpha(Colours.palette.m3secondary, 0.16)
+
+        RowLayout {
+            id: agentContent
+            anchors.fill: parent
+            anchors.margins: Tokens.padding.medium
+            spacing: Tokens.spacing.medium
+
+            MaterialIcon {
+                text: "terminal"
+                color: Colours.palette.m3secondary
+                fontStyle: Tokens.font.icon.medium
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: `${agentCard.agentData.agent || "Agent"} · ${agentCard.agentData.project || "unknown"}`
+                    color: Colours.palette.m3onSurface
+                    font: Tokens.font.title.small
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: {
+                        const branch = agentCard.agentData.branch || "detached";
+                        const dirty = agentCard.agentData.dirty ? "dirty" : "clean";
+                        const age = Number(agentCard.agentData.elapsedSeconds || 0);
+                        return `${branch} · ${dirty} · pid ${agentCard.agentData.pid || "?"} · ${age}s`;
+                    }
+                    elide: Text.ElideRight
+                    color: Colours.palette.m3onSurfaceVariant
+                    font: Tokens.font.body.small
+                }
+
+                StyledText {
+                    Layout.fillWidth: true
+                    visible: !!agentCard.agentData.cwd
+                    text: agentCard.agentData.cwd || ""
+                    elide: Text.ElideMiddle
+                    color: Colours.palette.m3outline
                     font: Tokens.font.body.small
                 }
             }

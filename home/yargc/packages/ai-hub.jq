@@ -61,6 +61,7 @@ def normalise_provider:
 .[0] as $raw
 | (.[1] // {}) as $agents
 | (.[2] // {}) as $hermes
+| (.[3] // {}) as $privacy
 | [($raw.providers // [])[] | select(type == "object") | normalise_provider | select(.enabled)]
   | sort_by([.sortKey, (.name | ascii_downcase)]) as $providers
 | [ $providers[] | select(.maxUsedPercent != null) ] as $constrained
@@ -68,7 +69,7 @@ def normalise_provider:
 | ([ $providers[] | select(.health == "critical") ] | length) as $critical
 | ([ $providers[] | select(.health == "warning") ] | length) as $warning
 | {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: (now | todateiso8601),
     stale: false,
     summary: {
@@ -82,6 +83,7 @@ def normalise_provider:
     providers: $providers,
     agents: (if ($agents | type) == "object" then $agents else {} end),
     hermes: (if ($hermes | type) == "object" then $hermes else {} end),
+    privacy: (if ($privacy | type) == "object" then $privacy else {} end),
     codexbar: {
       version: ($raw.host.codexBarVersion // "" | tostring),
       generatedAt: ($raw.generatedAt // "" | tostring)

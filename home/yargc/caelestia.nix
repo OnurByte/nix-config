@@ -7,12 +7,11 @@ let
   codexbar = inputs.codexbar.packages.${pkgs.system}.default;
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
-  hermesRuntime = pkgs.callPackage ./packages/hermes-runtime.nix { };
   aiHub = pkgs.callPackage ./packages/ai-hub.nix {
     inherit
       codexbar
       agentCockpit
-      hermesRuntime
+      privacyHud
       ;
   };
 
@@ -29,7 +28,7 @@ let
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
         --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
       substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
-        --subst-var-by hermesRuntime ${hermesRuntime}/bin/vesper-hermes
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
     '';
   });
@@ -168,7 +167,7 @@ in
         enableBtop = true;
         enableNvtop = true;
         enableHtop = false;
-        enableGtk = true;
+        enableGtk = false;
         enableQt = false;
         enableWarp = false;
         enableChromium = false;
@@ -185,47 +184,6 @@ in
     aiHub
     codexbar
   ];
-
-  xdg.desktopEntries = {
-    vesper-agent-cockpit = {
-      name = "Vesper Agent Cockpit";
-      genericName = "Coding Agent Monitor";
-      comment = "Inspect active coding agents and their Git worktrees";
-      exec = "vesper-agent-cockpit";
-      icon = "utilities-terminal";
-      terminal = false;
-      categories = [
-        "Development"
-        "Utility"
-      ];
-    };
-
-    vesper-privacy-hud = {
-      name = "Vesper Privacy HUD";
-      genericName = "Privacy Status";
-      comment = "Inspect local Tor, microphone, camera, clipboard and Monero state";
-      exec = "vesper-privacy-hud";
-      icon = "security-high";
-      terminal = false;
-      categories = [
-        "Utility"
-        "Security"
-      ];
-    };
-
-    vesper-hermes-briefings = {
-      name = "Vesper Hermes Briefings";
-      genericName = "Research Inbox";
-      comment = "Open the persistent Hermes research briefing inbox";
-      exec = "vesper-hermes inbox";
-      icon = "mail-unread";
-      terminal = false;
-      categories = [
-        "Utility"
-        "Development"
-      ];
-    };
-  };
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
   home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;

@@ -1,9 +1,17 @@
-{ coreutils, ghostty, gnugrep, jq, procps, psmisc, systemd, wireplumber, writeShellApplication }:
+{
+  coreutils,
+  gnugrep,
+  jq,
+  procps,
+  psmisc,
+  systemd,
+  wireplumber,
+  writeShellApplication,
+}:
 writeShellApplication {
   name = "vesper-privacy-hud";
   runtimeInputs = [
     coreutils
-    ghostty
     gnugrep
     jq
     procps
@@ -83,59 +91,12 @@ writeShellApplication {
         '{tor:$tor,mic:$mic,camera:$camera,clipboard:$clipboard,node:$node,class:$state,label:$label,tooltip:$tooltip}'
     }
 
-    render() {
-      local payload
-      payload="$(status_json)"
-      clear
-      jq -r '
-        "VESPER PRIVACY HUD\n" +
-        "────────────────────────────────────────\n" +
-        "tor               \(.tor)\n" +
-        "microphone        \(.mic)\n" +
-        "camera            \(.camera)\n" +
-        "clipboard history \(.clipboard)\n" +
-        "monero node       \(.node)\n" +
-        "────────────────────────────────────────\n" +
-        (if .camera == "active" then
-          "camera device is currently in use"
-        elif .mic == "unmuted" then
-          "microphone is unmuted; this does not mean it is recording"
-        elif .tor == "on" then
-          "system Tor client is active"
-        else
-          "no privacy-sensitive activity detected"
-        end) +
-        "\n\nrefreshes every 2s · Ctrl+C closes"
-      ' <<<"$payload"
-    }
-
-    tui() {
-      trap 'exit 0' INT TERM
-      while true; do
-        render
-        sleep 2
-      done
-    }
-
-    popup() {
-      exec ghostty --class=vesper-privacy-hud -e vesper-privacy-hud tui
-    }
-
-    case "''${1:-popup}" in
+    case "''${1:-status}" in
       status|--json)
         status_json
         ;;
-      render)
-        render
-        ;;
-      tui)
-        tui
-        ;;
-      popup)
-        popup
-        ;;
       *)
-        echo "usage: vesper-privacy-hud [popup|tui|status|render]" >&2
+        echo "usage: vesper-privacy-hud [status]" >&2
         exit 2
         ;;
     esac

@@ -42,6 +42,20 @@ fn cache_root() -> PathBuf {
     env::temp_dir().join("vesper-ai-hub")
 }
 
+fn briefing_index() -> PathBuf {
+    if let Ok(path) = env::var("VESPER_BRIEFING_DIR") {
+        if !path.trim().is_empty() {
+            return PathBuf::from(path).join("index.json");
+        }
+    }
+    if let Ok(home) = env::var("HOME") {
+        if !home.trim().is_empty() {
+            return PathBuf::from(home).join(".local/share/vesper/briefings/index.json");
+        }
+    }
+    PathBuf::from("/nonexistent/vesper-briefings-index.json")
+}
+
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 16);
     for ch in value.chars() {
@@ -103,14 +117,44 @@ fn fallback_json(error: &str, kind: &str) -> String {
             json_escape(error)
         ),
         "hermes" => format!(
-            "{{\"count\":0,\"unread\":0,\"high\":0,\"class\":\"unknown\",\"latestTitle\":\"\",\"tooltip\":\"{}\"}}",
+            "{{\"count\":0,\"unread\":0,\"high\":0,\"class\":\"unknown\",\"latestTitle\":\"No briefings yet\",\"latestLane\":\"\",\"tooltip\":\"{}\"}}",
+            json_escape(error)
+        ),
+        "privacy" => format!(
+            "{{\"tor\":\"unknown\",\"mic\":\"unknown\",\"camera\":\"unknown\",\"clipboard\":\"unknown\",\"node\":\"unknown\",\"class\":\"unknown\",\"label\":\"--\",\"tooltip\":\"{}\"}}",
             json_escape(error)
         ),
         _ => "{}".to_string(),
     }
 }
 
-fn transform_snapshot(codexbar: &str, agents: &str, hermes: &str) -> Result<String, String> {
+fn hermes_status() -> Result<String, String> {
+    let index = briefing_index();
+    if !index.exists() {
+        return Ok("{\"count\":0,\"unread\":0,\"high\":0,\"class\":\"idle\",\"latestTitle\":\"No briefings yet\",\"latestLane\":\"\",\"tooltip\":\"Hermes · no briefings yet\"}".to_string());
+    }
+
+    let filter = r#"
+      (if type == "array" then . else [] end) as $items
+      | [$items[] | select(.unread == true)] as $unread
+      | [$unread[] | select((.priority // "normal") == "high" or (.priority // "normal") == "critical")] as $high
+      | ($items[0] // {}) as $latest
+      | ($latest.title // "No briefings yet" | tostring) as $title
+      | {
+          count: ($items | length),
+          unread: ($unread | length),
+          high: ($high | length),
+          class: (if ($high | length) > 0 then "attention" elif ($unread | length) > 0 then "unread" else "idle" end),
+          latestTitle: $title,
+          latestLane: ($latest.lane // "" | tostring),
+          tooltip: (if ($items | length) == 0 then "Hermes · no briefings yet" else "Hermes · \($unread | length) unread · \($title)" end)
+        }
+    "#;
+    let path = index.to_string_lossy().into_owned();
+    run_json("jq", &["-c", filter, &path], 5)
+}
+
+fn transform_snapshot(codexbar: &str, agents: &str, hermes: &str, privacy: &str) -> Result<String, String> {
     let filter = env::var("VESPER_AI_HUB_JQ_FILTER")
         .map_err(|_| "VESPER_AI_HUB_JQ_FILTER is not set".to_string())?;
 
@@ -130,6 +174,7 @@ fn transform_snapshot(codexbar: &str, agents: &str, hermes: &str) -> Result<Stri
         writeln!(stdin, "{codexbar}").map_err(|error| error.to_string())?;
         writeln!(stdin, "{agents}").map_err(|error| error.to_string())?;
         writeln!(stdin, "{hermes}").map_err(|error| error.to_string())?;
+        writeln!(stdin, "{privacy}").map_err(|error| error.to_string())?;
     }
 
     let output = child
@@ -164,12 +209,16 @@ fn build_fresh() -> Result<String, String> {
         Ok(value) => value,
         Err(error) => fallback_json(&error, "agents"),
     };
-    let hermes = match run_json("vesper-hermes", &["status", "--json"], 8) {
+    let hermes = match hermes_status() {
         Ok(value) => value,
         Err(error) => fallback_json(&error, "hermes"),
     };
+    let privacy = match run_json("vesper-privacy-hud", &["status"], 5) {
+        Ok(value) => value,
+        Err(error) => fallback_json(&error, "privacy"),
+    };
 
-    transform_snapshot(&codexbar, &agents, &hermes)
+    transform_snapshot(&codexbar, &agents, &hermes, &privacy)
 }
 
 fn read_cache(path: &Path) -> Option<String> {
@@ -236,7 +285,7 @@ fn stale_snapshot(cached: Option<String>, error: &str) -> String {
     }
 
     format!(
-        "{{\"schemaVersion\":1,\"generatedAt\":\"\",\"stale\":true,\"backendError\":\"{}\",\"summary\":{{\"providerCount\":0,\"criticalCount\":0,\"warningCount\":0,\"maxUsedPercent\":-1,\"maxProvider\":\"\",\"class\":\"stale\"}},\"providers\":[],\"agents\":{{\"count\":0,\"class\":\"unknown\",\"agents\":[]}},\"hermes\":{{\"count\":0,\"unread\":0,\"high\":0,\"class\":\"unknown\"}},\"codexbar\":{{\"version\":\"\",\"generatedAt\":\"\"}}}}",
+        "{{\"schemaVersion\":2,\"generatedAt\":\"\",\"stale\":true,\"backendError\":\"{}\",\"summary\":{{\"providerCount\":0,\"criticalCount\":0,\"warningCount\":0,\"maxUsedPercent\":-1,\"maxProvider\":\"\",\"class\":\"stale\"}},\"providers\":[],\"agents\":{{\"count\":0,\"class\":\"unknown\",\"agents\":[]}},\"hermes\":{{\"count\":0,\"unread\":0,\"high\":0,\"class\":\"unknown\",\"latestTitle\":\"No briefings yet\",\"latestLane\":\"\"}},\"privacy\":{{\"tor\":\"unknown\",\"mic\":\"unknown\",\"camera\":\"unknown\",\"clipboard\":\"unknown\",\"node\":\"unknown\",\"class\":\"unknown\",\"label\":\"--\"}},\"codexbar\":{{\"version\":\"\",\"generatedAt\":\"\"}}}}",
         json_escape(error)
     )
 }

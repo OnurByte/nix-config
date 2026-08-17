@@ -1,18 +1,24 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
+import Caelestia.Config
 import qs.components
 import qs.services
 
 StyledRect {
     id: root
 
-    property int activeCount: 0
-    property string cockpitState: "idle"
+    required property ScreenState screenState
+
+    property int count: 0
+    property string activityState: "idle"
     property string details: "No active coding agents"
 
-    readonly property color accent: cockpitState === "active"
-        ? Colours.palette.m3primary
+    readonly property int aiTab: (Config.dashboard.showDashboard ? 1 : 0)
+        + (Config.dashboard.showMedia ? 1 : 0)
+        + (Config.dashboard.showPerformance ? 1 : 0)
+    readonly property color accent: activityState === "active"
+        ? Colours.palette.m3secondary
         : Colours.palette.m3outline
 
     implicitWidth: Tokens.sizes.bar.innerWidth
@@ -20,7 +26,7 @@ StyledRect {
     radius: Tokens.rounding.full
     color: Qt.alpha(Colours.tPalette.m3surfaceContainerHigh, mouse.containsMouse ? 0.52 : 0.28)
     border.width: 1
-    border.color: Qt.alpha(Colours.palette.m3outline, mouse.containsMouse ? 0.28 : 0.16)
+    border.color: Qt.alpha(root.accent, mouse.containsMouse ? 0.34 : 0.18)
 
     function refresh(): void {
         if (!status.running)
@@ -43,21 +49,16 @@ StyledRect {
             onStreamFinished: {
                 try {
                     const value = JSON.parse(text);
-                    root.activeCount = Number(value.count) || 0;
-                    root.cockpitState = value.class || "idle";
+                    root.count = Number(value.count) || 0;
+                    root.activityState = value.class || "idle";
                     root.details = value.tooltip || "Agent status unavailable";
                 } catch (e) {
-                    root.activeCount = 0;
-                    root.cockpitState = "idle";
+                    root.count = 0;
+                    root.activityState = "idle";
                     root.details = "Agent cockpit data unavailable";
                 }
             }
         }
-    }
-
-    Process {
-        id: popup
-        command: ["@agentCockpit@", "popup"]
     }
 
     ColumnLayout {
@@ -67,14 +68,14 @@ StyledRect {
 
         MaterialIcon {
             Layout.alignment: Qt.AlignHCenter
-            text: "terminal"
+            text: root.count > 0 ? "terminal" : "code"
             color: root.accent
             font.pointSize: 14
         }
 
         StyledText {
             Layout.alignment: Qt.AlignHCenter
-            text: `${root.activeCount}`
+            text: `${root.count}`
             color: root.accent
             font: Tokens.font.body.builders.small.scale(0.82).build()
         }
@@ -88,10 +89,12 @@ StyledRect {
         cursorShape: Qt.PointingHandCursor
 
         onClicked: event => {
-            if (event.button === Qt.RightButton)
+            if (event.button === Qt.RightButton) {
                 root.refresh();
-            else if (!popup.running)
-                popup.running = true;
+            } else {
+                root.screenState.dashboardTab = root.aiTab;
+                root.screenState.dashboard = true;
+            }
         }
     }
 }

@@ -1,17 +1,23 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell.Io
+import Caelestia.Config
 import qs.components
 import qs.services
 
 StyledRect {
     id: root
 
+    required property ScreenState screenState
+
     property int unreadCount: 0
     property int highCount: 0
     property string briefingState: "idle"
     property string details: "Hermes · no briefings yet"
 
+    readonly property int aiTab: (Config.dashboard.showDashboard ? 1 : 0)
+        + (Config.dashboard.showMedia ? 1 : 0)
+        + (Config.dashboard.showPerformance ? 1 : 0)
     readonly property color accent: highCount > 0
         ? Colours.palette.m3error
         : unreadCount > 0
@@ -33,7 +39,7 @@ StyledRect {
     Component.onCompleted: refresh()
 
     Timer {
-        interval: 15000
+        interval: 30000
         repeat: true
         running: true
         onTriggered: root.refresh()
@@ -41,15 +47,16 @@ StyledRect {
 
     Process {
         id: status
-        command: ["@hermesRuntime@", "status", "--json"]
+        command: ["@aiHub@", "status"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     const value = JSON.parse(text);
-                    root.unreadCount = Number(value.unread) || 0;
-                    root.highCount = Number(value.high) || 0;
-                    root.briefingState = value.class || "idle";
-                    root.details = value.tooltip || "Hermes briefing status unavailable";
+                    const hermes = value.hermes || {};
+                    root.unreadCount = Number(hermes.unread) || 0;
+                    root.highCount = Number(hermes.high) || 0;
+                    root.briefingState = hermes.class || "idle";
+                    root.details = hermes.tooltip || "Hermes briefing status unavailable";
                 } catch (e) {
                     root.unreadCount = 0;
                     root.highCount = 0;
@@ -58,11 +65,6 @@ StyledRect {
                 }
             }
         }
-    }
-
-    Process {
-        id: popup
-        command: ["@hermesRuntime@", "inbox"]
     }
 
     ColumnLayout {
@@ -93,10 +95,12 @@ StyledRect {
         cursorShape: Qt.PointingHandCursor
 
         onClicked: event => {
-            if (event.button === Qt.RightButton)
+            if (event.button === Qt.RightButton) {
                 root.refresh();
-            else if (!popup.running)
-                popup.running = true;
+            } else {
+                root.screenState.dashboardTab = root.aiTab;
+                root.screenState.dashboard = true;
+            }
         }
     }
 }
