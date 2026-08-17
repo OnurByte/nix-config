@@ -18,9 +18,12 @@ let
       ;
   };
   mcpServerNames = builtins.attrNames config.programs.mcp.servers;
+  caelestiaPatch = pkgs.writeText "caelestia-ai-hub.patch" (
+    builtins.readFile ./packages/caelestia-ai-hub.patch + "\n"
+  );
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./packages/caelestia-ai-hub.patch ];
+    patches = (old.patches or [ ]) ++ [ caelestiaPatch ];
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
