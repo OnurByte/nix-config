@@ -21,9 +21,15 @@ let
   caelestiaPatch = pkgs.writeText "caelestia-ai-hub.patch" (
     builtins.readFile ./packages/caelestia-ai-hub.patch + "\n"
   );
+  caelestiaWellbeingPatch = pkgs.writeText "caelestia-wellbeing-ipc.patch" (
+    builtins.readFile ./packages/caelestia-wellbeing-ipc.patch + "\n"
+  );
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ caelestiaPatch ];
+    patches = (old.patches or [ ]) ++ [
+      caelestiaPatch
+      caelestiaWellbeingPatch
+    ];
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
@@ -56,6 +62,14 @@ let
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml
     '';
   });
+
+  wellbeingRunner = pkgs.writeShellScript "vesper-wellbeing" ''
+    export PATH=${lib.makeBinPath [
+      agenticCaelestia
+      vesperControl
+    ]}:$PATH
+    exec ${vesperControl}/bin/vesper-control wellbeing-daemon
+  '';
 
   nixDracula = pkgs.nixos-artwork.wallpapers.dracula;
   nixSolarized = pkgs.nixos-artwork.wallpapers.nineish-solarized-dark;
@@ -211,6 +225,20 @@ in
         '';
       };
     };
+  };
+
+  systemd.user.services.vesper-wellbeing = {
+    Unit = {
+      Description = "Vesper local application wellbeing tracker";
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = wellbeingRunner;
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
   };
 
   # Caelestia generates live GTK/Qt palettes. Home Manager provides the native
