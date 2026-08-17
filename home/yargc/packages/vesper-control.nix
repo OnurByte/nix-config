@@ -29,12 +29,13 @@ stdenv.mkDerivation {
     runHook preBuild
     cp ${./vesper-control.rs} vesper-control.rs
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
+    patch vesper-control.rs < ${./vesper-control-wellbeing.patch}
     rustc --edition=2021 -C opt-level=2 vesper-control.rs -o vesper-control
     runHook postBuild
   '';
 
   installPhase = ''
-    runHook preInstall
+    runHook preBuild
     install -Dm755 vesper-control $out/bin/vesper-control
     wrapProgram $out/bin/vesper-control \
       --prefix PATH : ${lib.makeBinPath [
@@ -47,7 +48,7 @@ stdenv.mkDerivation {
         qrencode
         systemd
       ]}
-    runHook postInstall
+    runHook postBuild
   '';
 
   meta = {
