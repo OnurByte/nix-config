@@ -178,7 +178,6 @@ ColumnLayout {
     }
 
     SelectRow {
-        first: true
         label: qsTr("Colour scheme")
         subtext: qsTr("Drives Caelestia, GTK and Qt from one palette")
         fallbackIcon: "palette"
@@ -216,7 +215,6 @@ ColumnLayout {
     }
 
     InfoRow {
-        first: true
         icon: "desktop_windows"
         label: qsTr("GTK theme")
         subtext: qsTr("GTK 3 and GTK 4 receive Caelestia generated CSS")
@@ -231,7 +229,6 @@ ColumnLayout {
     }
 
     RowButton {
-        last: true
         icon: "sync"
         text: qsTr("Reapply GTK theme")
         subtext: qsTr("Regenerate GTK 3/4 colours from the current Caelestia scheme")
@@ -244,7 +241,6 @@ ColumnLayout {
     }
 
     InfoRow {
-        first: true
         icon: "widgets"
         label: qsTr("Platform theme")
         subtext: qsTr("Native Qt platform integration")
@@ -259,7 +255,6 @@ ColumnLayout {
     }
 
     RowButton {
-        last: true
         icon: "sync"
         text: qsTr("Reapply Qt theme")
         subtext: qsTr("Regenerate qtengine colours from the current Caelestia scheme")
