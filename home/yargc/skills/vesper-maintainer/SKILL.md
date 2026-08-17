@@ -12,6 +12,14 @@ Maintain the Vesper NixOS workstation with evidence instead of speculative refac
 6. explain what changed and what evidence proved it
 7. apply only after the change is testable and reversible
 
+## local context
+
+- `vesper-control wellbeing-summary` is the canonical read-only machine-readable Wellbeing context for agents
+- the JSON reports whether collection is enabled, the local date, total foreground time and per-app foreground time
+- Wellbeing is enabled by default but the user can disable collection in Settings → Apps; when disabled, do not attempt to re-enable it automatically
+- treat Wellbeing as local context only: do not upload, sync or include raw usage history in external prompts unless the user explicitly asks
+- agents may use the summary to reason about workflows and app usage, but user-facing Settings owns the collection toggle
+
 ## rules
 
 - prefer NixOS and Home Manager ownership over installer scripts
