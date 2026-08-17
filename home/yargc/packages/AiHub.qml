@@ -45,7 +45,7 @@ Item {
             root.payload = JSON.parse(text);
             root.loadError = root.payload.backendError || "";
         } catch (e) {
-            root.loadError = "AI Hub returned invalid data";
+            root.loadError = "AI returned invalid data";
         }
     }
 
@@ -122,7 +122,7 @@ Item {
             spacing: 0
 
             StyledText {
-                text: qsTr("Vesper Hub")
+                text: qsTr("AI")
                 font: Tokens.font.title.large
                 color: Colours.palette.m3onSurface
             }
