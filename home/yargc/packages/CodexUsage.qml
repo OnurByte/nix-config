@@ -71,7 +71,7 @@ StyledRect {
 
     Process {
         id: usage
-        command: ["@aiHub@", "status"]
+        command: ["@ai@", "status"]
         stdout: StdioCollector {
             onStreamFinished: root.applyPayload(text)
         }
@@ -79,7 +79,7 @@ StyledRect {
 
     Process {
         id: forceRefresh
-        command: ["@aiHub@", "refresh"]
+        command: ["@ai@", "refresh"]
         stdout: StdioCollector {
             onStreamFinished: root.applyPayload(text)
         }
