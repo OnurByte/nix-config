@@ -3,7 +3,7 @@ use std::fs;
 
 use crate::json::{bool_lit, escape};
 use crate::paths::{atomic_write_private, config_root, home};
-use crate::process::success;
+use crate::process::{output, success};
 
 fn config_path() -> std::path::PathBuf {
     config_root().join("proxy.tsv")
@@ -219,15 +219,62 @@ pub fn clear(kind: Option<&str>) -> Result<(), String> {
     save(&values)
 }
 
+fn effective_https_proxy(values: &BTreeMap<String, String>) -> (&'static str, String) {
+    if let Some(value) = values.get("https") {
+        ("https", value.clone())
+    } else if let Some(value) = values.get("socks") {
+        ("socks", value.clone())
+    } else {
+        ("direct", String::new())
+    }
+}
+
+pub fn test_json() -> String {
+    let values = load();
+    let (kind, proxy) = effective_https_proxy(&values);
+    let mut args = vec![
+        "--silent",
+        "--show-error",
+        "--fail",
+        "--connect-timeout",
+        "5",
+        "--max-time",
+        "10",
+    ];
+    if !proxy.is_empty() {
+        args.push("--proxy");
+        args.push(proxy.as_str());
+    }
+    args.push("https://api.ipify.org");
+
+    match output("curl", &args) {
+        Ok(ip) => format!(
+            "{{\"ok\":true,\"externalIp\":\"{}\",\"effectiveHttpsProxyKind\":\"{}\",\"effectiveHttpsProxy\":\"{}\",\"claim\":\"connectivity-and-observed-egress-only\"}}",
+            escape(ip.trim()),
+            kind,
+            escape(&proxy)
+        ),
+        Err(error) => format!(
+            "{{\"ok\":false,\"externalIp\":\"\",\"effectiveHttpsProxyKind\":\"{}\",\"effectiveHttpsProxy\":\"{}\",\"error\":\"{}\",\"claim\":\"connectivity-and-observed-egress-only\"}}",
+            kind,
+            escape(&proxy),
+            escape(&error)
+        ),
+    }
+}
+
 pub fn status_json() -> String {
     let values = load();
+    let (https_kind, https_proxy) = effective_https_proxy(&values);
     format!(
-        "{{\"configured\":{},\"http\":\"{}\",\"https\":\"{}\",\"socks\":\"{}\",\"noProxy\":\"{}\",\"authSupported\":false,\"pacSupported\":false,\"appliesTo\":\"new-processes\"}}",
+        "{{\"configured\":{},\"http\":\"{}\",\"https\":\"{}\",\"socks\":\"{}\",\"noProxy\":\"{}\",\"authSupported\":false,\"pacSupported\":false,\"perAppSupported\":false,\"flatpakPropagation\":\"not-guaranteed\",\"appliesTo\":\"new-processes\",\"requiresRelaunch\":true,\"effectiveHttpsProxyKind\":\"{}\",\"effectiveHttpsProxy\":\"{}\"}}",
         bool_lit(!values.is_empty()),
         escape(values.get("http").map(String::as_str).unwrap_or("")),
         escape(values.get("https").map(String::as_str).unwrap_or("")),
         escape(values.get("socks").map(String::as_str).unwrap_or("")),
         escape(values.get("noProxy").map(String::as_str).unwrap_or("")),
+        https_kind,
+        escape(&https_proxy),
     )
 }
 
@@ -248,5 +295,14 @@ mod tests {
     fn normalizes_no_proxy_without_shell_syntax() {
         assert_eq!(normalize_no_proxy(" localhost, .example.com,10.0.0.0/8 ").unwrap(), "localhost,.example.com,10.0.0.0/8");
         assert!(normalize_no_proxy("localhost;touch /tmp/pwn").is_err());
+    }
+
+    #[test]
+    fn https_effective_proxy_prefers_scheme_specific_then_all_proxy() {
+        let mut values = BTreeMap::new();
+        values.insert("socks".to_string(), "socks5h://127.0.0.1:9050".to_string());
+        assert_eq!(effective_https_proxy(&values).0, "socks");
+        values.insert("https".to_string(), "http://proxy.example:8080".to_string());
+        assert_eq!(effective_https_proxy(&values).0, "https");
     }
 }
