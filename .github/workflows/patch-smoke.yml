@@ -49,6 +49,7 @@ jobs:
             cp home/yargc/packages/vesper-provider-registry.rs /tmp/vesper-provider-registry.rs
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-provider-registry.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
+            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-proxy-hardening.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-credential-aliases.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-exec-separator.patch
@@ -86,4 +87,27 @@ jobs:
 
             /tmp/vesper-control credential clear openai-main
             test "$(/tmp/vesper-control credential list | jq ".credentials | length")" = 0
+
+            printf "http://127.0.0.1:8080\n" | /tmp/vesper-control proxy set
+            test "$(/tmp/vesper-control proxy status)" = configured
+            grep -Fx "HTTP_PROXY=\"http://127.0.0.1:8080\"" "$HOME/.config/environment.d/90-vesper-proxy.conf"
+            /tmp/vesper-control proxy clear
+            test "$(/tmp/vesper-control proxy status)" = off
+
+            printf "socks5h://localhost:9050\n" | /tmp/vesper-control proxy set
+            grep -Fx "ALL_PROXY=\"socks5h://localhost:9050\"" "$HOME/.config/environment.d/90-vesper-proxy.conf"
+            /tmp/vesper-control proxy clear
+
+            if printf "http://user:pass@localhost:8080\n" | /tmp/vesper-control proxy set >/dev/null 2>&1; then
+              echo "credential-bearing proxy URL was accepted" >&2
+              exit 1
+            fi
+            if printf "http://localhost/path\n" | /tmp/vesper-control proxy set >/dev/null 2>&1; then
+              echo "proxy URL with a path was accepted" >&2
+              exit 1
+            fi
+            if printf "http://localhost:0\n" | /tmp/vesper-control proxy set >/dev/null 2>&1; then
+              echo "invalid proxy port was accepted" >&2
+              exit 1
+            fi
           '
