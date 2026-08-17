@@ -1,7 +1,7 @@
 diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
 --- a/modules/Shortcuts.qml
 +++ b/modules/Shortcuts.qml
-@@ -13,7 +13,7 @@ Scope {
+@@ -13,6 +13,6 @@ Scope {
      // qmllint enable unresolved-type
      CustomShortcut {
          name: "nexus"
@@ -9,7 +9,7 @@ diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
 +        description: "Open Settings"
          onPressed: WindowFactory.create()
      }
-@@ -124,6 +124,14 @@ Scope {
+@@ -124,6 +124,16 @@ Scope {
          target: "nexus"
      }
  
