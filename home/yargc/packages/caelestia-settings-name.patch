@@ -1,3 +1,31 @@
+diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
+--- a/modules/Shortcuts.qml
++++ b/modules/Shortcuts.qml
+@@ -13,7 +13,7 @@ Scope {
+     // qmllint enable unresolved-type
+     CustomShortcut {
+         name: "nexus"
+-        description: "Open nexus"
++        description: "Open Settings"
+         onPressed: WindowFactory.create()
+     }
+@@ -124,6 +124,14 @@ Scope {
+         target: "nexus"
+     }
+ 
++    // Public Vesper name. Keep the upstream nexus target above for backwards
++    // compatibility with existing Caelestia keybinds and scripts.
++    IpcHandler {
++        function open(): void {
++            WindowFactory.create();
++        }
++
++        target: "settings"
++    }
++
+     IpcHandler {
+         function info(title: string, message: string, icon: string): void {
+             Toaster.toast(title, message, icon, Toast.Info);
 diff --git a/modules/nexus/WindowFactory.qml b/modules/nexus/WindowFactory.qml
 --- a/modules/nexus/WindowFactory.qml
 +++ b/modules/nexus/WindowFactory.qml
