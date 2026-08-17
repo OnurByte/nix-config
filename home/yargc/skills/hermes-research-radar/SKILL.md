@@ -1,118 +1,68 @@
 ---
 name: hermes-research-radar
-description: Run Vesper's high-volume daily research system for vibe coding/coding agents, Monero/privacy/OPSEC and adjacent Nix/Linux/security: 200-1000-item discovery, seed + learned Reddit/X/GitHub/web/onion sources, self-evolving source graphs, source-specialized scouts, evidence-ranked deep reading, primary-source verification, eval-gated research-policy evolution, Linux.do free-AI radar and second-brain handoff.
+description: Run Vesper's persistent research system for coding agents, Monero/privacy/OPSEC and adjacent Nix/Linux/security with broad discovery, evidence-ranked deep reading, primary-source verification, adaptive evidence-backed sources and honest coverage reporting.
 platforms: [linux]
 ---
 
 # Hermes Research Radar
 
-Treat research as a measured pipeline, not as one giant search prompt or a generic AI-news feed.
+Treat research as a measured funnel, not one giant search prompt and not a generic AI-news feed.
 
-The objective is to inspect a broad frontier cheaply, keep a useful set of starting sources, discover better source neighborhoods, spend expensive model/context budget only on promising material, verify important claims against primary evidence, and continuously replace low-value routes with higher-value ones.
+The goal is to inspect a broad frontier cheaply, discover sources outside the current map, spend expensive context only on promising material, verify important claims and retain only state that improves later runs.
 
-## Research profile
+## priorities
 
-Prioritize, in this order:
+In order:
 
-1. **vibe coding / agentic software engineering** — Codex, Claude Code, OpenCode, Hermes, coding-agent harnesses, skills, MCP, context engineering, agent orchestration, evals, workflows, prompt/program structures, automation and overlooked developer tooling;
-2. **Monero / privacy / OPSEC** — Monero protocol and ecosystem, Cuprate, wallets, atomic swaps, private payments, privacy tooling, Tor/onion, operational security, SimpleX, GrapheneOS and adjacent privacy engineering;
-3. **Nix/Linux/security/open source** — especially when it improves Vesper, developer workflows, privacy or the two priorities above.
+1. **coding agents / vibe coding / agentic software engineering** — Codex, Claude Code, OpenCode, Hermes, harnesses, skills, MCP, context engineering, evals, orchestration and practical developer workflows
+2. **Monero / privacy / OPSEC** — Monero, Cuprate, wallets, swaps, private payments, Tor/onion, SimpleX and privacy engineering
+3. **Nix/Linux/security/open source** when it improves Vesper or the two priorities above
 
-Do **not** spend routine frontier budget on generic local-LLM/model-quantization/inference hobby content. Model/inference material is relevant only when it materially changes coding-agent quality/cost, privacy, deployment or a concrete workflow.
+Do not spend routine frontier budget on generic local-model benchmarking, quantization hobby content, token prices, trading chatter, engagement bait or repeated mainstream launch summaries unless there is a concrete workflow/privacy consequence.
 
-Also deprioritize price charts, trading chatter, generic AI headlines, engagement bait, product-launch repetition and mainstream model benchmark noise with no actionable technical angle.
+## focused references
 
-## Progressive disclosure
+Load only what the task needs:
 
-Keep this file as the routing and invariant layer. Load focused references only when needed:
+- `references/research-pipeline.md` — research funnel
+- `references/source-governance.md` — evidence and final selection
+- `references/central-sources.md` — bootstrap source map
+- `references/reddit-rss.md` — Reddit discovery
+- `references/x-research.md` — X and mirror fallback
+- `references/web-tor.md` — clearnet/onion research
+- `references/research-evolution.md` — procedure/eval evolution
 
-- `references/research-pipeline.md` — every research lane
-- `references/source-governance.md` — synthesis/final reporting
-- `references/central-sources.md` — initial seeds and domain source map
-- `references/reddit-rss.md` — Reddit intake/deep reading
-- `references/x-research.md` — X/Twitter and mirror fallback
-- `references/web-tor.md` — clearnet/onion seeds, Tor fetch and web-source learning
-- `references/research-evolution.md` — source/heuristic/skill evolution and eval gates
+Do not dump every reference into every run.
 
-Do not dump every reference into context for every task. Scripts should do deterministic intake/canonicalization/measurement without loading their source code into model context.
+## daily lanes
 
-## Daily architecture
+Keep these questions separate:
 
-The daily bundle keeps separate lanes and separate ranking rules:
+- `unknown-frontier-*`: what useful capability, technique or change exists outside the current map?
+- `agenda`: what consequential current development should not be missed?
+- `free-ai-radar`: what legitimate free/cheap capability materially improves coding-agent work?
 
-1. `unknown-frontier-github`
-2. `unknown-frontier-reddit`
-3. `unknown-frontier-x`
-4. `unknown-frontier-web`
-5. `unknown-frontier-synthesis`
-6. `free-ai-radar`
-7. `agenda`
+The scheduled frontier uses four scouts:
 
-Frontier scouts ask:
+1. GitHub
+2. Reddit
+3. X
+4. web/onion
 
-`what useful technique, tool, workflow, capability or ecosystem change exists outside the user's current map?`
+Their normal combined target is about `600` canonical candidate inspections and `48` deeper reads. These are targets, not numbers to fabricate.
 
-Agenda asks:
+## discovery contract
 
-`what important current development should not be missed today?`
+Seeds are bootstrap hints, never an allowlist.
 
-Free-AI radar asks:
+Always preserve exploration outside known subreddits, accounts, repositories, sites, onion services and vocabulary. A productive known source may receive more attention, but it must not consume all discovery budget.
 
-`what legitimate free/cheap capability materially improves the user's coding-agent workflow?`
-
-Do not collapse those questions into one score.
-
-## Seeds + autonomous expansion
-
-Seed sources are bootstrap hints, not permanent privileged providers.
-
-The source graph has simultaneous obligations:
-
-1. **seed sources** receive initial inspection budget;
-2. **trusted/promoted learned sources** receive adaptive exploitation budget;
-3. **exploration** always keeps meaningful budget for new subreddits, accounts, repositories, authors, sites, onion services and vocabulary;
-4. **quality GC** removes links that stop producing value.
-
-No web/onion seed is immortal. A seed can be demoted, retired and physically removed from the active link registry exactly like a learned source.
-
-For web/onion links, a source that has at least a few observations and remains poor for **84 hours (3.5 days)** without a useful evidence-bearing result is eligible for deletion. Repeated fetch failure is also negative evidence. The deletion is recorded in a bounded audit log, but the source is no longer active.
-
-A deleted seed must not be silently recreated just because it exists in the built-in bootstrap list. It may return only if the researcher later rediscovers it through a useful route; then it re-enters as a learned probation source.
-
-Explicit user exclusions are different: they remain tombstones so autonomous discovery cannot resurrect them against the user's stated preference.
-
-Candidate selection should normally reserve roughly:
-
-- 45% seed/anchor candidates
-- 30% trusted/promoted/probation learned-source candidates
-- 25% query-tail/new-source exploration
-
-If one pool cannot fill its quota, redistribute unused budget rather than padding. Within a pool, diversify across accounts/subreddits/sites/queries so one prolific source cannot dominate merely by publishing more items.
-
-## Hard coverage contract
-
-A normal unknown-frontier bundle targets **200-1000 distinct canonical candidate items/URLs total** across GitHub, Reddit, X and web/onion. Default runtime target is around the middle of the range.
-
-This is candidate inspection, not 200-1000 full LLM page reads.
-
-Use the funnel:
-
-`cheap intake -> canonicalize/dedupe -> relevance/novelty triage -> deep read -> primary verification -> counter-review -> synthesis -> durable learning`
-
-Deep-read only the strongest subset, normally **24-60 total**. A candidate can be an RSS entry, X post, Reddit post/comment, repository, issue, PR, commit, discussion, forum thread, onion page, paper, documentation page or linked primary artifact.
-
-Count an item once after canonicalization. Mirror copies of one X post are one source identity. A Tor route is transport, not another source.
-
-If access failure prevents the target, report actual coverage and the failure. Never manufacture numeric coverage or onion page contents.
-
-## Frontier ranking
-
-Low attention is a discovery hint, not a quality score.
+Low engagement is a discovery hint, not a quality score.
 
 Reward:
 
-- user relevance
-- novelty/information gain
+- relevance
+- novelty / information gain
 - reproducibility
 - technical density
 - evidence potential
@@ -122,118 +72,143 @@ Reward:
 
 Penalize:
 
-- duplication/familiarity
-- hype and engagement-only popularity
+- duplicates and familiar unchanged findings
+- hype without technical payload
 - unsupported claims
-- stale/dead methods
-- generic model chatter
+- obsolete methods
 - price/trading noise
-- repeated fetch failures
-- sources that repeatedly fail to survive deep reading
-- sources that consume candidate budget without producing useful findings
+- generic model chatter
+- mirrors presented as independent sources
 
-A tiny coding-agent repo with one useful primitive may outrank a major launch. A Monero issue/PR, forum thread or onion OPSEC note with real operational consequences may outrank a high-engagement crypto post, but community/onion claims still need appropriate verification.
+## Reddit
 
-## Deep reading and evidence
+Reddit RSS/Atom is useful as a cheap first pass. Use shell/curl when appropriate, then deep-read only promising threads and comment branches.
 
-Community/social/onion sources are discovery and operational-knowledge surfaces, not automatic proof.
+Configured subreddit/comment seeds are starting points only. Discover adjacent communities and vocabulary when evidence suggests a better route.
+
+Community claims are not automatically proof. Follow important claims to repositories, docs, issues, PRs, releases, specifications or papers when possible.
+
+## X
+
+X remains a required discovery surface when relevant.
+
+Prefer direct X when accessible. If blocked, XCancel or Nitter-compatible mirrors may be used through web or shell/curl. Canonicalize copies conceptually to the original `x.com/<user>/status/<id>` identity.
+
+A mirror is transport, not corroboration.
+
+Inspect replies, quotes, demos and linked artifacts when they materially change the claim.
+
+## web and onion
+
+Clearnet uses normal web/HTTP tools.
+
+For `.onion` content use the local Vesper helper through shell access:
+
+```bash
+vesper-hermes-automations tor-fetch 'http://example.onion/path/'
+```
+
+Do not claim a normal clearnet web tool reached an onion service. If Tor fails, record the failure as a limitation.
+
+Tor is transport, not an independent source.
+
+## deep reading and verification
 
 For a strong candidate:
 
-1. open enough context to understand the actual claim;
-2. inspect relevant replies/comments/issues/commits when they can correct it;
-3. follow one or two evidence-bearing links;
-4. prefer source code, commit/PR/issue, official docs, specifications, advisories, release notes or papers for verification when available;
-5. record contradictory evidence and caveats;
-6. lower confidence instead of inventing corroboration.
+1. open enough context to understand the real claim
+2. inspect replies/issues/commits that can correct it
+3. follow one or two evidence-bearing links
+4. prefer source code, commits, PRs, issues, official docs, specifications, advisories, releases or papers for important technical claims
+5. keep contradictory evidence and caveats
+6. lower confidence instead of inventing verification
 
-For `.onion` pages, use the content supplied by Vesper's local Tor intake. Do not pretend a normal clearnet web fetch reached an onion service. If Tor access failed, keep the failure explicit.
+Final synthesis should work from distilled evidence, not an unbounded raw-search dump.
 
-Final synthesis should work from distilled candidate/evidence notes, not from an unbounded raw-search dump.
+## coverage
 
-## Standard web/onion link record
+Every scout/report should expose actual coverage when measurable:
 
-Every active web/onion source is exposed in one schema:
+- candidate target
+- candidates inspected
+- canonical candidates
+- deep reads
+- primary verifications
+- surfaces used
+- limitations
 
-- `id`
-- `kind`
-- `url`
-- `label`
-- `topic`
-- `seed`
-- `tier`
-- `score`
-- `hits`
-- `observations`
-- `failures`
-- `origin`
-- `firstSeen`
-- `lastSeen`
-- `lastUseful`
+If access failures prevent the target, report the shortfall. Never manufacture coverage counts.
 
-Use:
+## durable state
 
-`vesper-hermes-automations links`
+Preserve compact state for:
 
-to inspect the current active link set.
-
-## Persistent adaptive state
-
-Keep compact durable state for:
-
-- delivered/known findings and canonical URLs
-- unresolved high-value candidates
-- initial seeds and learned source registry
-- source tier/score/hits/failures/freshness/provenance
-- mirror/feed/Tor-source health
-- useful query/source/cross-platform paths
+- delivered/known findings
+- recent scout reports
+- unresolved useful questions
+- evidence-backed source URLs
 - research heuristics and counterexamples
-- recent coverage and verification statistics
-- open questions
+- recent coverage and failures
 
-Raw intake is disposable. Durable state should preserve only information that changes tomorrow's decisions.
+Raw discovery output is disposable unless it changes a future decision.
 
-## Self-evolution
+## adaptive source registry
 
-The researcher may autonomously change **runtime research policy data**: source tiers, exploration candidates, source weights, mirror health, candidate queries, heuristic confidence and retired dead ends.
+Vesper's Rust control plane maintains a compact registry at:
 
-Do not equate discovery with usefulness. A newly mentioned subreddit/account/site/onion source starts on probation; it earns credit only when a later candidate survives deep reading and contributes evidence-bearing value.
+```text
+~/.local/state/vesper/research/unknown-frontier-ai/source-registry.json
+```
 
-Use the lifecycle:
+Inspect it with:
 
-`observe -> probation -> repeated useful evidence -> trusted -> promoted -> decay/review -> demote/retire -> delete when persistently poor`
+```bash
+vesper-research sources
+vesper-hermes-automations links
+```
 
-For reusable instruction/skill changes, use a stricter lifecycle:
+Current reinforcement is deliberately evidence-gated:
 
-`trajectory evidence -> draft -> representative evals -> with-skill vs current/baseline comparison -> review -> promote or reject -> rollback if regression appears`
+```text
+first useful final-report source -> probation
+second useful hit               -> trusted
+fourth useful hit               -> promoted
+```
 
-Do not directly rewrite the Nix-owned active skill because a single run suggested a clever rule. Keep proposed procedures under `$VESPER_SKILL_DRAFT_DIR` until evaluation supports promotion. See `references/research-evolution.md`.
+A mention in `candidateSources`, a feed result or a prompt does not earn a hit. The URL must survive into final evidence.
 
-## Evaluation contract
+Do not assume removed Python-era commands such as `links --prune` or `links --all` exist. Do not invent hidden source-GC state.
 
-Research quality is not just whether a report exists. Track and review:
+The registry is guidance, not an allowlist. Exploration remains mandatory even when promoted sources are productive.
 
-- candidate coverage and shortfall
-- pool diversity (seed/dynamic/explore)
-- deep-read count
-- primary-verification count
-- useful findings delivered
-- duplicate/familiar finding rate
-- source hit rate and failure rate
-- X mirror and Tor/onion access failures
-- sources deleted after sustained poor performance
-- token/time cost when measurable
+## self-evolution
 
-The skill's representative eval cases live under `evals/`. Skill evolution should compare the candidate procedure against the current one rather than judging a draft only by how convincing it sounds.
+Runtime evidence may improve source choices, queries and heuristics, but reusable instruction changes require a slower loop:
 
-## Reporting
+`trajectory evidence -> draft -> representative eval -> compare -> review -> promote/reject -> monitor`
 
-Every scout should expose real coverage, limitations and evidence quality. Prefer a few dense discoveries over a long weak list.
+Stage proposed procedures under `$VESPER_SKILL_DRAFT_DIR`. Never rewrite the active Nix-owned skill automatically because one run suggested a clever rule.
 
-If nothing meaningful was found, say so. Do not fill quotas with familiar or irrelevant material.
+Representative evals live under `evals/`.
 
-## Free-AI safety boundary
+Judge procedure changes by useful verified findings, unsupported rate, duplicate rate, source diversity, coverage honesty, access-failure reporting and token/time cost when measurable.
 
-Free-AI research may recommend legitimate free tiers, promotions, open-source/self-hosted alternatives, local inference when relevant, and compatibility layers.
+## reporting
 
-Do not recommend leaked/shared credentials, stolen accounts, payment bypasses, abusive mass-account creation or evasion of service restrictions.
+Prefer a few dense discoveries over a long weak list.
+
+For each strong finding make clear:
+
+- what changed / what the technique is
+- why it is new or useful
+- what evidence supports it
+- uncertainty or access limitations
+- primary source URL when available
+
+If nothing meaningful was found, say so rather than filling quotas.
+
+## free-AI boundary
+
+Free-AI research may recommend legitimate free tiers, promotions, open-source/self-hosted alternatives and compatibility layers.
+
+Do not recommend leaked/shared credentials, stolen accounts, payment bypasses, abusive mass-account creation or service-restriction evasion.
