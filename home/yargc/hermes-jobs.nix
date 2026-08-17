@@ -4,7 +4,7 @@
     mode = "dispatch";
     task = "unknown-frontier-github";
     deliver = "local";
-    description = "GitHub unknown-frontier scout";
+    description = "GitHub unknown-frontier scout with broad low-attention candidate collection";
   };
 
   unknown-frontier-reddit = {
@@ -12,7 +12,7 @@
     mode = "dispatch";
     task = "unknown-frontier-reddit";
     deliver = "local";
-    description = "Reddit unknown-frontier scout";
+    description = "Reddit unknown-frontier scout with broad recent and niche candidate collection";
   };
 
   unknown-frontier-x = {
@@ -20,7 +20,7 @@
     mode = "dispatch";
     task = "unknown-frontier-x";
     deliver = "local";
-    description = "X unknown-frontier scout";
+    description = "X unknown-frontier scout using native x_search";
   };
 
   free-ai-radar = {
@@ -28,7 +28,7 @@
     mode = "dispatch";
     task = "free-ai-radar";
     deliver = "local";
-    description = "linux.do-first legitimate free AI and cost-saving radar";
+    description = "Linux.do-first legitimate free AI and cost-saving radar";
   };
 
   unknown-frontier-synthesis = {
@@ -60,7 +60,7 @@
     mode = "dispatch";
     task = "upstream-edge-radar";
     deliver = "local";
-    description = "early warning for Vesper upstream changes";
+    description = "zero-model upstream head gate followed by research only when tracked sources move";
   };
 
   vesper-health-watch = {
@@ -77,6 +77,14 @@
     task = "cron-skill-integrity-watch";
     deliver = "telegram";
     description = "zero-token scheduler registry script and skill integrity check";
+  };
+
+  cron-retention = {
+    schedule = "15 3 * * 1";
+    mode = "dispatch";
+    task = "cron-retention";
+    deliver = "local";
+    description = "deterministic cleanup of ephemeral cron sessions outputs candidate pools and old run records";
   };
 
   second-brain-dream = {
@@ -117,5 +125,13 @@
     task = "ai-usage-economist";
     deliver = "local";
     description = "weekly local agent usage and model-cost workflow review";
+  };
+
+  weekly-intelligence-review = {
+    schedule = "0 17 * * 0";
+    mode = "dispatch";
+    task = "weekly-intelligence-review";
+    deliver = "local";
+    description = "weekly decision-oriented synthesis across research projects upstream cost and skill learning";
   };
 }
