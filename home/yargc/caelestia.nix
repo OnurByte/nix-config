@@ -176,13 +176,22 @@ in
         enableCava = false;
         iconThemeLight = "Papirus-Light";
         iconThemeDark = "Papirus-Dark";
-        postHook = "hyprctl reload";
+        # Upstream currently writes adw-gtk3-dark even in light mode. Correct
+        # that final dconf key after palette generation without forking the CLI.
+        postHook = ''
+          if [ "$SCHEME_MODE" = "light" ]; then
+            ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3'"
+          else
+            ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3-dark'"
+          fi
+          hyprctl reload
+        '';
       };
     };
   };
 
-  # Caelestia's CLI generates the live GTK/Qt palettes. Home Manager only
-  # provides the native toolkit engines so applications actually consume them.
+  # Caelestia generates live GTK/Qt palettes. Home Manager provides the native
+  # toolkit engines so applications consume those generated files.
   qt = {
     enable = true;
     platformTheme = {
