@@ -21,8 +21,8 @@ PageBase {
         if (status.running)
             return;
         status.command = force
-            ? ["@ai@", "status", "--refresh"]
-            : ["@ai@", "status"];
+            ? ["vesper-ai", "status", "--refresh"]
+            : ["vesper-ai", "status"];
         status.running = true;
     }
 
