@@ -45,7 +45,8 @@ jobs:
         shell: bash
         run: |
           set +e
-          git apply --numstat home/yargc/packages/caelestia-ai-hub.patch >caelestia-patch-check.log 2>&1
+          { cat home/yargc/packages/caelestia-ai-hub.patch; printf '\n'; } > /tmp/caelestia-ai-hub.patch
+          git apply --numstat /tmp/caelestia-ai-hub.patch >caelestia-patch-check.log 2>&1
           status=$?
           cat caelestia-patch-check.log
           if [ "$status" -ne 0 ]; then
