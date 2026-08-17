@@ -1,0 +1,12 @@
+diff --git a/modules/nexus/WindowFactory.qml b/modules/nexus/WindowFactory.qml
+--- a/modules/nexus/WindowFactory.qml
++++ b/modules/nexus/WindowFactory.qml
+@@ -38,7 +38,7 @@ Singleton {
+             contentItem.Config.screen: screen.name
+             contentItem.Tokens.screen: screen.name
+ 
+-            title: qsTr("Nexus — %1").arg(PageRegistry.pages[nexus.nState.currentPageIdx].label)
++            title: qsTr("Settings — %1").arg(PageRegistry.pages[nexus.nState.currentPageIdx].label)
+ 
+             Nexus {
+                 id: nexus
