@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
+import qs.components.controls
 import qs.services
 import qs.modules.nexus.common
 
@@ -12,21 +13,43 @@ ColumnLayout {
     id: root
 
     property var app
-    property var status: ({ sandbox: "native", flatpakId: "", networkAllowed: false, homeAllowed: false, permissionsManageable: false, todaySeconds: 0 })
+    property var status: ({
+        sandbox: "native",
+        flatpakId: "",
+        permissionsManageable: false,
+        enforcementBackend: "native/unrestricted",
+        permissionItems: [],
+        portalPermissions: "",
+        todaySeconds: 0
+    })
     property string message: ""
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
 
     readonly property bool flatpak: status.sandbox === "flatpak"
-    readonly property bool networkAllowed: status.networkAllowed === true
-    readonly property bool homeAllowed: status.homeAllowed === true
 
     function duration(seconds) {
         const minutes = Math.floor((seconds || 0) / 60);
         if (minutes < 60)
             return qsTr("%1 min").arg(minutes);
         return qsTr("%1 h %2 min").arg(Math.floor(minutes / 60)).arg(minutes % 60);
+    }
+
+    function packagedLabel(value) {
+        if (value === true)
+            return qsTr("allowed");
+        if (value === false)
+            return qsTr("not requested");
+        return qsTr("unknown");
+    }
+
+    function runPermission(command) {
+        if (permissionChange.running)
+            return;
+        root.message = "";
+        permissionChange.command = command;
+        permissionChange.running = true;
     }
 
     function refresh() {
@@ -62,60 +85,185 @@ ColumnLayout {
         }
     }
 
-    Process {
-        id: iconRequest
-        stderr: StdioCollector { id: iconError }
-        onExited: (code, status) => {
-            root.message = code === 0 ? qsTr("Adaptive icon job queued") : iconError.text.trim();
-        }
-    }
-
     SectionHeader {
-        text: qsTr("Privacy & permissions")
+        text: qsTr("Permissions")
     }
 
     InfoRow {
         icon: root.flatpak ? "deployed_code" : "warning"
         label: qsTr("Sandbox")
-        subtext: root.flatpak ? root.status.flatpakId : qsTr("native Nix app · Flatpak overrides do not apply")
-        value: root.flatpak ? qsTr("Flatpak") : qsTr("native")
+        subtext: root.flatpak
+            ? root.status.flatpakId
+            : qsTr("native Nix app · capability restrictions shown here are informational")
+        value: root.flatpak ? qsTr("Flatpak") : qsTr("unrestricted")
         iconColour: root.flatpak ? Colours.palette.m3primary : Colours.palette.m3tertiary
     }
 
-    ToggleRow {
-        visible: root.flatpak && root.status.permissionsManageable !== false
-        text: qsTr("Network access")
-        subtext: qsTr("Flatpak network share override")
-        checked: root.networkAllowed
-        disabled: permissionChange.running
-        onToggled: {
-            permissionChange.command = ["@vesperControl@", "app-permission", root.app.id, "network", checked ? "on" : "off"];
-            permissionChange.running = true;
+    InfoRow {
+        visible: !root.flatpak
+        icon: "info"
+        label: qsTr("Enforcement backend")
+        subtext: qsTr("Vesper does not pretend Flatpak overrides exist for native applications")
+        value: root.status.enforcementBackend || qsTr("informational")
+    }
+
+    Repeater {
+        model: root.flatpak ? (root.status.permissionItems || []) : []
+
+        delegate: ToggleRow {
+            required property var modelData
+            text: modelData.label
+            subtext: qsTr("packaged: %1 · override: %2 · %3")
+                .arg(root.packagedLabel(modelData.packaged))
+                .arg(modelData.userOverride || qsTr("inherit"))
+                .arg(modelData.backend || qsTr("Flatpak-enforced"))
+            checked: modelData.effective === true
+            disabled: permissionChange.running
+            onToggled: root.runPermission([
+                "@vesperControl@",
+                "app-permission",
+                root.app.id,
+                modelData.id,
+                checked ? "on" : "off"
+            ])
         }
     }
 
-    ToggleRow {
-        visible: root.flatpak && root.status.permissionsManageable !== false
-        text: qsTr("Home folder access")
-        subtext: qsTr("Flatpak home filesystem override")
-        checked: root.homeAllowed
-        disabled: permissionChange.running
-        onToggled: {
-            permissionChange.command = ["@vesperControl@", "app-permission", root.app.id, "home", checked ? "on" : "off"];
-            permissionChange.running = true;
+    SectionHeader {
+        visible: root.flatpak
+        text: qsTr("Custom filesystem")
+    }
+
+    StyledTextField {
+        id: filesystemField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("/path, ~/path or xdg-download/subdir")
+        leadingIcon: "folder"
+        supportingText: qsTr("adds or denies an explicit Flatpak filesystem path")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+
+        Item { Layout.fillWidth: true }
+
+        IconTextButton {
+            isRound: true
+            icon: "block"
+            text: qsTr("Deny")
+            disabled: !filesystemField.text.trim() || permissionChange.running
+            onClicked: root.runPermission([
+                "@vesperControl@", "app-filesystem", root.app.id,
+                filesystemField.text.trim(), "off"
+            ])
         }
+
+        IconTextButton {
+            isRound: true
+            icon: "check"
+            text: qsTr("Allow")
+            disabled: !filesystemField.text.trim() || permissionChange.running
+            onClicked: root.runPermission([
+                "@vesperControl@", "app-filesystem", root.app.id,
+                filesystemField.text.trim(), "on"
+            ])
+        }
+    }
+
+    SectionHeader {
+        visible: root.flatpak
+        text: qsTr("D-Bus")
+    }
+
+    StyledTextField {
+        id: dbusField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("org.example.Service")
+        leadingIcon: "cable"
+        supportingText: qsTr("well-known name · explicit Flatpak talk/deny override")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+
+        Item { Layout.fillWidth: true }
+
+        IconTextButton {
+            isRound: true
+            icon: "block"
+            text: qsTr("Deny session")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission([
+                "@vesperControl@", "app-dbus", root.app.id,
+                "session", dbusField.text.trim(), "deny"
+            ])
+        }
+
+        IconTextButton {
+            isRound: true
+            icon: "check"
+            text: qsTr("Allow session")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission([
+                "@vesperControl@", "app-dbus", root.app.id,
+                "session", dbusField.text.trim(), "talk"
+            ])
+        }
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+
+        Item { Layout.fillWidth: true }
+
+        IconTextButton {
+            isRound: true
+            icon: "block"
+            text: qsTr("Deny system")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission([
+                "@vesperControl@", "app-dbus", root.app.id,
+                "system", dbusField.text.trim(), "deny"
+            ])
+        }
+
+        IconTextButton {
+            isRound: true
+            icon: "check"
+            text: qsTr("Allow system")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission([
+                "@vesperControl@", "app-dbus", root.app.id,
+                "system", dbusField.text.trim(), "talk"
+            ])
+        }
+    }
+
+    InfoRow {
+        visible: root.flatpak
+        icon: "shield"
+        label: qsTr("Portal permission store")
+        subtext: qsTr("camera, location and other portal-mediated decisions stay owned by the portal permission store")
+        value: root.status.portalPermissions ? qsTr("entries present") : qsTr("no entries")
     }
 
     RowButton {
         visible: root.flatpak && root.status.permissionsManageable !== false
         icon: "restart_alt"
-        text: qsTr("Reset Flatpak overrides")
-        subtext: qsTr("return this app to its packaged permissions")
+        text: qsTr("Reset all Flatpak overrides")
+        subtext: qsTr("return this app to its packaged permission defaults")
         disabled: permissionChange.running
-        onClicked: {
-            permissionChange.command = ["@vesperControl@", "app-reset-permissions", root.app.id];
-            permissionChange.running = true;
-        }
+        onClicked: root.runPermission(["@vesperControl@", "app-reset-permissions", root.app.id])
     }
 
     SectionHeader {
@@ -129,27 +277,12 @@ ColumnLayout {
         value: root.duration(root.status.todaySeconds)
     }
 
-    SectionHeader {
-        text: qsTr("Experimental")
-    }
-
-    RowButton {
-        icon: "auto_awesome"
-        text: qsTr("Queue adaptive icon")
-        subtext: qsTr("hand this app icon to the reviewed Vesper AI icon workflow")
-        disabled: !root.app || iconRequest.running
-        onClicked: {
-            iconRequest.command = ["@vesperControl@", "icon", "request", root.app.id, root.app.icon || ""];
-            iconRequest.running = true;
-        }
-    }
-
     StyledText {
         Layout.fillWidth: true
         Layout.leftMargin: Tokens.padding.largeIncreased
         visible: root.message
         text: root.message
-        color: root.message.includes(qsTr("queued")) ? Colours.palette.m3primary : Colours.palette.m3error
+        color: Colours.palette.m3error
         font: Tokens.font.label.small
         wrapMode: Text.WordWrap
     }

@@ -12,7 +12,6 @@ ColumnLayout {
 
     property var wellbeing: ({ totalSeconds: 0, apps: [] })
     property bool wellbeingEnabled: true
-    property bool adaptiveIcons: false
     property string wellbeingError: ""
 
     Layout.fillWidth: true
@@ -30,8 +29,6 @@ ColumnLayout {
             wellbeingState.running = true;
         if (!wellbeingStatus.running)
             wellbeingStatus.running = true;
-        if (!iconStatus.running)
-            iconStatus.running = true;
     }
 
     Component.onCompleted: refresh()
@@ -77,19 +74,6 @@ ColumnLayout {
                 root.wellbeingError = wellbeingChangeError.text.trim() || qsTr("Could not change Wellbeing state");
             root.refresh();
         }
-    }
-
-    Process {
-        id: iconStatus
-        command: ["@vesperControl@", "icon", "status"]
-        stdout: StdioCollector {
-            onStreamFinished: root.adaptiveIcons = text.trim() === "on"
-        }
-    }
-
-    Process {
-        id: iconChange
-        onExited: (code, status) => root.refresh()
     }
 
     SectionHeader {
@@ -143,19 +127,5 @@ ColumnLayout {
         color: Colours.palette.m3error
         font: Tokens.font.body.small
         wrapMode: Text.WordWrap
-    }
-
-    SectionHeader {
-        text: qsTr("Experimental")
-    }
-
-    ToggleRow {
-        text: qsTr("AI adaptive icons")
-        subtext: qsTr("enable the reviewed icon-job queue; generated assets are never applied automatically")
-        checked: root.adaptiveIcons
-        onToggled: {
-            iconChange.command = ["@vesperControl@", "icon", checked ? "on" : "off"];
-            iconChange.running = true;
-        }
     }
 }
