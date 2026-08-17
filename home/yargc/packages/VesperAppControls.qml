@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
+import qs.services
 import qs.modules.nexus.common
 
 ColumnLayout {
@@ -85,6 +86,7 @@ ColumnLayout {
         text: qsTr("Network access")
         subtext: qsTr("Flatpak network share override")
         checked: root.networkAllowed
+        disabled: permissionChange.running
         onToggled: {
             permissionChange.command = ["@vesperControl@", "app-permission", root.app.id, "network", checked ? "on" : "off"];
             permissionChange.running = true;
@@ -96,6 +98,7 @@ ColumnLayout {
         text: qsTr("Home folder access")
         subtext: qsTr("Flatpak home filesystem override")
         checked: root.homeAllowed
+        disabled: permissionChange.running
         onToggled: {
             permissionChange.command = ["@vesperControl@", "app-permission", root.app.id, "home", checked ? "on" : "off"];
             permissionChange.running = true;
@@ -107,6 +110,7 @@ ColumnLayout {
         icon: "restart_alt"
         text: qsTr("Reset Flatpak overrides")
         subtext: qsTr("return this app to its packaged permissions")
+        disabled: permissionChange.running
         onClicked: {
             permissionChange.command = ["@vesperControl@", "app-reset-permissions", root.app.id];
             permissionChange.running = true;
