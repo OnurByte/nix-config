@@ -10,7 +10,7 @@ import qs.modules.nexus.common
 ColumnLayout {
     id: root
 
-    property var wellbeing: ({ schemaVersion: 1, enabled: true, agentReadable: true, totalSeconds: 0, apps: [] })
+    property var wellbeing: ({ totalSeconds: 0, apps: [] })
     property bool wellbeingEnabled: true
     property bool adaptiveIcons: false
     property string wellbeingError: ""
@@ -26,6 +26,8 @@ ColumnLayout {
     }
 
     function refresh() {
+        if (!wellbeingState.running)
+            wellbeingState.running = true;
         if (!wellbeingStatus.running)
             wellbeingStatus.running = true;
         if (!iconStatus.running)
@@ -42,17 +44,24 @@ ColumnLayout {
     }
 
     Process {
+        id: wellbeingState
+        command: ["@vesperControl@", "wellbeing", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: root.wellbeingEnabled = text.trim() !== "off"
+        }
+    }
+
+    Process {
         id: wellbeingStatus
         command: ["@vesperControl@", "wellbeing-summary"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
                     root.wellbeing = JSON.parse(text);
-                    root.wellbeingEnabled = root.wellbeing.enabled !== false;
                     root.wellbeingError = "";
                 } catch (e) {
-                    root.wellbeing = ({ schemaVersion: 1, enabled: true, agentReadable: true, totalSeconds: 0, apps: [] });
-                    root.wellbeingError = qsTr("Could not read Wellbeing status");
+                    root.wellbeing = ({ totalSeconds: 0, apps: [] });
+                    root.wellbeingError = qsTr("Could not read Wellbeing summary");
                 }
             }
         }
@@ -113,7 +122,7 @@ ColumnLayout {
         icon: "robot_2"
         label: qsTr("Agent access")
         subtext: qsTr("read-only JSON via vesper-control wellbeing-summary")
-        value: root.wellbeing.agentReadable === false ? qsTr("off") : qsTr("available")
+        value: qsTr("available")
     }
 
     Repeater {
