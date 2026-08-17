@@ -6,13 +6,16 @@
   flatpak,
   hyprland,
   imagemagick,
+  iproute2,
   jq,
   lib,
   libsecret,
   makeWrapper,
   networkmanager,
+  procps,
   qrencode,
   rustc,
+  snapper,
   stdenv,
   systemd,
 }:
@@ -52,7 +55,7 @@ stdenv.mkDerivation {
 
     wrapProgram $out/bin/vesper-control \
       --set VESPER_CURATED_ICON_DIR $out/share/vesper/app-icons \
-      --prefix PATH : ${lib.makeBinPath [ bluez coreutils curl flatpak hyprland imagemagick jq libsecret networkmanager qrencode systemd ]}
+      --prefix PATH : ${lib.makeBinPath [ bluez coreutils curl flatpak hyprland imagemagick iproute2 jq libsecret networkmanager procps qrencode snapper systemd ]}
 
     wrapProgram $out/bin/vesper-icon-generator \
       --prefix PATH : ${lib.makeBinPath [ coreutils curl imagemagick jq ]}
