@@ -33,6 +33,7 @@ stdenv.mkDerivation {
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
     patch vesper-control.rs < ${./vesper-control-proxy-hardening.patch}
     patch vesper-control.rs < ${./vesper-control-wellbeing.patch}
+    patch vesper-control.rs < ${./vesper-control-app-permissions.patch}
     patch vesper-control.rs < ${./vesper-control-credential-aliases.patch}
     patch vesper-control.rs < ${./vesper-control-exec-separator.patch}
     patch vesper-control.rs < ${./vesper-control-wellbeing-toggle.patch}
