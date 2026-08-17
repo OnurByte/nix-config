@@ -29,6 +29,7 @@ fn enabled_path() -> PathBuf { config_root().join("wellbeing.enabled") }
 fn focus_path() -> PathBuf { config_root().join("wellbeing/focus.enabled") }
 fn goal_path() -> PathBuf { config_root().join("wellbeing/daily-goal-seconds") }
 fn policy_path() -> PathBuf { config_root().join("wellbeing/apps.tsv") }
+fn export_path() -> PathBuf { state_root().join("wellbeing-export.json") }
 
 fn day_path(day: &str) -> PathBuf { dir().join(format!("{day}.tsv")) }
 
@@ -388,6 +389,13 @@ pub fn app_json(id: &str) -> String {
     )
 }
 
+pub fn export_report() -> Result<String, String> {
+    let path = export_path();
+    let report = report_json();
+    atomic_write_private(&path, format!("{report}\n").as_bytes())?;
+    Ok(path.display().to_string())
+}
+
 pub fn reset(scope: &str) -> Result<(), String> {
     match scope {
         "today" => match fs::remove_file(day_path(&today())) {
@@ -396,13 +404,19 @@ pub fn reset(scope: &str) -> Result<(), String> {
             Err(error) => Err(error.to_string()),
         },
         "all" => {
-            for entry in fs::read_dir(dir()).map_err(|error| error.to_string())?.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|value| value.to_str()) == Some("tsv") {
-                    fs::remove_file(path).map_err(|error| error.to_string())?;
+            match fs::read_dir(dir()) {
+                Ok(entries) => {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().and_then(|value| value.to_str()) == Some("tsv") {
+                            fs::remove_file(path).map_err(|error| error.to_string())?;
+                        }
+                    }
+                    Ok(())
                 }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error.to_string()),
             }
-            Ok(())
         }
         _ => Err("wellbeing reset expects today or all".to_string()),
     }
