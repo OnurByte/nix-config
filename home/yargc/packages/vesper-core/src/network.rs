@@ -1,8 +1,13 @@
+use std::env;
 use std::fs;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 use crate::json::{bool_lit, escape};
-use crate::paths::{atomic_write_private, config_root};
-use crate::process::{output, success};
+use crate::paths::{atomic_write_private, config_root, ensure_private_dir, state_root};
+use crate::process::{binary, output, success};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct RadioState {
@@ -165,6 +170,77 @@ pub fn set_airplane(enabled: bool) -> Result<(), String> {
     }
 }
 
+pub fn set_dpi(enabled: bool) -> Result<(), String> {
+    let action = if enabled { "start" } else { "stop" };
+    output("systemctl", &[action, "nfqws2@default.service"]).map(|_| ())
+}
+
+fn runtime_root() -> PathBuf {
+    env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state_root().join("runtime"))
+        .join("vesper")
+}
+
+fn wifi_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace(';', "\\;")
+        .replace(',', "\\,")
+        .replace(':', "\\:")
+}
+
+pub fn wifi_qr() -> Result<PathBuf, String> {
+    let connection = active_connection().ok_or_else(|| "no active Wi-Fi connection".to_string())?;
+    let values = output(
+        "nmcli",
+        &[
+            "-s",
+            "-g",
+            "802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk",
+            "connection",
+            "show",
+            &connection,
+        ],
+    )?;
+    let mut lines = values.lines();
+    let ssid = lines.next().unwrap_or("").trim();
+    let key_mgmt = lines.next().unwrap_or("").trim();
+    let password = lines.next().unwrap_or("").trim();
+    if ssid.is_empty() {
+        return Err("active Wi-Fi has no SSID".to_string());
+    }
+    let auth = if key_mgmt.is_empty() || key_mgmt == "none" { "nopass" } else { "WPA" };
+    let payload = format!(
+        "WIFI:T:{};S:{};P:{};;",
+        auth,
+        wifi_escape(ssid),
+        wifi_escape(password)
+    );
+
+    let root = runtime_root();
+    ensure_private_dir(&root).map_err(|error| error.to_string())?;
+    let path = root.join("wifi-share.svg");
+    let path_string = path.to_string_lossy().into_owned();
+    let mut child = Command::new(binary("qrencode"))
+        .args(["-t", "SVG", "-o", &path_string, "-m", "2"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start qrencode: {error}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(payload.as_bytes()).map_err(|error| error.to_string())?;
+        stdin.write_all(b"\n").map_err(|error| error.to_string())?;
+    }
+    let result = child.wait_with_output().map_err(|error| format!("failed to wait for qrencode: {error}"))?;
+    if !result.status.success() {
+        return Err(String::from_utf8_lossy(&result.stderr).trim().to_string());
+    }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).map_err(|error| error.to_string())?;
+    Ok(path)
+}
+
 fn zapret_profile_raw() -> String {
     let value = fs::read_to_string("/etc/vesper/zapret-profile.json").unwrap_or_default();
     let trimmed = value.trim();
@@ -265,5 +341,10 @@ mod tests {
         assert!(!valid_test_domain("localhost"));
         assert!(!valid_test_domain("example.com/path"));
         assert!(!valid_test_domain("example.com;id"));
+    }
+
+    #[test]
+    fn wifi_payload_escaping_is_qr_safe() {
+        assert_eq!(wifi_escape("a;b,c:d\\e"), "a\\;b\\,c\\:d\\\\e");
     }
 }
