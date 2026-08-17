@@ -1,6 +1,6 @@
 --- a/modules/bar/Bar.qml
 +++ b/modules/bar/Bar.qml
-@@ -130,6 +130,48 @@ ColumnLayout {
+@@ -130,6 +130,52 @@ ColumnLayout {
                      }
                  }
              }
@@ -18,6 +18,8 @@
 +                delegate: EntryWrapper {
 +                    AgentCockpit {
 +                        objectName: "taskbarAgentCockpit"
++                        bar: root
++                        popouts: root.popouts
 +                    }
 +                }
 +            }
@@ -26,6 +28,8 @@
 +                delegate: EntryWrapper {
 +                    PrivacyHud {
 +                        objectName: "taskbarPrivacyHud"
++                        bar: root
++                        popouts: root.popouts
 +                    }
 +                }
 +            }
@@ -49,6 +53,25 @@
              DelegateChoice {
                  roleValue: "clock"
                  delegate: EntryWrapper {
+--- a/modules/bar/popouts/Content.qml
++++ b/modules/bar/popouts/Content.qml
+@@ -105,6 +105,16 @@ Item {
+             name: "lockstatus"
+             sourceComponent: LockStatus {}
+         }
++
++        Popout {
++            name: "agentcockpit"
++            sourceComponent: AgentCockpitPopout {}
++        }
++
++        Popout {
++            name: "privacyhud"
++            sourceComponent: PrivacyHudPopout {}
++        }
+ 
+         Repeater {
+             model: ScriptModel {
 --- a/modules/dashboard/Content.qml
 +++ b/modules/dashboard/Content.qml
 @@ -30,6 +30,12 @@ Item {
