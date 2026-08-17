@@ -67,6 +67,8 @@ fn main() {
 
         [command, id] if command == "app-status" => println!("{}", apps::status_json(id)),
         [command, id, permission, value] if command == "app-permission" => apps::set_permission(id, permission, on_off(value)).unwrap_or_else(|error| fail(error)),
+        [command, id, permission] if command == "app-reset-permission" => apps::reset_permission(id, permission).unwrap_or_else(|error| fail(error)),
+        [command, id, category] if command == "app-reset-category" => apps::reset_category(id, category).unwrap_or_else(|error| fail(error)),
         [command, id] if command == "app-reset-permissions" => apps::reset_all(id).unwrap_or_else(|error| fail(error)),
         [command, id, filesystem, value] if command == "app-filesystem" => apps::set_filesystem(id, filesystem, on_off(value)).unwrap_or_else(|error| fail(error)),
         [command, id, bus, name, access] if command == "app-dbus" => apps::set_dbus(id, bus, name, access).unwrap_or_else(|error| fail(error)),
