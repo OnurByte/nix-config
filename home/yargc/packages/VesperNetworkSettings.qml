@@ -114,10 +114,9 @@ ColumnLayout {
     }
 
     NavRow {
-        last: true
         icon: "language"
         text: qsTr("Proxy")
-        subtext: root.net.proxy ? qsTr("configured for new processes") : qsTr("off")
+        subtext: root.net.proxy ? qsTr("HTTP / HTTPS / SOCKS / NO_PROXY configured") : qsTr("off")
         onClicked: root.nState.openSubPageRoute("proxy")
     }
 
@@ -146,7 +145,7 @@ ColumnLayout {
 
     ToggleRow {
         text: qsTr("Zapret2 DPI bypass")
-        subtext: qsTr("current boot · adaptive host detection · TLS ClientHello · TCP 443")
+        subtext: qsTr("current boot · declarative adaptive host detection profile")
         checked: root.net.zapret
         disabled: dpi.running
         onToggled: {
@@ -154,6 +153,14 @@ ColumnLayout {
             dpi.command = ["@vesperControl@", "network", "dpi", checked ? "on" : "off"];
             dpi.running = true;
         }
+    }
+
+    NavRow {
+        last: true
+        icon: "network_check"
+        text: qsTr("Zapret profile & diagnostics")
+        subtext: qsTr("inspect the Nix-owned profile and run HTTPS reachability tests")
+        onClicked: root.nState.openSubPageRoute("dpi")
     }
 
     StyledText {
