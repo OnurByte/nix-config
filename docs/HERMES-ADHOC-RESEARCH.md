@@ -1,61 +1,72 @@
 # Hermes ad-hoc research
 
-The daily frontier remains a bounded recurring radar. Large one-off research uses a separate command and run state.
+The scheduled frontier stays bounded. One-off research uses `vesper-research` and the same Rust state/report layer without creating another scheduler.
 
 ```bash
-vesper-research "monero opsec" --pages 3000
+vesper-research "monero opsec" --pages 600
 ```
 
 Equivalent explicit form:
 
 ```bash
-vesper-research run "monero opsec" --pages 3000
+vesper-research run "monero opsec" --pages 600
 ```
 
-The default run attempts GitHub, Reddit, X/Twitter, normal web/forums and Tor onion sources. A 3000-page request is split into bounded waves instead of one huge model context. `--pages` means canonical candidate inspection; the default deep-read budget scales separately. Override depth when necessary:
+`--pages` is the candidate-inspection target, not a promise that every candidate becomes a full model page read. The current Rust CLI clamps explicit targets to `50..2000` and defaults to `600`.
+
+Deep-read budget scales separately from the candidate target and can be overridden:
 
 ```bash
-vesper-research run "coding agent context engineering" --pages 3000 --deep-reads 220
+vesper-research run "coding agent context engineering" --pages 1200 --deep-reads 80
 ```
 
-Run artifacts live under:
+The default deep-read target is roughly `pages / 12`, clamped to `12..80`. An explicit `--deep-reads` value is clamped to `1..120`.
 
-```text
-~/.local/state/vesper/research/adhoc-research/<run-id>/
-```
+The research agent can use GitHub, Reddit, X, normal web/forums and local Tor/onion access where relevant. Existing sources are seeds, never an allowlist. Important community claims should be followed to primary technical evidence.
 
-The final report is persisted as an `adhoc-research` briefing. Wave state stays run-local; only useful evidence-bearing source discoveries reinforce the shared source registry.
+The final result is persisted as an `adhoc-research` briefing under the normal Vesper briefing/state roots. The current Rust implementation does not claim the removed Python-era wave-local artifact tree or a fake multi-wave guarantee.
 
-## Source view
+## source view
 
-Show Reddit, X, web and onion sources through one normalized view:
+Inspect the shared evidence-backed source registry:
 
 ```bash
 vesper-research sources
-vesper-research sources --json
+vesper-hermes-automations links
 ```
 
-The normalized public fields are:
+Current records are intentionally compact. They can include:
 
 ```text
-id kind url label topic seed tier score hits observations failures origin firstSeen lastSeen lastUseful
+id
+url
+tier
+score
+hits
+failures
+origin
+firstSeen
+lastSeen
+lastUseful
 ```
 
-## Coverage policy
+A URL is reinforced only when it survives into final report evidence. Repeated useful hits move it from `probation` to `trusted` and then `promoted`.
 
-Default surface allocation is approximately:
+## coverage policy
 
-- GitHub 30%
-- Reddit 25%
-- X 25%
-- web/onion 20%
+A request is a target, not invented coverage. The report should state actual candidate/deep-read counts and blocked surfaces when available.
 
-Every surface gets a non-zero budget. Access failure becomes an explicit limitation and contributes to shortfall.
+For large research:
 
-## Current structural notes
+- use broad cheap discovery before deep reading
+- deduplicate mirror/canonical identities conceptually
+- keep GitHub, Reddit, X and relevant web/onion surfaces in the plan
+- spend deep-read budget on the strongest candidates
+- verify important claims against primary sources
+- report shortfall instead of padding weak results
 
-- Daily research and ad-hoc research are deliberately separate: recurring radar is clamped to 200-1000 candidates, while ad-hoc research supports larger explicit targets.
-- Large ad-hoc runs use wave-local artifacts, avoiding a single giant prompt and reducing duplicate counting.
-- Reddit RSS and X mirrors are cheap intake layers; community claims still need primary-source verification.
-- Onion pages are fetched locally through Tor and passed into the research lane; Tor is transport, not corroboration.
-- `r/opsec` is configured as a Reddit discovery/comment seed.
+Tor is transport, not corroboration. Onion access uses the local helper:
+
+```bash
+vesper-hermes-automations tor-fetch 'http://example.onion/path/'
+```
