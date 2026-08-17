@@ -15,13 +15,28 @@ let
   hermesCore = pkgs.callPackage ./packages/hermes-core.nix { inherit hermesAgent; };
   ai = pkgs.callPackage ./packages/ai.nix { inherit codexbar agentCockpit privacyHud; };
   mcpServerNames = builtins.attrNames config.programs.mcp.servers;
+  caelestiaNavigationPatch = pkgs.writeText "caelestia-navigation.patch" (builtins.readFile ./packages/caelestia-navigation.patch + "\n");
   caelestiaAiPatch = pkgs.writeText "caelestia-ai.patch" (builtins.readFile ./packages/caelestia-ai.patch + "\n");
+  caelestiaRegistryPatch = pkgs.writeText "caelestia-settings-registry.patch" (builtins.readFile ./packages/caelestia-settings-registry.patch + "\n");
+  caelestiaAppsPatch = pkgs.writeText "caelestia-apps.patch" (builtins.readFile ./packages/caelestia-apps.patch + "\n");
+  caelestiaNetworkPatch = pkgs.writeText "caelestia-network.patch" (builtins.readFile ./packages/caelestia-network.patch + "\n");
+  caelestiaAppearancePatch = pkgs.writeText "caelestia-appearance.patch" (builtins.readFile ./packages/caelestia-appearance.patch + "\n");
   caelestiaAppIconsPatch = pkgs.writeText "caelestia-app-icons.patch" (builtins.readFile ./packages/caelestia-app-icons.patch + "\n");
   caelestiaWellbeingPatch = pkgs.writeText "caelestia-wellbeing-ipc.patch" (builtins.readFile ./packages/caelestia-wellbeing-ipc.patch + "\n");
   caelestiaSettingsNamePatch = pkgs.writeText "caelestia-settings-name.patch" (builtins.readFile ./packages/caelestia-settings-name.patch + "\n");
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ caelestiaAiPatch caelestiaAppIconsPatch caelestiaWellbeingPatch caelestiaSettingsNamePatch ];
+    patches = (old.patches or [ ]) ++ [
+      caelestiaNavigationPatch
+      caelestiaAiPatch
+      caelestiaRegistryPatch
+      caelestiaAppsPatch
+      caelestiaNetworkPatch
+      caelestiaAppearancePatch
+      caelestiaAppIconsPatch
+      caelestiaWellbeingPatch
+      caelestiaSettingsNamePatch
+    ];
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml --subst-var-by ai ${ai}/bin/vesper-ai
       substitute ${./packages/Ai.qml} modules/dashboard/Ai.qml --subst-var-by ai ${ai}/bin/vesper-ai
