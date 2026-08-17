@@ -67,16 +67,16 @@ PageBase {
         InfoRow {
             icon: "language"
             label: qsTr("Process proxy")
-            subtext: qsTr("writes ~/.config/environment.d/90-vesper-proxy.conf")
+            subtext: qsTr("credential-free host proxy · managed through environment.d")
             value: root.configured ? qsTr("configured") : qsTr("off")
         }
 
         StyledTextField {
             id: proxyField
             Layout.fillWidth: true
-            placeholderText: qsTr("http://, https:// or socks5:// URL")
+            placeholderText: qsTr("http(s)://host:port or socks5(h)://host:port")
             leadingIcon: "link"
-            supportingText: qsTr("applies to newly started processes; restart the session for a clean global handoff")
+            supportingText: qsTr("proxy credentials and URL paths are rejected · restart the session for desktop-wide effect")
             inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
             onAccepted: root.saveProxy()
         }
