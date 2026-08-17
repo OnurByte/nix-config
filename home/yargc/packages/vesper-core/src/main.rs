@@ -1,5 +1,6 @@
 mod apps;
 mod consumers;
+mod credentials;
 mod icons;
 mod json;
 mod mcp;
@@ -50,6 +51,14 @@ fn stdin_value() -> String {
 fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.as_slice() {
+        [command] if command == "ai-status" => println!("{}", credentials::ai_status_json()),
+        [group, action] if group == "credential" && action == "list" => println!("{}", credentials::list_json()),
+        [group, action, id] if group == "credential" && action == "status" => println!("{}", if credentials::status(id).unwrap_or_else(|error| fail(error)) { "configured" } else { "missing" }),
+        [group, action, provider] if group == "credential" && action == "set" => credentials::set(provider, None, &stdin_value()).unwrap_or_else(|error| fail(error)),
+        [group, action, provider, alias] if group == "credential" && action == "set" => credentials::set(provider, Some(alias), &stdin_value()).unwrap_or_else(|error| fail(error)),
+        [group, action, id] if group == "credential" && action == "clear" => credentials::clear(id).unwrap_or_else(|error| fail(error)),
+        [group, action, id, command @ ..] if group == "credential" && action == "exec" => credentials::exec(id, command).unwrap_or_else(|error| fail(error)),
+
         [group, action] if group == "network" && action == "status" => println!("{}", network::status_json()),
         [group, action, value] if group == "network" && action == "airplane" => network::set_airplane(on_off(value)).unwrap_or_else(|error| fail(error)),
         [group, action] if group == "network" && action == "dpi-status" => println!("{}", network::dpi_status_json()),
