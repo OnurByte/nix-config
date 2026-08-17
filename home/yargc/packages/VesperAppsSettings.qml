@@ -10,8 +10,10 @@ import qs.modules.nexus.common
 ColumnLayout {
     id: root
 
-    property var wellbeing: ({ totalSeconds: 0, apps: [] })
+    property var wellbeing: ({ schemaVersion: 1, enabled: true, agentReadable: true, totalSeconds: 0, apps: [] })
+    property bool wellbeingEnabled: true
     property bool adaptiveIcons: false
+    property string wellbeingError: ""
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
@@ -46,10 +48,25 @@ ColumnLayout {
             onStreamFinished: {
                 try {
                     root.wellbeing = JSON.parse(text);
+                    root.wellbeingEnabled = root.wellbeing.enabled !== false;
+                    root.wellbeingError = "";
                 } catch (e) {
-                    root.wellbeing = ({ totalSeconds: 0, apps: [] });
+                    root.wellbeing = ({ schemaVersion: 1, enabled: true, agentReadable: true, totalSeconds: 0, apps: [] });
+                    root.wellbeingError = qsTr("Could not read Wellbeing status");
                 }
             }
+        }
+    }
+
+    Process {
+        id: wellbeingChange
+        stderr: StdioCollector {
+            id: wellbeingChangeError
+        }
+        onExited: (code, status) => {
+            if (code !== 0)
+                root.wellbeingError = wellbeingChangeError.text.trim() || qsTr("Could not change Wellbeing state");
+            root.refresh();
         }
     }
 
@@ -70,11 +87,33 @@ ColumnLayout {
         text: qsTr("Wellbeing")
     }
 
+    ToggleRow {
+        text: qsTr("Wellbeing")
+        subtext: qsTr("On by default · local foreground app time · agents can read the summary")
+        checked: root.wellbeingEnabled
+        disabled: wellbeingChange.running
+        onToggled: {
+            root.wellbeingEnabled = checked;
+            root.wellbeingError = "";
+            wellbeingChange.command = ["@vesperControl@", "wellbeing", checked ? "on" : "off"];
+            wellbeingChange.running = true;
+        }
+    }
+
     InfoRow {
-        icon: "timer"
+        icon: root.wellbeingEnabled ? "timer" : "pause_circle"
         label: qsTr("Foreground app time today")
-        subtext: qsTr("local only · sampled from Hyprland")
+        subtext: root.wellbeingEnabled
+            ? qsTr("local only · paused while idle or locked")
+            : qsTr("collection paused · existing history kept locally")
         value: root.formatDuration(root.wellbeing.totalSeconds)
+    }
+
+    InfoRow {
+        icon: "robot_2"
+        label: qsTr("Agent access")
+        subtext: qsTr("read-only JSON via vesper-control wellbeing-summary")
+        value: root.wellbeing.agentReadable === false ? qsTr("off") : qsTr("available")
     }
 
     Repeater {
@@ -86,6 +125,15 @@ ColumnLayout {
             label: modelData.app
             value: root.formatDuration(modelData.seconds)
         }
+    }
+
+    StyledText {
+        Layout.fillWidth: true
+        visible: root.wellbeingError
+        text: root.wellbeingError
+        color: Colours.palette.m3error
+        font: Tokens.font.body.small
+        wrapMode: Text.WordWrap
     }
 
     SectionHeader {
