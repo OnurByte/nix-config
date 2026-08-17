@@ -24,11 +24,15 @@ let
   caelestiaWellbeingPatch = pkgs.writeText "caelestia-wellbeing-ipc.patch" (
     builtins.readFile ./packages/caelestia-wellbeing-ipc.patch + "\n"
   );
+  caelestiaSettingsNamePatch = pkgs.writeText "caelestia-settings-name.patch" (
+    builtins.readFile ./packages/caelestia-settings-name.patch + "\n"
+  );
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       caelestiaPatch
       caelestiaWellbeingPatch
+      caelestiaSettingsNamePatch
     ];
 
     postPatch = (old.postPatch or "") + ''
@@ -82,8 +86,6 @@ in
     systemd.enable = false;
 
     settings = {
-      # Shell surfaces follow the Vesper glass contract: layered translucency,
-      # readable backdrop blur, calm spacing and larger continuous rounding.
       appearance = {
         rounding.scale = 1.25;
         spacing.scale = 1.05;
@@ -210,8 +212,6 @@ in
         enableCava = false;
         iconThemeLight = "Papirus-Light";
         iconThemeDark = "Papirus-Dark";
-        # Upstream currently writes adw-gtk3-dark even in light mode. Correct
-        # that final dconf key after palette generation without forking the CLI.
         postHook = ''
           if [ "$SCHEME_MODE" = "light" ]; then
             ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3'"
@@ -238,8 +238,6 @@ in
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
-  # Caelestia generates live GTK/Qt palettes. Home Manager provides the native
-  # toolkit engines so applications consume those generated files.
   qt = {
     enable = true;
     platformTheme = {
@@ -264,8 +262,6 @@ in
     pkgs.darkly
   ];
 
-  # The AI settings page reads the same MCP registry that Home Manager feeds to
-  # Codex, Claude Code and OpenCode. Keep this generated inventory value-only.
   home.file.".config/vesper/mcp-servers".text = lib.concatStringsSep "\n" mcpServerNames + "\n";
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
