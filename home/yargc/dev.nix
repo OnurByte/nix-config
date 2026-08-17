@@ -11,6 +11,7 @@ let
   zen = inputs.zen-browser.packages.${pkgs.system}.default;
   bunx = "${pkgs.bun}/bin/bunx";
   mcpCache = "${config.home.homeDirectory}/.cache/vesper-mcp/bun";
+  vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
 
   # GCC is the global system toolchain. Keep Clang's compiler frontends
   # available without adding Clang's entire wrapper output to Home Manager:
@@ -43,16 +44,11 @@ let
 
   githubMcp = pkgs.writeShellApplication {
     name = "vesper-github-mcp";
-    runtimeInputs = [
-      pkgs.gh
-      githubMcpServer
-    ];
+    runtimeInputs = [ vesperControl ];
     text = ''
-      if token="$(gh auth token 2>/dev/null)" && [ -n "$token" ]; then
-        export GITHUB_PERSONAL_ACCESS_TOKEN="$token"
-      fi
-
-      exec github-mcp-server stdio --toolsets=context,repos,issues,pull_requests,actions
+      exec ${vesperControl}/bin/vesper-control credential exec github -- \
+        ${githubMcpServer}/bin/github-mcp-server stdio \
+        --toolsets=context,repos,issues,pull_requests,actions
     '';
   };
 in
