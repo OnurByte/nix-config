@@ -11,7 +11,7 @@ let
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
   vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
   vesperDoctor = pkgs.callPackage ./packages/vesper-doctor.nix { };
-  hermesAgent = inputs.hermes-agent.packages.${pkgs.system}.default;
+  hermesAgent = import ./packages/hermes-agent.nix { inherit inputs pkgs; };
   hermesCore = pkgs.callPackage ./packages/hermes-core.nix { inherit hermesAgent; };
   ai = pkgs.callPackage ./packages/ai.nix { inherit codexbar agentCockpit privacyHud; };
   mcpServerNames = builtins.attrNames config.programs.mcp.servers;
