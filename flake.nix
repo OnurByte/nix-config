@@ -50,11 +50,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    codexbar-ui-src = {
-      url = "github:Marouan-chak/codexbar-waybar";
-      flake = false;
-    };
-
     llm-agents.url = "github:numtide/llm-agents.nix";
   };
 

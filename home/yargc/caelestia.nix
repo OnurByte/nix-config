@@ -17,7 +17,7 @@ let
   };
 
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ./packages/caelestia-codexbar.patch ];
+    patches = (old.patches or [ ]) ++ [ ./packages/caelestia-ai-hub.patch ];
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
@@ -184,8 +184,6 @@ in
     privacyHud
     aiHub
     codexbar
-    pkgs.adw-gtk3
-    pkgs.papirus-icon-theme
   ];
 
   xdg.desktopEntries = {

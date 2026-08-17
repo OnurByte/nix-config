@@ -31,10 +31,22 @@ jobs:
             nix-instantiate --parse "$file" >/dev/null
           done < <(find . -name '*.nix' -print0)
 
-      - name: Parse Vesper Python
+      - name: Check AI Hub Rust backend
+        shell: bash
+        run: |
+          nix shell nixpkgs#rustc nixpkgs#jq -c bash -c '
+            set -euo pipefail
+            rustc --edition=2021 --emit=metadata home/yargc/packages/ai-hub.rs -o /tmp/vesper-ai-hub.rmeta
+            printf "%s\n%s\n%s\n" \
+              "{\"host\":{},\"providers\":[]}" \
+              "{\"count\":0,\"agents\":[]}" \
+              "{\"unread\":0,\"high\":0}" \
+              | jq -s -e -f home/yargc/packages/ai-hub.jq >/dev/null
+          '
+
+      - name: Parse Hermes Python
         run: |
           python3 -m py_compile \
-            home/yargc/packages/ai-hub.py \
             home/yargc/packages/hermes-runtime.py \
             home/yargc/packages/hermes_automation_common.py \
             home/yargc/packages/hermes_automation_contract.py \
