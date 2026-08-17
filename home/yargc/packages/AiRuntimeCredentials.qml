@@ -17,25 +17,33 @@ PageBase {
     title: qsTr("Runtime Credentials")
     isSubPage: true
 
-    function selected(name) {
-        const item = root.consumers.find(value => value.consumer === name);
-        return item ? item.credential : "native";
+    function consumer(name) {
+        return root.consumers.find(value => value.consumer === name) || ({});
     }
 
-    function refresh() {
-        if (!status.running)
-            status.running = true;
+    function selected(name) {
+        const item = root.consumer(name);
+        return item.credential || item.defaultCredential || "";
     }
 
     function save(consumer, credential) {
         if (change.running)
             return;
+        const item = root.consumer(consumer);
+        const selectedCredential = credential.trim() || item.defaultCredential || "";
+        if (!selectedCredential)
+            return;
         root.message = "";
-        change.command = ["@vesperControl@", "consumer", "set", consumer, credential.trim() || "native"];
+        change.command = ["@vesperControl@", "consumer", "set", consumer, selectedCredential];
         change.running = true;
     }
 
     Component.onCompleted: refresh()
+
+    function refresh() {
+        if (!status.running)
+            status.running = true;
+    }
 
     Process {
         id: status
@@ -88,7 +96,7 @@ PageBase {
         StyledTextField {
             id: openCodeCredential
             Layout.fillWidth: true
-            placeholderText: "native"
+            placeholderText: root.consumer("opencode").defaultCredential || "native"
             leadingIcon: "terminal"
             supportingText: qsTr("native keeps OpenCode's own auth; otherwise enter a Vesper credential alias")
             inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
@@ -111,9 +119,9 @@ PageBase {
         StyledTextField {
             id: hermesCredential
             Layout.fillWidth: true
-            placeholderText: "xai"
+            placeholderText: root.consumer("hermes").defaultCredential || "xai"
             leadingIcon: "travel_explore"
-            supportingText: qsTr("default xAI API-key credential; native disables Vesper key injection")
+            supportingText: qsTr("API-key credential alias only; Hermes cannot opt out into unmanaged native auth")
             inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
         }
 
@@ -134,7 +142,7 @@ PageBase {
         InfoRow {
             icon: "palette"
             label: qsTr("App Icons")
-            subtext: qsTr("selectable inside App Icons because provider/model belong to that pipeline")
+            subtext: qsTr("provider/model live in App Icons; credential selection still resolves to a Vesper API-key alias")
             value: root.selected("icon-curator")
         }
 
