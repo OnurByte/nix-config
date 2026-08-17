@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -244,15 +245,19 @@ fn write_cache(path: &Path, value: &str) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "cache path has no parent".to_string())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
     let tmp = parent.join(format!(".snapshot.{}.tmp", std::process::id()));
     fs::write(&tmp, format!("{value}\n")).map_err(|error| error.to_string())?;
+    fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
     fs::rename(&tmp, path).map_err(|error| error.to_string())?;
     Ok(())
 }
 
 fn acquire_lock(path: &Path) -> Result<LockGuard, String> {
     for _ in 0..60 {
-        match OpenOptions::new().write(true).create_new(true).open(path) {
+        match OpenOptions::new().write(true).create_new(true).mode(0o600).open(path) {
             Ok(mut file) => {
                 let _ = writeln!(file, "{}", std::process::id());
                 return Ok(LockGuard {
@@ -295,6 +300,7 @@ fn snapshot(force: bool, max_age: u64) -> String {
     let cache = root.join("snapshot.json");
     let lock = root.join("refresh.lock");
     let _ = fs::create_dir_all(&root);
+    let _ = fs::set_permissions(&root, fs::Permissions::from_mode(0o700));
 
     let cached = read_cache(&cache);
     if !force && cached.is_some() && cache_age(&cache) <= Duration::from_secs(max_age) {
