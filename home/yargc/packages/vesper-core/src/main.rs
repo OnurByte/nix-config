@@ -49,6 +49,8 @@ fn main() {
         [command, id] if command == "app-reset-permissions" => apps::reset_all(id).unwrap_or_else(|error| fail(error)),
         [command, id, filesystem, value] if command == "app-filesystem" => apps::set_filesystem(id, filesystem, on_off(value)).unwrap_or_else(|error| fail(error)),
         [command, id, bus, name, access] if command == "app-dbus" => apps::set_dbus(id, bus, name, access).unwrap_or_else(|error| fail(error)),
+        [command, id, name, value] if command == "app-env" => apps::set_env(id, name, value).unwrap_or_else(|error| fail(error)),
+        [command, id, name] if command == "app-unset-env" => apps::unset_env(id, name).unwrap_or_else(|error| fail(error)),
 
         [group, action] if group == "notifications" && action == "status" => println!("{}", notifications::status_json()),
         [group, action, id] if group == "notifications" && action == "get" => println!("{}", notifications::policy_for(id)),
