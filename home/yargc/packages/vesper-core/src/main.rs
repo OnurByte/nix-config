@@ -58,6 +58,7 @@ fn main() {
         [group, action] if group == "recovery" && action == "status" => println!("{}", recovery::status_json()),
 
         [group, action] if group == "proxy" && action == "status" => println!("{}", proxy::status_json()),
+        [group, action] if group == "proxy" && action == "test" => println!("{}", proxy::test_json()),
         [group, action] if group == "proxy" && action == "set" => proxy::set_legacy(&stdin_value()).unwrap_or_else(|error| fail(error)),
         [group, action, kind, value] if group == "proxy" && action == "set" => proxy::set(kind, value).unwrap_or_else(|error| fail(error)),
         [group, action] if group == "proxy" && action == "clear" => proxy::clear(None).unwrap_or_else(|error| fail(error)),
