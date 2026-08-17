@@ -31,12 +31,16 @@ jobs:
             git apply --numstat "$patch_file" >/dev/null
           done < <(find home/yargc/packages -maxdepth 1 -type f -name '*.patch' -print0)
 
-      - name: Reject CLI credential extraction
+      - name: Reject credential extraction and stale UI branding
         shell: bash
         run: |
           set -euo pipefail
           if grep -R --line-number --fixed-strings 'gh auth token' home/yargc; then
             echo "Vesper must not extract credentials from gh CLI state" >&2
+            exit 1
+          fi
+          if grep -R --line-number --include='*.qml' -E 'AI Hub|Vesper Hub' home/yargc; then
+            echo "User-facing AI surfaces must be named AI" >&2
             exit 1
           fi
 
@@ -51,6 +55,7 @@ jobs:
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-proxy-hardening.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing.patch
+            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-app-permissions.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-credential-aliases.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-exec-separator.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing-toggle.patch
