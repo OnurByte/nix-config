@@ -118,7 +118,7 @@ ColumnLayout {
         icon: "language"
         text: qsTr("Proxy")
         subtext: root.net.proxy ? qsTr("configured for new processes") : qsTr("off")
-        onClicked: root.nState.openSubPage(7)
+        onClicked: root.nState.openSubPageRoute("proxy")
     }
 
     StyledRect {
