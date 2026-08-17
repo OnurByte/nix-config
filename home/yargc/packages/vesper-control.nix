@@ -30,6 +30,7 @@ stdenv.mkDerivation {
     cp ${./vesper-control.rs} vesper-control.rs
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
     patch vesper-control.rs < ${./vesper-control-wellbeing.patch}
+    patch vesper-control.rs < ${./vesper-control-credential-aliases.patch}
     rustc --edition=2021 -C opt-level=2 vesper-control.rs -o vesper-control
     runHook postBuild
   '';
