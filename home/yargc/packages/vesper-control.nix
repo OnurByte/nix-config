@@ -36,15 +36,33 @@ stdenv.mkDerivation {
     cp ${./vesper-provider-registry.rs} vesper-provider-registry.rs
     cargo build --release --locked --manifest-path vesper-core/Cargo.toml
 
-    cp ${./vesper-control.rs} vesper-control-legacy.rs
-    rustc --edition=2021 -C opt-level=2 vesper-control-legacy.rs -o vesper-control-legacy
+    cp ${./vesper-control.rs} vesper-control-compat.rs
+    rustc --edition=2021 -C opt-level=2 vesper-control-compat.rs -o vesper-control-compat
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
     install -Dm755 vesper-core/target/release/vesper-control $out/bin/vesper-control
-    install -Dm755 vesper-control-legacy $out/bin/vesper-control-legacy
+    install -Dm755 vesper-control-compat $out/bin/vesper-control-compat
+
+    # Transitional compatibility router. First-party credential paths have
+    # moved to Cargo; older commands that have not been migrated yet continue
+    # to reach the frozen monolithic compatibility binary without recursion.
+    cat > $out/bin/vesper-control-legacy <<EOF
+#!${stdenv.shell}
+set -eu
+case "\''${1:-}" in
+  credential|ai-status)
+    exec $out/bin/vesper-control "\$@"
+    ;;
+  *)
+    exec $out/bin/vesper-control-compat "\$@"
+    ;;
+esac
+EOF
+    chmod 0755 $out/bin/vesper-control-legacy
+
     install -Dm755 ${./vesper-icon-generator} $out/bin/vesper-icon-generator
     install -Dm644 ${./app-icons/manifest.txt} $out/share/vesper/app-icons/manifest.txt
     install -Dm644 ${./app-icons/zen.svg} $out/share/vesper/app-icons/zen.svg
