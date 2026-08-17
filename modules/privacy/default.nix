@@ -1,4 +1,4 @@
-{ ... }:
+{ username, ... }:
 {
   # Keep a system Tor SOCKS endpoint available for CLI/privacy-aware software.
   # Tor Browser remains a separate application with its own bundled Tor.
@@ -28,5 +28,23 @@
         "--lua-desync=fakedsplit:pos=1,midsld:tcp_ts=-1000"
       ];
     };
+  };
+
+  # Settings may only start/stop the one Zapret worker it exposes. Do not grant
+  # generic systemd service-management rights to the desktop session.
+  security.polkit = {
+    enable = true;
+    extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (action.id == "org.freedesktop.systemd1.manage-units" &&
+            subject.user == "${username}" &&
+            action.lookup("unit") == "nfqws2@default.service") {
+          var verb = action.lookup("verb");
+          if (verb == "start" || verb == "stop") {
+            return "yes";
+          }
+        }
+      });
+    '';
   };
 }
