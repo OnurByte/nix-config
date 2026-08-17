@@ -120,53 +120,54 @@ there is no local model service running by default
 active agent skills have one canonical home at `~/.agents/skills`
 Codex Claude and OpenCode skill paths link back to that tree instead of maintaining separate copies
 
-### hermes cron
+### hermes automation
 
-Hermes uses its own cron / scheduled automation layer for recurring research
-there is no second GitHub Actions or systemd timer trying to run the same jobs
-cron is only the heartbeat: every run resumes persistent research state instead of starting from zero or creating more cron jobs
+Hermes cron is the only recurring scheduler
+`vesper-hermes-automations` is the only research execution owner and uses transient `systemd-run --user` workers only after a cron trigger
+there is no second systemd timer or GitHub Actions schedule running the same research fleet
 
-| job | behavior |
+```text
+Hermes cron
+    ↓
+short no-agent trigger
+    ↓
+watchdog / monitor / dispatch
+    ↓
+long Hermes one-shot when reasoning is actually needed
+    ↓
+persistent state + briefing inbox + Obsidian consolidation
+```
+
+Daily research keeps three different questions separate:
+
+| lane | question |
 |---|---|
-| `briefing` | recurring concise digest such as a daily research/news briefing |
-| `research` | deeper bounded investigation into one question |
-| `watch` | check a condition and only surface something when it meaningfully changes |
+| `unknown-frontier-ai` | what useful AI thing exists outside the current knowledge map? |
+| `agenda` | what important thing happened or changed today? |
+| `free-ai-radar` | what legitimate useful free AI access/workflow appeared or changed? |
 
-The research loop is adaptive
-user supplied RSS feeds subreddits repositories channels and sites are starting seeds rather than a permanent allowlist
-Hermes can expand through links authors crossposts GitHub docs/issues/PRs citations transcripts curated lists and generated queries then learn which sources and methods keep producing signal
+Unknown Frontier AI is deliberately not a popularity feed
+GitHub and Reddit use broad parallel deterministic collectors that can inspect hundreds of candidates before the model spends time verifying the strongest subset
+X uses Hermes' native `x_search` toolset
+full candidate pools stay under `~/.local/state/vesper/research/candidate-pools/` while prompt injection is bounded
 
-A normal run follows roughly this shape
+The frontier synthesis learns useful future discovery routes in a bounded inert `discovery-seeds.json`
+seed sources and queries are starting points rather than an allowlist and weak duplicate/hype-heavy routes are allowed to decay
 
-```text
-persistent state
-      ↓
-orient → cheap intake → expand → verify → rank → deliver → learn
-             ↑                                      ↓
-       rss/atom first                    source + heuristic state
-```
+Free AI Radar treats Linux.do as a first-class discovery source then verifies outward against original providers repos releases docs or authors
+Agenda is ranked by importance recency consequence and relevance rather than obscurity
+Morning Check keeps Agenda Unknown Frontier AI and Free AI Radar as separate sections
 
-The default balance is roughly 80% exploitation and 20% exploration
-exploration can rise when findings repeat source overlap grows novelty drops a topic moves quickly or results cluster inside one source graph
+Upstream Edge Radar starts with a zero-token deterministic GitHub head monitor
+if tracked upstreams did not move the expensive worker is never launched
 
-Reusable behavior is learned gradually
+Research jobs explicitly preload `hermes-research-radar`
+nightly second-brain consolidation explicitly preloads Hermes' bundled `obsidian` skill together with `vesper-obsidian-second-brain`
+learned procedures remain drafts under `~/.local/share/vesper/skill-drafts/` until reviewed rather than silently becoming active skills
 
-```text
-observation
-  → candidate heuristic
-  → repeated trials
-  → active heuristic
-  → decay / review
-  → retained scoped or retired
-```
+Sunday also runs user-pain mining project archaeology skill-evolution review AI-usage economics and one final weekly intelligence synthesis
 
-Hermes writes durable briefing output under `~/.local/share/vesper/briefings/`
-reports can keep Markdown for reading and JSON for shell/UI integration with fields such as title summary body type priority sources createdAt job and unread
-short notifications are for the interrupt while the full report stays in the briefing inbox
-`watch` jobs stay quiet when there is no meaningful change
-
-Potential reusable skills go to `~/.local/share/vesper/skill-drafts/`
-those drafts are deliberately not active until reviewed and promoted into `~/.agents/skills`
+Full architecture and commands live in [`docs/HERMES.md`](docs/HERMES.md)
 
 ## apps
 
@@ -263,7 +264,8 @@ if the disk or subvolume layout changes those values need to be captured again b
 ├── flake.lock
 ├── docs/
 │   ├── INSTALL.md
-│   └── BACKUP.md
+│   ├── BACKUP.md
+│   └── HERMES.md
 ├── hosts/
 │   └── vesper/
 ├── modules/
@@ -275,6 +277,7 @@ if the disk or subvolume layout changes those values need to be captured again b
     ├── hypr/
     ├── packages/
     ├── skills/
+    ├── hermes-jobs.nix
     ├── caelestia.nix
     ├── command-memory.nix
     ├── dev.nix
