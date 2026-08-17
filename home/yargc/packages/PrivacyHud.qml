@@ -7,6 +7,9 @@ import qs.services
 StyledRect {
     id: root
 
+    required property Item bar
+    required property var popouts
+
     property string privacyState: "idle"
     property string label: "LOC"
     property string details: "Privacy state unavailable"
@@ -29,6 +32,13 @@ StyledRect {
     function refresh(): void {
         if (!status.running)
             status.running = true;
+    }
+
+    function togglePopout(): void {
+        const opening = !(root.popouts.hasCurrent && root.popouts.currentName === "privacyhud");
+        root.popouts.currentName = "privacyhud";
+        root.popouts.currentCenter = root.mapToItem(root.bar, root.width / 2, root.height / 2).y;
+        root.popouts.hasCurrent = opening;
     }
 
     Component.onCompleted: refresh()
@@ -57,11 +67,6 @@ StyledRect {
                 }
             }
         }
-    }
-
-    Process {
-        id: popup
-        command: ["@privacyHud@", "popup"]
     }
 
     ColumnLayout {
@@ -94,8 +99,8 @@ StyledRect {
         onClicked: event => {
             if (event.button === Qt.RightButton)
                 root.refresh();
-            else if (!popup.running)
-                popup.running = true;
+            else
+                root.togglePopout();
         }
     }
 }
