@@ -31,6 +31,15 @@ jobs:
             git apply --numstat "$patch_file" >/dev/null
           done < <(find home/yargc/packages -maxdepth 1 -type f -name '*.patch' -print0)
 
+      - name: Reject CLI credential extraction
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R --line-number --fixed-strings 'gh auth token' home/yargc; then
+            echo "Vesper must not extract credentials from gh CLI state" >&2
+            exit 1
+          fi
+
       - name: Compile and exercise patched Vesper control plane
         shell: bash
         run: |
@@ -42,13 +51,51 @@ jobs:
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wifi-qr.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-credential-aliases.patch
+            patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-exec-separator.patch
             patch /tmp/vesper-control.rs < home/yargc/packages/vesper-control-wellbeing-toggle.patch
             rustc --edition=2021 /tmp/vesper-control.rs -o /tmp/vesper-control
 
             export HOME="$TMPDIR/vesper-test-home"
             export XDG_CONFIG_HOME="$HOME/.config"
             export XDG_STATE_HOME="$HOME/.local/state"
-            mkdir -p "$HOME"
+            export VESPER_FAKE_SECRET_DIR="$TMPDIR/vesper-fake-secret"
+            mkdir -p "$HOME" "$VESPER_FAKE_SECRET_DIR"
+
+            cat > /tmp/secret-tool <<"EOF"
+#!/usr/bin/env bash
+set -euo pipefail
+root="${VESPER_FAKE_SECRET_DIR:?}"
+command="$1"
+shift
+key=""
+if [[ "$command" == "store" && "${1:-}" == --label=* ]]; then
+  shift
+fi
+if [[ "${1:-}" == "service" && "${2:-}" == "vesper-ai" && "${3:-}" == "provider" ]]; then
+  key="default-${4:-}"
+elif [[ "${1:-}" == "service" && "${2:-}" == "vesper-ai" && "${3:-}" == "credential" && "${5:-}" == "provider" ]]; then
+  key="alias-${4:-}-${6:-}"
+else
+  exit 2
+fi
+case "$command" in
+  store)
+    cat > "$root/$key"
+    ;;
+  lookup)
+    [[ -f "$root/$key" ]]
+    cat "$root/$key"
+    ;;
+  clear)
+    rm -f "$root/$key"
+    ;;
+  *)
+    exit 2
+    ;;
+esac
+EOF
+            chmod +x /tmp/secret-tool
+            export PATH="/tmp:$PATH"
 
             test "$(/tmp/vesper-control wellbeing status)" = on
             /tmp/vesper-control wellbeing off
@@ -56,4 +103,20 @@ jobs:
             /tmp/vesper-control wellbeing on
             test "$(/tmp/vesper-control wellbeing status)" = on
             /tmp/vesper-control wellbeing-summary | jq -e ".totalSeconds == 0 and (.apps | type == \"array\")" >/dev/null
+
+            printf "default-secret\n" | /tmp/vesper-control credential set openai
+            test "$(/tmp/vesper-control credential status openai)" = configured
+            /tmp/vesper-control credential exec openai -- bash -c "test \"\$OPENAI_API_KEY\" = default-secret"
+
+            printf "alias-secret\n" | /tmp/vesper-control credential set openai openai-main
+            test "$(/tmp/vesper-control credential status openai-main)" = configured
+            /tmp/vesper-control credential list | jq -e ".credentials[] | select(.id == \"openai-main\" and .provider == \"openai\" and .configured == true)" >/dev/null
+            /tmp/vesper-control credential exec openai-main -- bash -c "test \"\$OPENAI_API_KEY\" = alias-secret"
+
+            printf "github-secret\n" | /tmp/vesper-control credential set github
+            test "$(/tmp/vesper-control credential status github)" = configured
+            /tmp/vesper-control credential exec github -- bash -c "test \"\$GITHUB_PERSONAL_ACCESS_TOKEN\" = github-secret"
+
+            /tmp/vesper-control credential clear openai-main
+            test "$(/tmp/vesper-control credential list | jq ".credentials | length")" = 0
           '
