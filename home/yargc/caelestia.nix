@@ -36,6 +36,8 @@ let
       substitute ${./packages/AiSkillsMcp.qml} modules/nexus/pages/AiSkillsMcp.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/AiHermes.qml} modules/nexus/pages/AiHermes.qml --subst-var-by hermesAutomation ${hermesCore}/bin/vesper-hermes-automations
       substitute ${./packages/SystemHealth.qml} modules/nexus/pages/SystemHealth.qml --subst-var-by vesperDoctor ${vesperDoctor}/bin/vesper-doctor
+      substitute ${./packages/PrivacyPage.qml} modules/nexus/pages/PrivacyPage.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/BackupRecovery.qml} modules/nexus/pages/BackupRecovery.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperProxyPage.qml} modules/nexus/pages/VesperProxyPage.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperAppsSettings.qml} modules/nexus/pages/VesperAppsSettings.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
