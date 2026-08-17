@@ -9,7 +9,7 @@ diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
 +        description: "Open Settings"
          onPressed: WindowFactory.create()
      }
-@@ -124,6 +124,16 @@ Scope {
+@@ -124,6 +124,20 @@ Scope {
          target: "nexus"
      }
  
@@ -18,6 +18,10 @@ diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
 +    IpcHandler {
 +        function open(): void {
 +            WindowFactory.create();
++        }
++
++        function openPage(page: string): void {
++            WindowFactory.create(null, { initialPageLabel: page });
 +        }
 +
 +        target: "settings"
@@ -29,7 +33,28 @@ diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
 diff --git a/modules/nexus/WindowFactory.qml b/modules/nexus/WindowFactory.qml
 --- a/modules/nexus/WindowFactory.qml
 +++ b/modules/nexus/WindowFactory.qml
-@@ -38,7 +38,7 @@ Singleton {
+@@ -24,6 +24,20 @@ Singleton {
+         FloatingWindow {
+             id: win
+ 
++            property string initialPageLabel: ""
++
++            Component.onCompleted: {
++                if (!initialPageLabel)
++                    return;
++                for (let i = 0; i < PageRegistry.pages.length; ++i) {
++                    if (PageRegistry.pages[i].label === initialPageLabel) {
++                        nexus.nState.currentPageIdx = i;
++                        return;
++                    }
++                }
++                console.warn("Unknown Settings page", initialPageLabel);
++            }
++
+             color: Colours.tPalette.m3surface
+             surfaceFormat.opaque: false
+ 
+@@ -38,7 +52,7 @@ Singleton {
              contentItem.Config.screen: screen.name
              contentItem.Tokens.screen: screen.name
  
