@@ -10,7 +10,7 @@ import qs.modules.nexus.common
 
 PageBase {
     id: root
-    property var backup: ({ retention: {} })
+    property var backup: ({ backup: {}, repositoryCheck: {}, snapper: {}, btrfsScrub: {}, retention: {} })
     property string errorText: ""
     title: qsTr("Backup & Recovery")
 
@@ -48,42 +48,74 @@ PageBase {
         width: root.cappedWidth
         spacing: Tokens.spacing.extraSmall / 2
 
-        SectionHeader { first: true; text: qsTr("Backup status") }
+        SectionHeader { first: true; text: qsTr("Restic") }
         InfoRow {
             icon: "backup"
             label: qsTr("Backend")
-            subtext: qsTr("NixOS-managed local backup job")
+            subtext: qsTr("NixOS-managed Restic job; repository credentials stay outside Settings")
             value: root.backup.backend || qsTr("unknown")
         }
         InfoRow {
             icon: "schedule"
-            label: qsTr("Scheduler")
-            subtext: root.backup.nextRun || qsTr("next run unavailable")
-            value: root.backup.timerActive ? qsTr("active") : qsTr("inactive")
+            label: qsTr("Backup scheduler")
+            subtext: root.backup.backup?.nextRun || qsTr("next run unavailable")
+            value: root.backup.backup?.timerActive ? qsTr("active") : qsTr("inactive")
         }
         InfoRow {
-            icon: root.backup.failed ? "error" : "verified"
-            label: qsTr("Last job")
-            subtext: root.backup.lastRun || qsTr("no completed run reported")
-            value: root.backup.failed ? qsTr("failed") : (root.backup.lastResult || qsTr("unknown"))
+            icon: root.backup.backup?.failed ? "error" : "verified"
+            label: qsTr("Last backup")
+            subtext: root.backup.backup?.lastRun || qsTr("no completed run reported")
+            value: root.backup.backup?.failed ? qsTr("failed") : (root.backup.backup?.lastResult || qsTr("unknown"))
         }
         InfoRow {
-            icon: "folder"
-            label: qsTr("Repository")
-            subtext: root.backup.repository || qsTr("repository path unavailable")
-            value: root.backup.repositoryExists ? qsTr("present") : qsTr("not detected")
+            icon: root.backup.repositoryCheck?.failed ? "error" : "fact_check"
+            label: qsTr("Repository check")
+            subtext: root.backup.repositoryCheck?.lastRun || qsTr("no completed check reported")
+            value: root.backup.repositoryCheck?.failed ? qsTr("failed") : (root.backup.repositoryCheck?.lastResult || qsTr("unknown"))
+        }
+        InfoRow {
+            icon: "event_repeat"
+            label: qsTr("Next repository check")
+            subtext: root.backup.repositoryCheck?.nextRun || qsTr("next check unavailable")
+            value: root.backup.repositoryCheck?.timerActive ? qsTr("scheduled") : qsTr("inactive")
         }
         InfoRow {
             icon: "history"
             label: qsTr("Retention")
-            subtext: qsTr("daily / weekly / monthly archives")
+            subtext: qsTr("daily / weekly / monthly snapshots kept by Restic")
             value: qsTr("%1 / %2 / %3")
                 .arg(root.backup.retention?.daily ?? 0)
                 .arg(root.backup.retention?.weekly ?? 0)
                 .arg(root.backup.retention?.monthly ?? 0)
         }
 
+        SectionHeader { text: qsTr("Local snapshots") }
+        InfoRow {
+            icon: "restore"
+            label: qsTr("Snapper · root")
+            subtext: root.backup.snapper?.root || qsTr("snapshot inventory unavailable")
+            value: root.backup.snapper?.root ? qsTr("available") : qsTr("unknown")
+        }
+        InfoRow {
+            icon: "home_storage"
+            label: qsTr("Snapper · home")
+            subtext: root.backup.snapper?.home || qsTr("snapshot inventory unavailable")
+            value: root.backup.snapper?.home ? qsTr("available") : qsTr("unknown")
+        }
+        InfoRow {
+            icon: "storage"
+            label: qsTr("Btrfs scrub")
+            subtext: root.backup.btrfsScrub?.next || qsTr("scrub timer unavailable")
+            value: root.backup.btrfsScrub?.result ? qsTr("reported") : qsTr("unknown")
+        }
+
         SectionHeader { text: qsTr("Recovery policy") }
+        InfoRow {
+            icon: root.backup.restoreReady ? "verified_user" : "warning"
+            label: qsTr("Restore readiness")
+            subtext: qsTr("Ready only after both the latest backup and repository verification report success")
+            value: root.backup.restoreReady ? qsTr("ready") : qsTr("not verified")
+        }
         InfoRow {
             icon: "lock"
             label: qsTr("Restore from Settings")
@@ -93,7 +125,7 @@ PageBase {
         InfoRow {
             icon: "deployed_code"
             label: qsTr("Ownership")
-            subtext: qsTr("Job, repository path and retention are declared by NixOS")
+            subtext: qsTr("Restic jobs, Snapper timelines and Btrfs scrub schedules are declared by NixOS")
             value: qsTr("NixOS")
         }
 
