@@ -24,6 +24,8 @@ ColumnLayout {
         apps: []
     })
     property string wellbeingError: ""
+    property string exportedPath: ""
+    property bool clearAllArmed: false
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
@@ -65,6 +67,13 @@ ColumnLayout {
         onTriggered: root.refresh()
     }
 
+    Timer {
+        id: clearAllConfirmTimer
+        interval: 6000
+        repeat: false
+        onTriggered: root.clearAllArmed = false
+    }
+
     Process {
         id: wellbeingStatus
         command: ["@vesperControl@", "wellbeing", "report"]
@@ -91,6 +100,22 @@ ColumnLayout {
             if (code !== 0)
                 root.wellbeingError = wellbeingChangeError.text.trim() || qsTr("Could not change Wellbeing state");
             root.refresh();
+        }
+    }
+
+    Process {
+        id: wellbeingExport
+        command: ["@vesperControl@", "wellbeing", "export"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.exportedPath = text.trim();
+                root.wellbeingError = "";
+            }
+        }
+        stderr: StdioCollector { id: wellbeingExportError }
+        onExited: (code, status) => {
+            if (code !== 0)
+                root.wellbeingError = wellbeingExportError.text.trim() || qsTr("Could not export Wellbeing data");
         }
     }
 
@@ -220,6 +245,50 @@ ColumnLayout {
                 ? modelData.category
                 : (modelData.overLimit ? qsTr("advisory daily limit reached") : "")
             value: root.formatDuration(modelData.seconds)
+        }
+    }
+
+    SectionHeader {
+        text: qsTr("Local data")
+    }
+
+    RowButton {
+        icon: "download"
+        text: qsTr("Export Wellbeing JSON")
+        subtext: root.exportedPath
+            ? root.exportedPath
+            : qsTr("writes a private 0600 snapshot under Vesper's local state directory")
+        disabled: wellbeingExport.running
+        onClicked: {
+            root.exportedPath = "";
+            wellbeingExport.running = true;
+        }
+    }
+
+    RowButton {
+        icon: "restart_alt"
+        text: qsTr("Reset today")
+        subtext: qsTr("clears only today's recorded foreground samples")
+        disabled: wellbeingChange.running
+        onClicked: root.run(["@vesperControl@", "wellbeing", "reset", "today"])
+    }
+
+    RowButton {
+        icon: root.clearAllArmed ? "warning" : "delete_sweep"
+        text: root.clearAllArmed ? qsTr("Confirm clear all history") : qsTr("Clear all history")
+        subtext: root.clearAllArmed
+            ? qsTr("click again within 6 seconds; app policies and goals are kept")
+            : qsTr("removes recorded daily TSV history only")
+        disabled: wellbeingChange.running
+        onClicked: {
+            if (root.clearAllArmed) {
+                clearAllConfirmTimer.stop();
+                root.clearAllArmed = false;
+                root.run(["@vesperControl@", "wellbeing", "reset", "all"]);
+            } else {
+                root.clearAllArmed = true;
+                clearAllConfirmTimer.restart();
+            }
         }
     }
 
