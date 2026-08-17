@@ -37,18 +37,18 @@ let
 
     postPatch = (old.postPatch or "") + ''
       substitute ${./packages/CodexUsage.qml} modules/bar/components/CodexUsage.qml \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
       substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
       substitute ${./packages/AgentCockpit.qml} modules/bar/components/AgentCockpit.qml \
         --subst-var-by agentCockpit ${agentCockpit}/bin/vesper-agent-cockpit
       substitute ${./packages/PrivacyHud.qml} modules/bar/components/PrivacyHud.qml \
         --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
       substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
       substitute ${./packages/AiPage.qml} modules/nexus/pages/AiPage.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control \
-        --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+        --subst-var-by aiHub ${aiHub}/bin/vesper-ai
       substitute ${./packages/AiCredentials.qml} modules/nexus/pages/AiCredentials.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \
