@@ -43,6 +43,11 @@ ColumnLayout {
         permissionChange.running = true;
     }
 
+    function resetCategory(category) {
+        if (!root.app) return;
+        root.runPermission(["@vesperControl@", "app-reset-category", root.app.id, category]);
+    }
+
     function setNotificationPolicy(policy) {
         if (!root.app || notificationChange.running) return;
         root.message = "";
@@ -159,17 +164,57 @@ ColumnLayout {
 
     Repeater {
         model: root.flatpak ? (root.status.permissionItems || []) : []
-        delegate: ToggleRow {
+        delegate: ColumnLayout {
             required property var modelData
-            text: modelData.label
-            subtext: qsTr("packaged: %1 · override: %2 · %3")
-                .arg(root.packagedLabel(modelData.packaged))
-                .arg(modelData.userOverride || qsTr("inherit"))
-                .arg(modelData.backend || qsTr("Flatpak-enforced"))
-            checked: modelData.effective === true
-            disabled: permissionChange.running
-            onToggled: root.runPermission(["@vesperControl@", "app-permission", root.app.id, modelData.id, checked ? "on" : "off"])
+            Layout.fillWidth: true
+            spacing: 0
+
+            ToggleRow {
+                Layout.fillWidth: true
+                text: modelData.label
+                subtext: qsTr("packaged: %1 · override: %2 · %3")
+                    .arg(root.packagedLabel(modelData.packaged))
+                    .arg(modelData.userOverride || qsTr("inherit"))
+                    .arg(modelData.backend || qsTr("Flatpak-enforced"))
+                checked: modelData.effective === true
+                disabled: permissionChange.running
+                onToggled: root.runPermission(["@vesperControl@", "app-permission", root.app.id, modelData.id, checked ? "on" : "off"])
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: modelData.userOverride && modelData.userOverride !== "inherit"
+                Item { Layout.fillWidth: true }
+                IconTextButton {
+                    isRound: true
+                    icon: "undo"
+                    text: qsTr("Inherit packaged default")
+                    disabled: permissionChange.running
+                    onClicked: root.runPermission(["@vesperControl@", "app-reset-permission", root.app.id, modelData.id])
+                }
+            }
         }
+    }
+
+    SectionHeader { visible: root.flatpak; text: qsTr("Reset override category") }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Shared"); disabled: permissionChange.running; onClicked: root.resetCategory("shared") }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Sockets"); disabled: permissionChange.running; onClicked: root.resetCategory("sockets") }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Devices"); disabled: permissionChange.running; onClicked: root.resetCategory("devices") }
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Features"); disabled: permissionChange.running; onClicked: root.resetCategory("features") }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Filesystems"); disabled: permissionChange.running; onClicked: root.resetCategory("filesystems") }
     }
 
     SectionHeader { visible: root.flatpak; text: qsTr("Custom filesystem") }
@@ -198,6 +243,11 @@ ColumnLayout {
             isRound: true; icon: "check"; text: qsTr("Allow")
             disabled: !filesystemField.text.trim() || permissionChange.running
             onClicked: root.runPermission(["@vesperControl@", "app-filesystem", root.app.id, filesystemField.text.trim(), "on"])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset category")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("filesystems")
         }
     }
 
@@ -228,6 +278,11 @@ ColumnLayout {
             disabled: !dbusField.text.trim() || permissionChange.running
             onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "session", dbusField.text.trim(), "talk"])
         }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset session")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("session-bus")
+        }
     }
 
     RowLayout {
@@ -244,6 +299,11 @@ ColumnLayout {
             isRound: true; icon: "check"; text: qsTr("Allow system")
             disabled: !dbusField.text.trim() || permissionChange.running
             onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "system", dbusField.text.trim(), "talk"])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset system")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("system-bus")
         }
     }
 
@@ -291,6 +351,11 @@ ColumnLayout {
             isRound: true; icon: "save"; text: qsTr("Set")
             disabled: !envNameField.text.trim() || permissionChange.running
             onClicked: root.runPermission(["@vesperControl@", "app-env", root.app.id, envNameField.text.trim(), envValueField.text])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset all env")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("environment")
         }
     }
 
