@@ -56,7 +56,7 @@ StyledRect {
             root.percentage = -1;
             root.provider = "";
             root.usageState = "stale";
-            root.details = "AI Hub data unavailable";
+            root.details = "AI data unavailable";
         }
     }
 
