@@ -8,7 +8,14 @@ import subprocess
 import sys
 
 from hermes_automation_common import STATE_ROOT, atomic_json, load_json, load_registry, now
-from hermes_automation_scheduler import dispatch_job, job_lock, record_run, run_watchdog, sync_cron
+from hermes_automation_scheduler import (
+    dispatch_job,
+    job_lock,
+    monitor_changed,
+    record_run,
+    run_watchdog,
+    sync_cron,
+)
 from hermes_automation_tasks import TASKS, run_task
 
 
@@ -103,6 +110,12 @@ def main() -> int:
             output = edge_watch(task, run_watchdog(task))
             if output:
                 print(output)
+            return 0
+        if mode == "monitor":
+            if monitor_changed(task):
+                dispatch_job(task)
+            # Deliberately no stdout: unchanged monitor ticks and successful
+            # dispatches stay silent at the Hermes no-agent cron layer.
             return 0
         if mode != "dispatch":
             print(f"unsupported Hermes job mode: {mode}", file=sys.stderr)
