@@ -31,7 +31,7 @@ jobs:
             git apply --numstat "$patch_file" >/dev/null
           done < <(find home/yargc/packages -maxdepth 1 -type f -name 'caelestia-*.patch' -print0)
 
-      - name: Reject credential extraction and stale UI branding
+      - name: Reject credential extraction and legacy AI naming
         shell: bash
         run: |
           set -euo pipefail
@@ -39,8 +39,8 @@ jobs:
             echo "Vesper must not extract credentials from gh CLI state" >&2
             exit 1
           fi
-          if grep -R --line-number --include='*.qml' -E 'AI Hub|Vesper Hub' home/yargc; then
-            echo "User-facing AI surfaces must be named AI" >&2
+          if grep -R --line-number -E 'AI Hub|Vesper Hub|aiHub|AiHub|ai-hub|VESPER_AI_HUB|vesper-ai-hub' home/yargc .github/workflows/nix-smoke.yml; then
+            echo "Legacy Hub naming is forbidden; the product surface and backend are AI" >&2
             exit 1
           fi
 
