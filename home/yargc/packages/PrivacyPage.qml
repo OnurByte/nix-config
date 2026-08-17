@@ -115,15 +115,51 @@ PageBase {
         }
         InfoRow {
             icon: "dns"
-            label: qsTr("DNS")
+            label: qsTr("DNS servers")
             subtext: root.privacy.network?.dns || qsTr("resolver details unavailable")
-            value: qsTr("runtime")
+            value: qsTr("observed")
+        }
+        InfoRow {
+            icon: "verified_user"
+            label: qsTr("Resolver security")
+            subtext: root.privacy.network?.resolverSecurity || qsTr("DNSSEC / DNS-over-TLS status unavailable from resolvectl")
+            value: qsTr("status only")
+        }
+        InfoRow {
+            icon: "vpn_lock"
+            label: qsTr("VPN")
+            subtext: (root.privacy.network?.vpnProfiles || []).length
+                ? (root.privacy.network.vpnProfiles || []).join(", ")
+                : qsTr("no NetworkManager VPN/WireGuard/tunnel profile is active")
+            value: root.privacy.network?.vpnActive ? qsTr("active") : qsTr("inactive")
+        }
+        InfoRow {
+            icon: "shield_lock"
+            label: qsTr("VPN kill switch")
+            subtext: qsTr("no cross-backend kill-switch enforcement is claimed by Vesper")
+            value: root.privacy.network?.killSwitchSupported ? qsTr("available") : qsTr("unsupported")
+        }
+        InfoRow {
+            icon: "route"
+            label: qsTr("Process proxy")
+            subtext: root.privacy.network?.proxyUsesTorSocks
+                ? qsTr("Vesper process proxy points at the local Tor SOCKS endpoint")
+                : (root.privacy.network?.proxyConfigured
+                    ? qsTr("a Vesper process proxy is configured but it is not the canonical local Tor SOCKS endpoint")
+                    : qsTr("no Vesper process proxy configured"))
+            value: root.privacy.network?.proxyUsesTorSocks ? qsTr("Tor") : (root.privacy.network?.proxyConfigured ? qsTr("proxy") : qsTr("direct/default"))
         }
         InfoRow {
             icon: "wifi_lock"
             label: qsTr("Wi-Fi MAC policy")
             subtext: root.privacy.network?.wifiMacPolicy || qsTr("no active Wi-Fi profile or no explicit policy")
             value: root.privacy.network?.wifiMacPolicy ? qsTr("configured") : qsTr("default")
+        }
+        InfoRow {
+            icon: "info"
+            label: qsTr("Leak-test semantics")
+            subtext: qsTr("proxy diagnostics can report observed egress IP, but Vesper does not label that alone as proof of DNS/IP leak protection")
+            value: qsTr("no fake claim")
         }
 
         InfoRow {
