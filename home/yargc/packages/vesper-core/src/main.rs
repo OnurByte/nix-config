@@ -61,8 +61,10 @@ fn main() {
 
         [group, action] if group == "network" && action == "status" => println!("{}", network::status_json()),
         [group, action, value] if group == "network" && action == "airplane" => network::set_airplane(on_off(value)).unwrap_or_else(|error| fail(error)),
+        [group, action, value] if group == "network" && action == "dpi" => network::set_dpi(on_off(value)).unwrap_or_else(|error| fail(error)),
         [group, action] if group == "network" && action == "dpi-status" => println!("{}", network::dpi_status_json()),
         [group, action, domain] if group == "network" && action == "dpi-test" => println!("{}", network::dpi_test_json(domain)),
+        [group, action] if group == "network" && action == "wifi-qr" => println!("{}", network::wifi_qr().unwrap_or_else(|error| fail(error)).display()),
         [group, action] if group == "privacy" && action == "status" => println!("{}", privacy::status_json()),
         [group, action] if group == "recovery" && action == "status" => println!("{}", recovery::status_json()),
         [group, action] if group == "recovery" && action == "check" => recovery::run_repository_check().unwrap_or_else(|error| fail(error)),
