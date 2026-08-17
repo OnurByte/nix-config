@@ -35,7 +35,7 @@ stdenv.mkDerivation {
   '';
 
   installPhase = ''
-    runHook preBuild
+    runHook preInstall
     install -Dm755 vesper-control $out/bin/vesper-control
     wrapProgram $out/bin/vesper-control \
       --prefix PATH : ${lib.makeBinPath [
@@ -48,7 +48,7 @@ stdenv.mkDerivation {
         qrencode
         systemd
       ]}
-    runHook postBuild
+    runHook postInstall
   '';
 
   meta = {
