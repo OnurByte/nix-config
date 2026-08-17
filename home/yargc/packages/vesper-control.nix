@@ -30,6 +30,7 @@ stdenv.mkDerivation {
     cp ${./vesper-control.rs} vesper-control.rs
     cp ${./vesper-provider-registry.rs} vesper-provider-registry.rs
     patch vesper-control.rs < ${./vesper-control-provider-registry.patch}
+    patch vesper-control.rs < ${./vesper-control-dpi.patch}
     patch vesper-control.rs < ${./vesper-control-proxy-hardening.patch}
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
     patch vesper-control.rs < ${./vesper-control-wellbeing.patch}
