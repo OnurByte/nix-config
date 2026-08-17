@@ -55,6 +55,7 @@ let
       substitute ${./packages/PrivacyPage.qml} modules/nexus/pages/PrivacyPage.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/BackupRecovery.qml} modules/nexus/pages/BackupRecovery.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperDpiPage.qml} modules/nexus/pages/VesperDpiPage.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperProxyPage.qml} modules/nexus/pages/VesperProxyPage.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperAppsSettings.qml} modules/nexus/pages/VesperAppsSettings.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperAppControls.qml} modules/nexus/pages/apps/VesperAppControls.qml --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
