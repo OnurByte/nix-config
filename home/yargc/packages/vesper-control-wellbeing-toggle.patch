@@ -1,0 +1,59 @@
+diff --git a/vesper-control.rs b/vesper-control.rs
+--- a/vesper-control.rs
++++ b/vesper-control.rs
+@@ -405,4 +405,25 @@ fn wellbeing_dir() -> PathBuf {
+     state_root().join("wellbeing")
+ }
+ 
++fn wellbeing_enabled_path() -> PathBuf {
++    config_root().join("wellbeing.enabled")
++}
++
++fn wellbeing_enabled() -> bool {
++    match fs::read_to_string(wellbeing_enabled_path()) {
++        Ok(value) => matches!(value.trim(), "1" | "on" | "true"),
++        Err(error) if error.kind() == io::ErrorKind::NotFound => true,
++        Err(_) => false,
++    }
++}
++
++fn wellbeing_set(enabled: bool) -> Result<(), String> {
++    let path = wellbeing_enabled_path();
++    let parent = path.parent().ok_or_else(|| "invalid wellbeing state path".to_string())?;
++    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
++    let tmp = parent.join(format!(".wellbeing.{}.tmp", std::process::id()));
++    fs::write(&tmp, if enabled { "1\n" } else { "0\n" }).map_err(|error| error.to_string())?;
++    fs::rename(tmp, path).map_err(|error| error.to_string())
++}
++
+ fn sanitise_app(value: &str) -> String {
+@@ -532,3 +553,3 @@ fn wellbeing_daemon() -> Result<(), String> {
+-        if wellbeing_sampling_allowed() {
++        if wellbeing_enabled() && wellbeing_sampling_allowed() {
+             if let Some(app) = active_app() {
+                 *values.entry(app).or_insert(0) += tick.as_secs();
+@@ -558,3 +579,9 @@ fn wellbeing_summary() {
+-    println!("{\"totalSeconds\":{},\"apps\":[{}]}", total, json.join(","));
++    println!(
++        "{\"schemaVersion\":1,\"enabled\":{},\"agentReadable\":true,\"date\":\"{}\",\"totalSeconds\":{},\"apps\":[{}]}",
++        if wellbeing_enabled() { "true" } else { "false" },
++        json_escape(&today()),
++        total,
++        json.join(",")
++    );
+ }
+ 
+@@ -884,3 +911,4 @@ fn usage() -> ! {
+            proxy status|set|clear\n\
++           wellbeing status|on|off\n\
+            wellbeing-daemon\n\
+            wellbeing-summary\n\
+@@ -948,2 +976,8 @@ fn main() {
++        [group, action] if group == "wellbeing" && action == "status" => {
++            println!("{}", if wellbeing_enabled() { "on" } else { "off" });
++        }
++        [group, action] if group == "wellbeing" && (action == "on" || action == "off") => {
++            wellbeing_set(action == "on").unwrap_or_else(|error| print_error(&error));
++        }
+         [command] if command == "wellbeing-daemon" => {
+             wellbeing_daemon().unwrap_or_else(|error| print_error(&error));
