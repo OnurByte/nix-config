@@ -90,4 +90,24 @@ EOF
 
             /tmp/vesper-control app-reset-permissions org.example.App.desktop
             grep -Fx "override --user --reset org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+
+            /tmp/vesper-control notifications set org.example.App.desktop "Example App" block
+            test "$(/tmp/vesper-control notifications get org.example.App.desktop)" = block
+            jq -e '."orgexampleappdesktop" == "block" and ."exampleapp" == "block"' "$XDG_CONFIG_HOME/vesper/notifications/policy.json" >/dev/null
+            /tmp/vesper-control notifications set org.example.App.desktop "Example App" inherit
+            test "$(/tmp/vesper-control notifications get org.example.App.desktop)" = inherit
+
+            cat > /tmp/fake-caelestia-shell <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf "%s\\n" "\$*" >> "$TMPDIR/vesper-caelestia-actions"
+EOF
+            chmod +x /tmp/fake-caelestia-shell
+            export VESPER_CMD_CAELESTIA_SHELL=/tmp/fake-caelestia-shell
+            /tmp/vesper-control wellbeing focus on
+            grep -Fx "ipc call notifs enableDnd" "$TMPDIR/vesper-caelestia-actions"
+            test "$(cat "$XDG_CONFIG_HOME/vesper/wellbeing/focus.enabled")" = 1
+            /tmp/vesper-control wellbeing focus off
+            grep -Fx "ipc call notifs disableDnd" "$TMPDIR/vesper-caelestia-actions"
+            test "$(cat "$XDG_CONFIG_HOME/vesper/wellbeing/focus.enabled")" = 0
           '
