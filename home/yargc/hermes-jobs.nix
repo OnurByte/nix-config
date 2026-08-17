@@ -23,8 +23,16 @@
     description = "X unknown-frontier scout";
   };
 
-  free-ai-radar = {
+  unknown-frontier-web = {
     schedule = "45 8 * * *";
+    mode = "dispatch";
+    task = "unknown-frontier-web";
+    deliver = "local";
+    description = "protected clearnet and Tor onion frontier scout";
+  };
+
+  free-ai-radar = {
+    schedule = "50 8 * * *";
     mode = "dispatch";
     task = "free-ai-radar";
     deliver = "local";
@@ -32,11 +40,11 @@
   };
 
   unknown-frontier-synthesis = {
-    schedule = "0 9 * * *";
+    schedule = "10 9 * * *";
     mode = "dispatch";
     task = "unknown-frontier-synthesis";
     deliver = "local";
-    description = "bounded fan-in of fresh GitHub Reddit and X scout state";
+    description = "bounded fan-in of fresh GitHub Reddit X and web/onion scout state";
   };
 
   agenda = {

@@ -12,8 +12,10 @@ from typing import Any
 from hermes_automation_common import STATE_ROOT, atomic_json, invoke_json, invoke_text, now
 from hermes_automation_reports import recent_briefings, research_prompt, research_skill_context, state_context, write_report
 from hermes_research_intake import compact_intake, reddit_rss_intake, reinforce_source_registry, x_mirror_intake
+from hermes_research_link_registry import prune_web_links
+from hermes_research_web import compact_web_intake, reinforce_web_registry, web_core_intake
 
-FRONTIER_SOURCES = ("github", "reddit", "x")
+FRONTIER_SOURCES = ("github", "reddit", "x", "web")
 FRONTIER_MAX_AGE_SECONDS = int(os.environ.get("VESPER_FRONTIER_MAX_AGE_SECONDS", "21600"))
 FRONTIER_FANIN_WAIT_SECONDS = int(os.environ.get("VESPER_FRONTIER_FANIN_WAIT_SECONDS", "300"))
 FRONTIER_FANIN_POLL_SECONDS = max(2, int(os.environ.get("VESPER_FRONTIER_FANIN_POLL_SECONDS", "10")))
@@ -22,10 +24,26 @@ FRONTIER_TOTAL_DEEP_READ_TARGET = max(24, min(60, int(os.environ.get("VESPER_FRO
 
 
 def _budget_map(total: int) -> dict[str, int]:
-    github = max(1, round(total * 0.34))
-    reddit = max(1, round(total * 0.36))
-    x = max(1, total - github - reddit)
-    return {"github": github, "reddit": reddit, "x": x}
+    github = max(1, round(total * 0.30))
+    reddit = max(1, round(total * 0.25))
+    x = max(1, round(total * 0.25))
+    web = max(1, total - github - reddit - x)
+    while github + reddit + x + web > total:
+        for name in ("github", "reddit", "x", "web"):
+            value = {"github": github, "reddit": reddit, "x": x, "web": web}[name]
+            if value <= 1:
+                continue
+            if name == "github":
+                github -= 1
+            elif name == "reddit":
+                reddit -= 1
+            elif name == "x":
+                x -= 1
+            else:
+                web -= 1
+            if github + reddit + x + web <= total:
+                break
+    return {"github": github, "reddit": reddit, "x": x, "web": web}
 
 
 FRONTIER_CANDIDATE_BUDGET = _budget_map(FRONTIER_TOTAL_CANDIDATE_TARGET)
@@ -37,14 +55,22 @@ def _scout_prompt(source: str, intake: dict[str, Any] | None = None) -> str:
         "github": "Search recent/small repositories, issues, PRs, commits, forks, discussions, package/release surfaces and author/org neighborhoods. Prioritize coding-agent/vibe-coding workflows and Monero/privacy engineering; prefer working code and technical evidence over stars.",
         "reddit": "Use the supplied RSS/Atom intake as the cheap first pass, then search/fetch only where it adds coverage or verification. Inspect recent/low-score posts, comment branches and niche communities. Extract reproducible coding-agent workflows, Monero/privacy techniques, fixes and primary links.",
         "x": "X/Twitter is mandatory. Use direct X when accessible; otherwise use XCancel and configured Nitter-compatible mirrors, with HTML/search fallback when RSS is blocked. Search low-attention builders/researchers for coding-agent workflows, Monero/privacy engineering, replies/quotes, demos, code, patches and concrete techniques. Verify important claims against primary sources.",
+        "web": "Treat protected web/onion anchors as first-class research surfaces. The supplied intake was fetched locally: clearnet through normal HTTP(S), .onion through the machine's Tor SOCKS proxy. For .onion candidates, use the supplied Tor-fetched content as the page fetch result; do not pretend the normal web tool can resolve an onion URL. Follow clearnet links with web tools when useful, and verify important claims against the strongest available primary evidence.",
     }
     references = ["research-pipeline.md", "source-governance.md", "central-sources.md"]
     if source == "reddit":
         references.append("reddit-rss.md")
     if source == "x":
         references.append("x-research.md")
-    skill = research_skill_context(references, max_chars=42000)
-    intake_text = compact_intake(intake, max_chars=90000) if intake else "No deterministic intake was supplied; build broad intake with the web tools and track it honestly."
+    if source == "web":
+        references.append("web-tor.md")
+    skill = research_skill_context(references, max_chars=44000)
+    if intake and source == "web":
+        intake_text = compact_web_intake(intake, max_chars=105000)
+    elif intake:
+        intake_text = compact_intake(intake, max_chars=90000)
+    else:
+        intake_text = "No deterministic intake was supplied; build broad intake with the web tools and track it honestly."
     candidate_target = FRONTIER_CANDIDATE_BUDGET[source]
     deep_target = FRONTIER_DEEP_READ_BUDGET[source]
     return f"""You are one independent `{source}` scout inside Vesper's `unknown-frontier-ai` run.
@@ -53,7 +79,7 @@ def _scout_prompt(source: str, intake: dict[str, Any] | None = None) -> str:
 
 Research profile, in priority order:
 1. vibe coding / agentic software engineering: Codex, Claude Code, OpenCode, Hermes, harnesses, skills, MCP, context engineering, evals, agent orchestration, practical workflows and overlooked developer tools;
-2. Monero/privacy: Monero protocol/ecosystem, Cuprate, wallets, atomic swaps, private payments, Tor, SimpleX, GrapheneOS/privacy engineering and useful adjacent infrastructure;
+2. Monero/privacy: Monero protocol/ecosystem, Cuprate, wallets, atomic swaps, private payments, Tor, onion services, OPSEC, SimpleX, GrapheneOS/privacy engineering and useful adjacent infrastructure;
 3. Nix/Linux, security and open-source developer infrastructure when it improves the workstation or the two priorities above.
 
 Generic local-LLM/model-quantization/inference hobby content is not a target. Only surface model/inference material when it materially improves coding-agent workflows, privacy, cost, or deployment. Do not spend frontier budget on price charts, trading chatter, generic AI news or familiar mainstream releases without a genuinely useful technical angle.
@@ -63,11 +89,12 @@ Goal: find high-information-gain capabilities, techniques, tools and changes out
 Coverage contract for this scout:
 - candidate target: about {candidate_target} distinct canonical items/URLs
 - deep-read target: about {deep_target} strongest items
-- the full daily bundle target is {FRONTIER_TOTAL_CANDIDATE_TARGET} candidates and {FRONTIER_TOTAL_DEEP_READ_TARGET} deep reads across GitHub + Reddit + X
-- deterministic RSS/mirror intake counts as cheap candidate inspection, not as a full deep read
+- the full daily bundle target is {FRONTIER_TOTAL_CANDIDATE_TARGET} candidates and {FRONTIER_TOTAL_DEEP_READ_TARGET} deep reads across GitHub + Reddit + X + web/onion
+- deterministic RSS/mirror/Tor intake counts as cheap candidate inspection; only pages whose substantive content is actually opened count as deep reads
 - central anchors are mandatory inspection seeds but are not an allowlist
 - learned sources may receive future budget only after repeated useful evidence-bearing results
 - if access failures prevent the target, report the actual count and limitation; never invent coverage
+- a Tor transport or mirror is access infrastructure, not independent corroboration
 
 ----- RESEARCH PROCEDURE -----
 {skill}
@@ -80,8 +107,8 @@ Coverage contract for this scout:
 ----- END CHEAP INTAKE -----
 
 Return exactly one JSON object and nothing else:
-{{"title":"{source} scout","summary":"short scout summary","body":"technical scout notes","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source","url":"https://..."}}],"candidates":[{{"title":"candidate","topic":"vibe-coding|monero-privacy|nix-linux|security|other","whyNew":"...","whyUseful":"...","evidence":"...","urls":["https://..."]}}],"coverage":{{"candidateTarget":{candidate_target},"candidatesInspected":0,"canonicalCandidates":0,"deepReads":0,"primaryVerifications":0,"surfaces":[],"limitations":[]}},"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
-Never invent URLs or coverage numbers.
+{{"title":"{source} scout","summary":"short scout summary","body":"technical scout notes","priority":"low|normal|high|critical","confidence":0.0,"sources":[{{"title":"source","url":"https://..."}}],"candidates":[{{"title":"candidate","topic":"vibe-coding|monero-privacy|privacy-opsec|nix-linux|security|other","whyNew":"...","whyUseful":"...","evidence":"...","urls":["https://..."]}}],"coverage":{{"candidateTarget":{candidate_target},"candidatesInspected":0,"canonicalCandidates":0,"deepReads":0,"primaryVerifications":0,"surfaces":[],"limitations":[]}},"statePatch":{{"knownConcepts":[],"candidateSources":[],"heuristics":[],"openQuestions":[]}}}}
+Never invent URLs, page contents or coverage numbers.
 """
 
 
@@ -96,6 +123,9 @@ def _source_intake(source: str) -> dict[str, Any] | None:
             return reddit_rss_intake(target)
         if source == "x":
             return x_mirror_intake(target)
+        if source == "web":
+            prune_web_links()
+            return web_core_intake(target, deep_fetch_limit=FRONTIER_DEEP_READ_BUDGET[source])
     except Exception as exc:
         return {
             "source": f"{source}-intake",
@@ -123,7 +153,12 @@ def frontier_scout(source: str) -> dict[str, Any]:
         coverage["intakeErrors"] = len(intake.get("errors") or [])
         if isinstance(intake.get("budget"), dict):
             coverage["intakeBudget"] = intake["budget"]
-    reinforce_source_registry(source, report)
+        if source == "web":
+            coverage["onionPrefetched"] = int(intake.get("onionPrefetched") or 0)
+    if source == "web":
+        reinforce_web_registry(report)
+    else:
+        reinforce_source_registry(source, report)
     envelope = {
         "source": source,
         "generatedAt": now().isoformat(timespec="seconds"),
@@ -143,6 +178,10 @@ def unknown_frontier_reddit() -> dict[str, Any]:
 
 def unknown_frontier_x() -> dict[str, Any]:
     return frontier_scout("x")
+
+
+def unknown_frontier_web() -> dict[str, Any]:
+    return frontier_scout("web")
 
 
 def _fresh_scouts(max_age_seconds: int = FRONTIER_MAX_AGE_SECONDS) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
@@ -204,13 +243,13 @@ def frontier_synthesis() -> dict[str, Any]:
         "primaryVerifications": primary_total,
         "shortfall": max(0, FRONTIER_TOTAL_CANDIDATE_TARGET - candidate_total),
     }
-    extra = json.dumps({"scouts": outputs, "missingOrStale": failures, "coverage": coverage_summary}, ensure_ascii=False, indent=2)[:110000]
+    extra = json.dumps({"scouts": outputs, "missingOrStale": failures, "coverage": coverage_summary}, ensure_ascii=False, indent=2)[:125000]
     report = invoke_json(
         research_prompt(
             "unknown-frontier-ai",
-            "Synthesize the independent GitHub, Reddit and X scouts into one high-information-gain frontier report. Rank vibe-coding/agentic software-engineering findings and Monero/privacy findings first, with Nix/Linux/security as secondary. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and run a counter-review before final selection. Generic local-model/inference content is out of scope unless directly useful to those priorities. X is mandatory when its scout is available. Explicitly flag missing/stale scouts and any coverage shortfall.",
+            "Synthesize the independent GitHub, Reddit, X and web/onion scouts into one high-information-gain frontier report. Rank vibe-coding/agentic software-engineering findings and Monero/privacy/OPSEC findings first, with Nix/Linux/security as secondary. Cross-check overlapping claims, follow the strongest candidates to primary evidence, remove duplicates and familiar/mainstream items, and run a counter-review before final selection. Generic local-model/inference content is out of scope unless directly useful to those priorities. X and protected web/onion anchors are mandatory discovery surfaces when their scouts are available. Onion content supplied by the local Tor intake is evidence from that page, but Tor itself is transport rather than corroboration. Explicitly flag missing/stale scouts and any coverage shortfall.",
             extra,
-            skill_references=("research-pipeline.md", "source-governance.md", "central-sources.md", "x-research.md", "reddit-rss.md"),
+            skill_references=("research-pipeline.md", "source-governance.md", "central-sources.md", "x-research.md", "reddit-rss.md", "web-tor.md"),
         ),
         web_only=True,
     )
@@ -247,7 +286,7 @@ def free_ai_radar() -> dict[str, Any]:
 
 
 def agenda() -> dict[str, Any]:
-    objective = "Produce the compact current agenda the user should know today. Highest bias: coding agents/vibe coding/dev tooling and Monero/privacy. Secondary: Nix/Linux, Tor, security, web technology, private communications, open source and meaningful startup/business changes; include major broader technology events only when consequential. Do not fill space with generic model benchmark chatter, local-LLM hobby news, token-price analysis or filler. Prefer official/primary reporting and corroboration."
+    objective = "Produce the compact current agenda the user should know today. Highest bias: coding agents/vibe coding/dev tooling and Monero/privacy. Secondary: Nix/Linux, Tor/onion, OPSEC, security, web technology, private communications, open source and meaningful startup/business changes; include major broader technology events only when consequential. Do not fill space with generic model benchmark chatter, local-LLM hobby news, token-price analysis or filler. Prefer official/primary reporting and corroboration."
     return write_report(invoke_json(research_prompt("agenda", objective), web_only=True), "agenda")
 
 
@@ -299,7 +338,7 @@ Return only the final Telegram message in English. No tool chatter, execution de
 Sections:
 1) **Git / Projects** — useful state/blockers only, 1-3 lines per relevant repo
 2) **Todos** — at most 3-5 important unfinished/blocking items; if none say `No important open todos.`
-3) **News** — 10-15 genuinely important items when available. Prioritize coding agents/vibe coding/dev tooling and Monero/privacy; then Tor/onion, Nix/Linux, private communications, security/development/web privacy/startups/major tech. No coin-price talk and no generic local-model/inference filler. Each item: bold numbered title, one concise sentence, then URL. Never invent URLs.
+3) **News** — 10-15 genuinely important items when available. Prioritize coding agents/vibe coding/dev tooling and Monero/privacy; then Tor/onion/OPSEC, Nix/Linux, private communications, security/development/web privacy/startups/major tech. No coin-price talk and no generic local-model/inference filler. Each item: bold numbered title, one concise sentence, then URL. Never invent URLs.
 4) Optional **Actions** — only 1-3 concrete actions worth taking.
 
 ----- LOCAL DATA -----
@@ -317,6 +356,7 @@ DAILY_TASKS = {
     "unknown-frontier-github": unknown_frontier_github,
     "unknown-frontier-reddit": unknown_frontier_reddit,
     "unknown-frontier-x": unknown_frontier_x,
+    "unknown-frontier-web": unknown_frontier_web,
     "unknown-frontier-synthesis": frontier_synthesis,
     "frontier-daily": frontier_daily,
     "free-ai-radar": free_ai_radar,

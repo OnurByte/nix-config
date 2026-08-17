@@ -17,7 +17,7 @@
     {
       "id": 2,
       "name": "monero-community-to-primary-evidence",
-      "prompt": "Find a recent technically meaningful Monero or privacy development. Use community sources such as Reddit/X for discovery when useful, but verify the strongest claim against primary technical evidence.",
+      "prompt": "Find a recent technically meaningful Monero or privacy development. Use community sources such as Reddit/X/Monero Forum for discovery when useful, but verify the strongest claim against primary technical evidence.",
       "expected_output": "A Monero/privacy finding with a visible discovery-to-verification chain and explicit confidence/caveats.",
       "files": [],
       "assertions": [
@@ -68,15 +68,15 @@
     },
     {
       "id": 6,
-      "name": "anchor-saturation-preserves-exploration",
-      "prompt": "Assume protected anchor feeds alone contain more candidates than the daily target. Select the candidate set without losing adaptive learned sources or new-source exploration.",
-      "expected_output": "Candidate selection respects anchor/dynamic/explore pools instead of truncating the anchor feed first.",
+      "name": "seed-saturation-preserves-exploration",
+      "prompt": "Assume seed feeds alone contain more candidates than the daily target. Select the candidate set without losing adaptive learned sources or new-source exploration.",
+      "expected_output": "Candidate selection respects seed/dynamic/explore pools instead of truncating the seed feed first.",
       "files": [],
       "assertions": [
-        "Protected anchors receive guaranteed candidate budget but do not consume the whole target.",
+        "Seed sources receive bounded candidate budget but do not consume the whole target.",
         "Learned dynamic sources retain a non-zero candidate share when available.",
         "Query-tail/new-source exploration retains a non-zero candidate share when available.",
-        "Selection is source-diverse so one prolific account/subreddit cannot monopolize a pool."
+        "Selection is source-diverse so one prolific account/subreddit/site cannot monopolize a pool."
       ]
     },
     {
@@ -87,9 +87,26 @@
       "files": [],
       "assertions": [
         "A candidateSources mention alone does not increment useful-hit count.",
-        "The new source starts at probation unless it is an explicit protected anchor.",
+        "The new source starts at probation unless explicitly seeded for bootstrap.",
         "Repeated useful evidence can advance the source to trusted and then promoted.",
         "User-excluded sources cannot regain promotion through autonomous discovery."
+      ]
+    },
+    {
+      "id": 8,
+      "name": "tor-web-seeds-are-removable-and-relearnable",
+      "prompt": "Run the web frontier with OP Bible OPSEC onion and Monero Forum as initial seed links. One seed then produces no useful evidence for 84 hours across several observations. Later the same URL is rediscovered from a useful independent path.",
+      "expected_output": "Tor/onion fetching works, poor seeds can be deleted after 3.5 days, and a deleted URL may later return only as a learned probation source when rediscovered usefully.",
+      "files": [],
+      "assertions": [
+        "The .onion hostname is fetched through SOCKS5 hostname resolution and never through ordinary local DNS resolution.",
+        "OP Bible OPSEC and Monero Forum begin as standardized seed links, not immortal protected sources.",
+        "A seed with enough observations and 84 hours without useful evidence is eligible for active-registry deletion.",
+        "Deletion is audited so the built-in bootstrap list does not immediately recreate the seed.",
+        "A later useful rediscovery may restore the URL as a learned probation source.",
+        "Discovered external links do not receive useful-hit credit merely for being linked.",
+        "A failed Tor fetch is reported as a limitation and does not cause fabricated page content.",
+        "Tor transport is not counted as independent corroboration."
       ]
     }
   ]

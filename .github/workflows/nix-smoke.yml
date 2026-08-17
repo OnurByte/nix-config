@@ -40,6 +40,8 @@ jobs:
             home/yargc/packages/hermes_automation_reports.py \
             home/yargc/packages/hermes_automation_scheduler.py \
             home/yargc/packages/hermes_research_intake.py \
+            home/yargc/packages/hermes_research_web.py \
+            home/yargc/packages/hermes_research_link_registry.py \
             home/yargc/packages/hermes_tasks_daily.py \
             home/yargc/packages/hermes_tasks_weekly.py \
             home/yargc/packages/hermes_automation_tasks.py \

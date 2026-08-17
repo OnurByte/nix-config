@@ -11,6 +11,8 @@ from hermes_automation_common import STATE_ROOT, atomic_json, load_json, load_re
 from hermes_automation_contract import validate_registry
 from hermes_automation_scheduler import WATCHDOG_TASKS, dispatch_job, job_lock, record_run, run_watchdog, sync_cron
 from hermes_automation_tasks import TASKS, run_task
+from hermes_research_link_registry import prune_web_links, web_link_records
+from hermes_research_web import fetch_document
 
 
 def parser() -> argparse.ArgumentParser:
@@ -31,6 +33,14 @@ def parser() -> argparse.ArgumentParser:
 
     sync = sub.add_parser("sync-cron")
     sync.add_argument("--prune", action="store_true")
+
+    tor_fetch = sub.add_parser("tor-fetch")
+    tor_fetch.add_argument("url")
+    tor_fetch.add_argument("--max-chars", type=int, default=50000)
+
+    links = sub.add_parser("links")
+    links.add_argument("--all", action="store_true", help="include retired link records")
+    links.add_argument("--prune", action="store_true", help="run autonomous learned-link GC before listing")
 
     sub.add_parser("validate-registry")
     sub.add_parser("jobs")
@@ -83,6 +93,26 @@ def _validate_or_print(registry: dict[str, dict]) -> int:
 
 def main() -> int:
     args = parser().parse_args()
+
+    if args.command == "tor-fetch":
+        try:
+            max_chars = max(1, min(250000, int(args.max_chars)))
+            print(json.dumps(fetch_document(args.url, max_chars=max_chars), ensure_ascii=False, indent=2))
+            return 0
+        except Exception as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+    if args.command == "links":
+        result: dict[str, object] = {"schemaVersion": 1}
+        if args.prune:
+            result["gc"] = prune_web_links()
+        records = web_link_records(include_retired=args.all)
+        result["count"] = len(records)
+        result["links"] = records
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
     registry = load_registry()
 
     if args.command == "jobs":
@@ -127,7 +157,6 @@ def main() -> int:
             print(f"unsupported Hermes job mode: {mode}", file=sys.stderr)
             return 2
         dispatch_job(task)
-        # Deliberately no stdout: Hermes no_agent treats a successful dispatch as a silent tick.
         return 0
 
     if args.command == "execute":
@@ -138,7 +167,6 @@ def main() -> int:
         try:
             lock = job_lock(args.job)
         except Exception as exc:
-            # Overlap is not a new failure; the already-running job remains authoritative.
             if "already running" in str(exc):
                 return 0
             print(str(exc), file=sys.stderr)

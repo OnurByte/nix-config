@@ -1,141 +1,165 @@
 # Central Research Sources
 
-Central sources are durable anchors, not an allowlist.
+Central sources are **initial seeds**, not an allowlist and not permanent providers.
 
-They receive guaranteed inspection budget because they map directly to the user's highest-value domains. Autonomous discovery remains mandatory and can promote better sources, but learned sources do not silently replace protected anchors.
+They exist to give a fresh researcher a useful starting graph. Once enough runtime evidence exists, learned sources can outrank or replace them. A seed that lowers research quality can be removed.
 
 ## Interest map
 
 The research center of gravity is:
 
 1. vibe coding / coding agents / agent harnesses / skills / MCP / context engineering;
-2. Monero / privacy / private payments / Tor / private communications;
+2. Monero / privacy / private payments / Tor / onion services / OPSEC / private communications;
 3. Nix/Linux/security/open-source infrastructure when it improves those workflows or the workstation.
 
 Generic local-model/inference discussion is not a standing interest. `r/LocalLLaMA` is explicitly excluded from the default research graph.
 
-## Reddit anchors
+## Reddit seed communities
 
 ### Vibe coding / agentic development
 
-- `r/vibecoding` — practical AI-built software, workflows, failures and emerging patterns
-- `r/ClaudeCode` — Claude Code workflows, subagents, skills, context and real-repo usage
-- `r/codex` — Codex CLI/IDE/cloud workflows, failures, usage and workarounds
-- `r/opencodeCLI` — OpenCode workflows, providers, integrations and community tooling
-- `r/cursor` — agentic editor workflows, context/repo practices and product-edge techniques
+- `r/vibecoding`
+- `r/ClaudeCode`
+- `r/codex`
+- `r/opencodeCLI`
+- `r/cursor`
 
 ### Monero / privacy
 
-- `r/MoneroMeansMoney` — Monero/privacy culture, ecosystem edges and niche discussion
-- `r/Monero` — protocol/ecosystem/community developments
-- `r/privacy` — privacy software, policy and practical privacy changes
-- `r/Tor` — Tor/onion/privacy operational developments
-- `r/netsec` — technical security research and tooling
+- `r/MoneroMeansMoney`
+- `r/Monero`
+- `r/privacy`
+- `r/Tor`
+- `r/netsec`
 
 ### Workstation / infrastructure
 
-- `r/NixOS` — Nix/NixOS ecosystem and workstation-relevant changes
+- `r/NixOS`
 
-Anchor feeds should not be concatenated and blindly truncated. Select candidates with a bounded anchor quota and source-diverse round-robin so prolific communities cannot consume the entire Reddit budget.
+These are starting communities, not eternal priorities. Runtime evidence should decide which sources keep receiving budget.
 
-## X / Twitter anchors
+## X / Twitter seed accounts
 
-The initial X anchor graph is selected from the user's followed accounts for technical signal rather than raw engagement.
+The initial X graph is selected from the user's followed accounts for technical signal rather than raw engagement.
 
 ### Coding agents / developer tooling
 
-- `@Teknium` — Hermes Agent / NousResearch
-- `@thdxr` — OpenCode / developer tooling
-- `@XOpenSource` — X open-source engineering
-- `@ZixuanLi_` — Z.ai / AI engineering
+- `@Teknium`
+- `@thdxr`
+- `@XOpenSource`
+- `@ZixuanLi_`
 
 ### Monero / privacy / decentralized payments
 
-- `@eigenwallet` — Monero-Bitcoin atomic-swap DEX
-- `@kyc_rip` — no-KYC swap ecosystem signals
-- `@XBToshi` — Bitcoin/Monero privacy tooling ecosystem
-- `@schmidt1024` — privacy/open-source/Monero projects
-- `@XMRHub_org` — Monero ecosystem discovery
-- `@CR1337` — Monero/privacy projects and crypto-agorism
-- `@linuxuser1996` — Linux/GrapheneOS/Monero/privacy
-- `@Examare1` — Monero ecosystem
-- `@ZcashLabs` — Zcash engineering/ecosystem counterpoint
+- `@eigenwallet`
+- `@kyc_rip`
+- `@XBToshi`
+- `@schmidt1024`
+- `@XMRHub_org`
+- `@CR1337`
+- `@linuxuser1996`
+- `@Examare1`
+- `@ZcashLabs`
 
 ### Security / threat intelligence
 
-- `@akaclandestine` — OSINT, threat research, OPSEC and threat intelligence
-- `@DailyDarkWeb` — dark-web threat intelligence
+- `@akaclandestine`
+- `@DailyDarkWeb`
 
 ### Private communications
 
-- `@SimpleXChat` — private messaging/network architecture
+- `@SimpleXChat`
 
-Accounts dominated by memes, general trading, price/charts or broad consumer activity are not protected anchors. They remain discoverable and can earn adaptive promotion only through repeated technical value.
+Accounts dominated by memes, general trading, price/charts or broad consumer activity are not seed priorities.
 
-## GitHub anchor neighborhoods
+## GitHub seed neighborhoods
 
-GitHub frontier research should always know where to begin, then expand through issues, PRs, commits, forks, authors and dependency neighborhoods.
-
-### Coding-agent anchors
+### Coding-agent starting points
 
 - `NousResearch/hermes-agent`
 - `openai/codex`
 - `anthropics/claude-code`
 - `anomalyco/opencode`
 
-### Monero/privacy anchors
+### Monero/privacy starting points
 
 - `monero-project/monero`
 - `Cuprate/cuprate`
 
-These are starting neighborhoods, not the final report. The highest-value finding may live in a small adjacent repo, fork, issue, author account or dependency discovered from them.
+Expand outward through issues, PRs, commits, forks, authors, dependencies and small adjacent repositories.
 
-## Autonomous source evolution
+## Web / onion seed links
 
-Every non-anchor source starts as `probation`.
+The initial standardized link registry starts with:
 
-Lifecycle:
+- `https://opbible7nans45sg33cbyeiwqmlp5fu7lklu6jd6f3mivrjeqadco5yd.onion/opsec/`
+  - label: `OP Bible OPSEC`
+  - topic: `privacy-opsec`
+  - seed: `true`
+- `https://monero.forum/`
+  - label: `Monero Forum`
+  - topic: `monero-privacy`
+  - seed: `true`
 
-`probation -> trusted -> promoted -> decay/review -> probation/retired`
+The onion URL is fetched only through the local Tor SOCKS path. Monero Forum should prefer technical, security, services, wallets, private-payment, Tor/privacy and useful outgoing-link threads; routine price/trading/chart discussion is down-ranked.
 
-Discovery alone does not count as a useful hit. A source earns credit only when a candidate survives deep reading and contributes evidence-bearing value.
+`seed=true` means only “bootstrap source”. It does **not** prevent demotion or deletion.
 
-The runtime registry lives at:
+## Web/onion quality replacement
 
-`~/.local/state/vesper/research/unknown-frontier-ai/source-registry.json`
+The researcher may add new web/onion links from useful outgoing edges. New links begin as learned probation sources.
 
-Track at least:
+A web/onion link is eligible for deletion when it has enough observations and stays poor for **84 hours / 3.5 days** without a useful evidence-bearing result. Fetch failure, repeated low-value output and failure to survive deep reading all count against it.
 
-- source type and canonical identity
-- tier and protected status
-- score
-- useful-hit count
-- observation/fetch count
-- failure count
-- first/last seen
-- last useful time
-- discovery provenance
-- retirement reason when applicable
+This applies to seed links too. Nothing in the web/onion active registry is immortal.
 
-Protected anchors may accumulate failure/health history but cannot be automatically removed. Explicitly user-excluded sources are retired from the active graph and should not be rediscovered into probation.
+Deleted seed links are recorded in the bounded GC audit so the bootstrap code does not silently recreate them every run. If the researcher later rediscovers the same URL through a genuinely useful path, it may return as a learned probation source.
+
+Explicit user exclusions remain tombstones and are not autonomously resurrected.
+
+## Standard web/onion record
+
+All active web/onion links use the same public shape:
+
+```text
+id
+kind
+url
+label
+topic
+seed
+tier
+score
+hits
+observations
+failures
+origin
+firstSeen
+lastSeen
+lastUseful
+```
+
+Inspect them with:
+
+```bash
+vesper-hermes-automations links
+```
 
 ## Candidate budget policy
 
-A normal social-source candidate set should roughly reserve:
+A normal source candidate set should roughly reserve:
 
-- **45%** protected anchors
-- **30%** trusted/promoted/probation learned sources
+- **45%** initial seed/anchor candidates
+- **30%** learned dynamic sources
 - **25%** query-tail/new-source exploration
 
-These are candidate-selection quotas, not hard request-count quotas. If one pool is empty or blocked, redistribute unused budget to the others while recording the failure.
-
-Within each pool, use source-diverse selection. One high-volume subreddit or X account must not dominate merely because it emitted more entries.
+Unused quota is redistributed if a pool is blocked or empty. Within each pool, use source-diverse selection so a single prolific source cannot monopolize the budget.
 
 ## Anti-echo-chamber rules
 
 - never optimize exploration to zero;
-- never treat a mirror copy as independent corroboration;
-- periodically re-test trusted/promoted sources for freshness and downstream utility;
-- retire dead/noisy learned sources conservatively;
-- keep cross-platform paths: Reddit -> X -> GitHub -> docs/paper and the reverse;
+- never treat a mirror or Tor transport as independent corroboration;
+- remove sources that consume budget without producing useful findings;
+- allow better learned sources to replace original seeds;
+- keep cross-platform paths: Reddit -> X -> GitHub -> web/onion -> docs/paper and the reverse;
 - preserve contradictory sources when they materially challenge a finding.
