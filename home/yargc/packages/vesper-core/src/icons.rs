@@ -13,6 +13,7 @@ const FORMAT_VERSION: u32 = 1;
 const GENERATOR_VERSION: &str = "vesper-icon-curator-v1";
 const MAX_JOBS_PER_RECONCILE: usize = 2;
 const MAX_ATTEMPTS: u32 = 4;
+const PRODUCTION_PROVIDER: &str = "openai";
 
 #[derive(Clone, Debug)]
 struct Config {
@@ -32,7 +33,7 @@ impl Default for Config {
             enabled: false,
             mode: "original".to_string(),
             tint: "#8aadf4".to_string(),
-            provider: "openai".to_string(),
+            provider: PRODUCTION_PROVIDER.to_string(),
             credential: "openai".to_string(),
             model: "gpt-5".to_string(),
         }
@@ -143,8 +144,10 @@ fn load_config() -> Config {
     if let Some(value) = values.get("tint").filter(|value| valid_tint(value)) {
         config.tint = value.to_ascii_lowercase();
     }
-    if let Some(value) = values.get("provider").filter(|value| valid_token(value)) {
-        config.provider = value.clone();
+    // Only load adapters that the installed generator can actually execute.
+    // Stale experimental values therefore fail closed to the production adapter.
+    if values.get("provider").map(String::as_str) == Some(PRODUCTION_PROVIDER) {
+        config.provider = PRODUCTION_PROVIDER.to_string();
     }
     if let Some(value) = values.get("credential").filter(|value| valid_token(value)) {
         config.credential = value.clone();
@@ -183,14 +186,33 @@ pub fn set_config(key: &str, value: &str) -> Result<(), String> {
         }
         "mode" if valid_mode(value) => config.mode = value.to_string(),
         "tint" if valid_tint(value) => config.tint = value.to_ascii_lowercase(),
-        "provider" if valid_token(value) => config.provider = value.to_string(),
+        "provider" if value == PRODUCTION_PROVIDER => config.provider = value.to_string(),
         "credential" if valid_token(value) => config.credential = value.to_string(),
         "model" if valid_model(value) => config.model = value.to_string(),
         "mode" => return Err("mode expects original, light, dark, tinted or clear".to_string()),
         "tint" => return Err("tint expects #RRGGBB".to_string()),
-        "provider" | "credential" | "model" => return Err(format!("invalid {key}")),
+        "provider" => return Err(format!("App Icons currently supports only the {PRODUCTION_PROVIDER} provider adapter")),
+        "credential" | "model" => return Err(format!("invalid {key}")),
         _ => return Err(format!("unknown icon setting: {key}")),
     }
+    save_config(&config)?;
+    render_registry(&config, &load_jobs())
+}
+
+pub fn set_curator(provider: &str, credential: &str, model: &str) -> Result<(), String> {
+    if provider != PRODUCTION_PROVIDER {
+        return Err(format!("App Icons currently supports only the {PRODUCTION_PROVIDER} provider adapter"));
+    }
+    if !valid_token(credential) {
+        return Err("invalid App Icons credential alias".to_string());
+    }
+    if !valid_model(model) {
+        return Err("invalid App Icons model id".to_string());
+    }
+    let mut config = load_config();
+    config.provider = provider.to_string();
+    config.credential = credential.to_string();
+    config.model = model.to_string();
     save_config(&config)?;
     render_registry(&config, &load_jobs())
 }
@@ -446,8 +468,8 @@ fn write_semantic(id: &str, raw: &str) -> Result<(), String> {
 }
 
 fn generator_output(config: &Config, app: &App, source: &Path) -> Result<String, String> {
-    if config.provider != "openai" {
-        return Err(format!("provider '{}' has no App Icons adapter yet", config.provider));
+    if config.provider != PRODUCTION_PROVIDER {
+        return Err(format!("provider '{}' has no App Icons adapter", config.provider));
     }
     let exe = env::current_exe().map_err(|error| error.to_string())?;
     let legacy = exe.with_file_name("vesper-control-legacy");
@@ -455,7 +477,7 @@ fn generator_output(config: &Config, app: &App, source: &Path) -> Result<String,
     let result = Command::new(legacy)
         .args(["credential", "exec", &config.credential, "--"])
         .arg(generator)
-        .arg("openai")
+        .arg(PRODUCTION_PROVIDER)
         .arg(&config.model)
         .arg(&app.id)
         .arg(&app.name)
@@ -682,11 +704,12 @@ pub fn status_json() -> String {
         })
         .collect::<Vec<_>>();
     format!(
-        "{{\"enabled\":{},\"mode\":\"{}\",\"tint\":\"{}\",\"provider\":\"{}\",\"credential\":\"{}\",\"model\":\"{}\",\"semanticFormatVersion\":{},\"generatorVersion\":\"{}\",\"counts\":{{\"pending\":{},\"processing\":{},\"prepared\":{},\"failed\":{},\"waitingForProvider\":{},\"waitingForQuota\":{},\"fallback\":{}}},\"jobs\":[{}]}}",
+        "{{\"enabled\":{},\"mode\":\"{}\",\"tint\":\"{}\",\"provider\":\"{}\",\"supportedProviders\":[\"{}\"],\"credential\":\"{}\",\"model\":\"{}\",\"semanticFormatVersion\":{},\"generatorVersion\":\"{}\",\"counts\":{{\"pending\":{},\"processing\":{},\"prepared\":{},\"failed\":{},\"waitingForProvider\":{},\"waitingForQuota\":{},\"fallback\":{}}},\"jobs\":[{}]}}",
         bool_lit(config.enabled),
         escape(&config.mode),
         escape(&config.tint),
         escape(&config.provider),
+        PRODUCTION_PROVIDER,
         escape(&config.credential),
         escape(&config.model),
         FORMAT_VERSION,
@@ -727,17 +750,19 @@ mod tests {
     }
 
     #[test]
-    fn validates_modes_and_tints() {
+    fn validates_modes_tints_and_production_provider() {
         assert!(valid_mode("original"));
         assert!(valid_mode("tinted"));
         assert!(!valid_mode("sepia"));
         assert!(valid_tint("#aabbcc"));
         assert!(!valid_tint("blue"));
+        assert_eq!(PRODUCTION_PROVIDER, "openai");
     }
 
     #[test]
     fn production_default_is_opt_in() {
         assert!(!Config::default().enabled);
         assert_eq!(Config::default().mode, "original");
+        assert_eq!(Config::default().provider, PRODUCTION_PROVIDER);
     }
 }
