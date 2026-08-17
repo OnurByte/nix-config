@@ -1,10 +1,10 @@
-use std::{collections::HashSet, fs, path::Path, process::Command};
+use std::{collections::HashSet, fs, process::Command};
 
 use crate::{
     prompts::ALL_TASKS,
     util::{
-        command_exists, hermes_home, jq_raw, output_allow_failure, read_or, registry_path, run,
-        run_status, timestamp,
+        command_exists, hermes_home, jq, jq_raw, output_allow_failure, read_or, registry_path, run,
+        run_status,
     },
 };
 
@@ -115,15 +115,42 @@ fn existing_ref(store: &str, cron_name: &str) -> String {
     .to_string()
 }
 
-fn existing_enabled(store: &str, cron_name: &str) -> bool {
-    let escaped = crate::util::json_string(cron_name);
+fn legacy_morning_ref(store: &str) -> String {
     jq_raw(
         store,
-        &format!("(.jobs? // . // [])[]? | select((.name // \"\") == {escaped}) | (.enabled // true)"),
+        r#"(.jobs? // . // [])[]?
+          | select(
+              (((.name // "") | ascii_downcase) as $n
+                | ($n == "sabah check" or $n == "sabah-check" or $n == "morning check" or $n == "morning-check"))
+              or ((.script // "") | endswith("sabah-check-deliver.sh"))
+              or ((.script // "") | endswith("morning-check-deliver.sh"))
+            )
+          | (.id // .name)"#,
     )
-    .unwrap_or_else(|_| "true".to_string())
+    .unwrap_or_default()
+    .lines()
+    .next()
+    .unwrap_or("")
     .trim()
-        == "true"
+    .to_string()
+}
+
+fn record_by_ref(store: &str, reference: &str) -> String {
+    if reference.is_empty() {
+        return "{}".to_string();
+    }
+    let escaped = crate::util::json_string(reference);
+    jq(
+        store,
+        &format!(
+            "first((.jobs? // . // [])[]? | select((.id // \"\") == {escaped} or (.name // \"\") == {escaped})) // {{}}"
+        ),
+    )
+    .unwrap_or_else(|_| "{}".to_string())
+}
+
+fn record_enabled(record: &str) -> bool {
+    jq_raw(record, ".enabled // true").unwrap_or_else(|_| "true".to_string()).trim() == "true"
 }
 
 pub fn sync_cron(prune: bool) -> Result<String, String> {
@@ -142,8 +169,13 @@ pub fn sync_cron(prune: bool) -> Result<String, String> {
             return Err(format!("{}: script missing at {}", job.name, script_path.display()));
         }
         let script = script_path.to_string_lossy().to_string();
-        let reference = existing_ref(&store, &job.cron_name);
+        let mut reference = existing_ref(&store, &job.cron_name);
+        if reference.is_empty() && job.name == "morning-check" {
+            reference = legacy_morning_ref(&store);
+        }
+        let existing = record_by_ref(&store, &reference);
         let prompt = "Run the declarative Vesper Hermes trigger.";
+
         if reference.is_empty() {
             let code = run_status(
                 "hermes",
@@ -172,10 +204,11 @@ pub fn sync_cron(prune: bool) -> Result<String, String> {
             updated.push(job.name.clone());
         }
 
-        let currently = existing_enabled(&store, &job.cron_name);
+        let currently = if reference.is_empty() { true } else { record_enabled(&existing) };
         if job.enabled != currently {
             let action = if job.enabled { "resume" } else { "pause" };
-            if run_status("hermes", &["cron", action, &job.cron_name], None)? != 0 {
+            let target = if reference.is_empty() { &job.cron_name } else { &reference };
+            if run_status("hermes", &["cron", action, target], None)? != 0 {
                 return Err(format!("{}: Hermes cron {action} failed", job.name));
             }
             if job.enabled {
@@ -193,7 +226,9 @@ pub fn sync_cron(prune: bool) -> Result<String, String> {
             if wanted.contains(name) {
                 continue;
             }
-            if run_status("hermes", &["cron", "remove", name], None)? == 0 {
+            let reference = existing_ref(&store, name);
+            let target = if reference.is_empty() { name } else { &reference };
+            if run_status("hermes", &["cron", "remove", target], None)? == 0 {
                 removed.push(name.to_string());
             }
         }
@@ -212,8 +247,21 @@ fn json_array(items: &[String]) -> String {
     )
 }
 
+fn unit_name(task: &str) -> String {
+    let safe = task
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' { c } else { '-' })
+        .collect::<String>();
+    format!("vesper-hermes-{safe}")
+}
+
 pub fn dispatch(task: &str) -> Result<(), String> {
-    let unit = format!("vesper-hermes-{}-{}", task.replace(|c: char| !c.is_ascii_alphanumeric() && c != '-', "-"), timestamp());
+    let unit = unit_name(task);
+    let service = format!("{unit}.service");
+    if run_status("systemctl", &["--user", "is-active", "--quiet", &service], None).unwrap_or(1) == 0 {
+        return Ok(());
+    }
+
     let unit_arg = format!("--unit={unit}");
     let code = run_status(
         "systemd-run",
@@ -224,7 +272,13 @@ pub fn dispatch(task: &str) -> Result<(), String> {
         ],
         None,
     )?;
-    if code == 0 { Ok(()) } else { Err(format!("failed to dispatch {task}")) }
+    if code == 0 {
+        return Ok(());
+    }
+    if run_status("systemctl", &["--user", "is-active", "--quiet", &service], None).unwrap_or(1) == 0 {
+        return Ok(());
+    }
+    Err(format!("failed to dispatch {task}"))
 }
 
 fn failed_units(scope: &str) -> String {
@@ -263,17 +317,32 @@ pub fn health_watch() -> String {
     }
     for scope in ["user", "system"] {
         let units = failed_units(scope);
-        let meaningful = units.lines().filter(|line| !line.trim().is_empty() && !line.contains("0 loaded units listed")).take(8).collect::<Vec<_>>();
+        let meaningful = units
+            .lines()
+            .filter(|line| !line.trim().is_empty() && !line.contains("0 loaded units listed"))
+            .take(8)
+            .collect::<Vec<_>>();
         if !meaningful.is_empty() {
             problems.push(format!("{scope} failed units: {}", meaningful.join(" | ")));
         }
     }
-    let threshold = std::env::var("VESPER_DISK_ALERT_PERCENT").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(90).clamp(1, 99);
+    let threshold = std::env::var("VESPER_DISK_ALERT_PERCENT")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(90)
+        .clamp(1, 99);
     let used = disk_percent();
     if used >= threshold {
         problems.push(format!("disk /: {used}% used (threshold {threshold}%)"));
     }
-    if problems.is_empty() { String::new() } else { format!("[Hermes health]\n{}", problems.into_iter().map(|x| format!("- {x}")).collect::<Vec<_>>().join("\n")) }
+    if problems.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "[Hermes health]\n{}",
+            problems.into_iter().map(|item| format!("- {item}")).collect::<Vec<_>>().join("\n")
+        )
+    }
 }
 
 pub fn cron_integrity_watch() -> String {
@@ -286,6 +355,19 @@ pub fn cron_integrity_watch() -> String {
         let reference = existing_ref(&store, &job.cron_name);
         if reference.is_empty() {
             problems.push(format!("missing job {}", job.cron_name));
+            continue;
+        }
+        let record = record_by_ref(&store, &reference);
+        if record_enabled(&record) != job.enabled {
+            problems.push(format!("enabled-state drift {}", job.cron_name));
+        }
+        let actual_script = jq_raw(&record, ".script // \"\"").unwrap_or_default();
+        if !actual_script.trim().ends_with(&job.script) {
+            problems.push(format!("script drift {}", job.cron_name));
+        }
+        let no_agent = jq_raw(&record, ".no_agent // .noAgent // false").unwrap_or_default();
+        if no_agent.trim() != "true" {
+            problems.push(format!("mode drift {}: expected no_agent=true", job.cron_name));
         }
         let script_path = hermes_home().join("scripts").join(&job.script);
         if !script_path.is_file() {
@@ -296,7 +378,14 @@ pub fn cron_integrity_watch() -> String {
     if status.contains("will NOT fire") || status.contains("STALLED") {
         problems.push("Hermes cron scheduler/gateway is unhealthy".to_string());
     }
-    if problems.is_empty() { String::new() } else { format!("[Hermes cron integrity]\n{}", problems.into_iter().take(20).map(|x| format!("- {x}")).collect::<Vec<_>>().join("\n")) }
+    if problems.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "[Hermes cron integrity]\n{}",
+            problems.into_iter().take(20).map(|item| format!("- {item}")).collect::<Vec<_>>().join("\n")
+        )
+    }
 }
 
 pub fn watch(task: &str) -> Result<String, String> {
@@ -307,15 +396,26 @@ pub fn watch(task: &str) -> Result<String, String> {
     }
 }
 
+fn onion_host(url: &str) -> bool {
+    let Some((scheme, rest)) = url.split_once("://") else { return false };
+    if scheme != "http" && scheme != "https" {
+        return false;
+    }
+    let authority = rest.split('/').next().unwrap_or("");
+    let host_port = authority.rsplit('@').next().unwrap_or("");
+    let host = host_port.split(':').next().unwrap_or("").trim_end_matches('.').to_ascii_lowercase();
+    host.ends_with(".onion")
+}
+
 pub fn tor_fetch(url: &str, max_chars: usize) -> Result<String, String> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) || !url.contains(".onion") {
+    if !onion_host(url) {
         return Err("tor-fetch only accepts http(s) .onion URLs".to_string());
     }
     let output = run(
         "curl",
         &[
             "--fail", "--location", "--silent", "--show-error", "--max-time", "45",
-            "--socks5-hostname", "127.0.0.1:9050", "--user-agent", "Mozilla/5.0 Vesper-Hermes/1", url,
+            "--socks5-hostname", "127.0.0.1:9050", "--user-agent", "Mozilla/5.0 Vesper-Hermes/2", url,
         ],
         None,
     )?;
@@ -325,14 +425,15 @@ pub fn tor_fetch(url: &str, max_chars: usize) -> Result<String, String> {
     }
     Ok(format!(
         "{{\"url\":{},\"transport\":\"tor-socks5\",\"chars\":{},\"content\":{}}}",
-        crate::util::json_string(url), text.len(), crate::util::json_string(&text)
+        crate::util::json_string(url),
+        text.len(),
+        crate::util::json_string(&text)
     ))
 }
 
 pub fn job_for(name: &str) -> Result<Job, String> {
-    jobs()?.into_iter().find(|job| job.name == name).ok_or_else(|| format!("unknown Hermes job: {name}"))
-}
-
-pub fn scripts_exist() -> bool {
-    jobs().unwrap_or_default().iter().all(|job| Path::new(&hermes_home().join("scripts").join(&job.script)).exists())
+    jobs()?
+        .into_iter()
+        .find(|job| job.name == name)
+        .ok_or_else(|| format!("unknown Hermes job: {name}"))
 }
