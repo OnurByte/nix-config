@@ -32,23 +32,12 @@ diff --git a/vesper-control.rs b/vesper-control.rs
 +        if wellbeing_enabled() && wellbeing_sampling_allowed() {
              if let Some(app) = active_app() {
                  *values.entry(app).or_insert(0) += tick.as_secs();
-@@ -558,3 +579,9 @@ fn wellbeing_summary() {
--    println!("{\"totalSeconds\":{},\"apps\":[{}]}", total, json.join(","));
-+    println!(
-+        "{\"schemaVersion\":1,\"enabled\":{},\"agentReadable\":true,\"date\":\"{}\",\"totalSeconds\":{},\"apps\":[{}]}",
-+        if wellbeing_enabled() { "true" } else { "false" },
-+        json_escape(&today()),
-+        total,
-+        json.join(",")
-+    );
- }
- 
-@@ -884,3 +911,4 @@ fn usage() -> ! {
+@@ -884,3 +905,4 @@ fn usage() -> ! {
             proxy status|set|clear\n\
 +           wellbeing status|on|off\n\
             wellbeing-daemon\n\
             wellbeing-summary\n\
-@@ -948,2 +976,8 @@ fn main() {
+@@ -948,2 +970,8 @@ fn main() {
 +        [group, action] if group == "wellbeing" && action == "status" => {
 +            println!("{}", if wellbeing_enabled() { "on" } else { "off" });
 +        }
