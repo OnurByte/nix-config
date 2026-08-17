@@ -33,10 +33,10 @@
 
   upstream-edge-radar = {
     schedule = "0 15 * * *";
-    mode = "dispatch";
+    mode = "monitor";
     task = "upstream-edge-radar";
     deliver = "local";
-    description = "early warning for Vesper upstream changes";
+    description = "zero-token upstream head monitor that dispatches research only after meaningful source movement";
   };
 
   vesper-health-watch = {
