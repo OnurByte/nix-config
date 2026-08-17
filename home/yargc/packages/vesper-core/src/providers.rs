@@ -131,11 +131,24 @@ pub fn set_routing(default_provider: &str, default_model: &str, fallbacks: &str)
     atomic_write_private(&routing_path(), format!("defaultProvider={default_provider}\ndefaultModel={default_model}\nfallbacks={fallbacks}\n").as_bytes())
 }
 
-fn endpoint_reachable(provider: &Provider) -> Option<bool> {
+fn endpoint_probe(provider: &Provider) -> (Option<bool>, Option<u64>) {
     let url = format!("{}/models", provider.base_url.trim_end_matches('/'));
-    match output("curl", &["--silent", "--show-error", "--output", "/dev/null", "--connect-timeout", "3", "--max-time", "5", "--write-out", "%{http_code}", &url]) {
-        Ok(code) => Some(code.len() == 3 && code != "000"),
-        Err(_) => Some(false),
+    match output("curl", &[
+        "--silent", "--show-error", "--output", "/dev/null",
+        "--connect-timeout", "3", "--max-time", "5",
+        "--write-out", "%{http_code}\t%{time_total}", &url,
+    ]) {
+        Ok(value) => {
+            let mut parts = value.split('\t');
+            let code = parts.next().unwrap_or("");
+            let latency = parts
+                .next()
+                .and_then(|seconds| seconds.parse::<f64>().ok())
+                .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+                .map(|seconds| (seconds * 1000.0).round() as u64);
+            (Some(code.len() == 3 && code != "000"), latency)
+        }
+        Err(_) => (Some(false), None),
     }
 }
 
@@ -143,10 +156,12 @@ pub fn status_json(test_endpoints: bool) -> String {
     let values = load();
     let route = routing();
     let providers = values.values().map(|p| {
-        let reachable = if test_endpoints { endpoint_reachable(p).map(|v| bool_lit(v).to_string()).unwrap_or_else(|| "null".to_string()) } else { "null".to_string() };
-        format!("{{\"id\":\"{}\",\"name\":\"{}\",\"baseUrl\":\"{}\",\"credential\":\"{}\",\"model\":\"{}\",\"budgetCents\":{},\"enabled\":{},\"custom\":{},\"endpointReachable\":{},\"authValid\":null,\"latencyMs\":null,\"quota\":null}}",
+        let (reachable, latency) = if test_endpoints { endpoint_probe(p) } else { (None, None) };
+        let reachable_json = reachable.map(|v| bool_lit(v).to_string()).unwrap_or_else(|| "null".to_string());
+        let latency_json = latency.map(|v| v.to_string()).unwrap_or_else(|| "null".to_string());
+        format!("{{\"id\":\"{}\",\"name\":\"{}\",\"baseUrl\":\"{}\",\"credential\":\"{}\",\"model\":\"{}\",\"budgetCents\":{},\"enabled\":{},\"custom\":{},\"endpointReachable\":{},\"authValid\":null,\"latencyMs\":{},\"quota\":null}}",
             escape(&p.id), escape(&p.name), escape(&p.base_url), escape(&p.credential), escape(&p.model), p.budget_cents,
-            bool_lit(p.enabled), bool_lit(p.custom), reachable)
+            bool_lit(p.enabled), bool_lit(p.custom), reachable_json, latency_json)
     }).collect::<Vec<_>>();
     format!("{{\"defaultProvider\":\"{}\",\"defaultModel\":\"{}\",\"fallbacks\":\"{}\",\"providers\":[{}]}}",
         escape(route.get("defaultProvider").map(String::as_str).unwrap_or("openai")),
