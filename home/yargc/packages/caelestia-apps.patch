@@ -1,0 +1,26 @@
+--- a/modules/nexus/pages/AppsPage.qml
++++ b/modules/nexus/pages/AppsPage.qml
+@@ -58,5 +58,9 @@ PageBase {
+             onSelected: app => GlobalConfig.general.apps.explorer = app.command
+         }
+ 
++        VesperAppsSettings {
++            Layout.fillWidth: true
++        }
++
+         // Library
+         SectionHeader {
+             text: qsTr("Library")
+--- a/modules/nexus/pages/apps/AppInfo.qml
++++ b/modules/nexus/pages/apps/AppInfo.qml
+@@ -117,4 +117,9 @@ PageBase {
+             labelComp.Layout.preferredWidth: Math.max(labelComp.implicitWidth, appId.labelComp.implicitWidth)
+         }
++
++        VesperAppControls {
++            Layout.fillWidth: true
++            app: root.app
++        }
+     }
+ 
+     component WrapInfoRow: ConnectedRect {
