@@ -14,23 +14,33 @@ let
     inherit hermesAgent;
   };
 
-  generatedJobScripts = lib.mapAttrs' (
+  # Hermes resolves cron script paths before enforcing containment under
+  # ~/.hermes/scripts. Home Manager home.file entries are symlinks into the
+  # Nix store, so they would be rejected as symlink escapes at fire time.
+  # Build immutable sources here, then copy them into the scripts directory
+  # as real files during activation.
+  jobScriptSources = lib.mapAttrs (
     name: _spec:
-    lib.nameValuePair ".hermes/scripts/vesper-${name}.sh" {
-      executable = true;
-      text = ''
-        #!/usr/bin/env bash
-        set -euo pipefail
-        exec ${hermesAutomations}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
-      '';
-    }
+    pkgs.writeShellScript "vesper-hermes-${name}" ''
+      set -euo pipefail
+      exec ${hermesAutomations}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
+    ''
   ) jobs;
 
-  morningCompatibilityScript = ''
-    #!/usr/bin/env bash
+  compatibilityScript = pkgs.writeShellScript "vesper-hermes-morning-check-compat" ''
     set -euo pipefail
     exec ${hermesAutomations}/bin/vesper-hermes-automations trigger morning-check
   '';
+
+  installJobScripts = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: source: ''
+        target="${home}/.hermes/scripts/vesper-${name}.sh"
+        rm -f "$target"
+        ${pkgs.coreutils}/bin/install -Dm755 ${source} "$target"
+      ''
+    ) jobScriptSources
+  );
 in
 {
   home.packages = [
@@ -40,26 +50,28 @@ in
 
   home.sessionVariables.VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
 
-  home.file = generatedJobScripts // {
-    ".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
+  home.file.".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
 
-    # Keep both historical entrypoints as short aliases until every mutable
-    # jobs.json has been reconciled. Long model work never runs inside these
-    # Hermes no_agent scripts.
-    ".hermes/scripts/morning-check-deliver.sh" = {
-      executable = true;
-      text = morningCompatibilityScript;
-    };
-    ".hermes/scripts/sabah-check-deliver.sh" = {
-      executable = true;
-      text = morningCompatibilityScript;
-    };
-  };
+  # Install physical files, not Home Manager symlinks. Hermes deliberately
+  # resolves symlinks and rejects anything whose resolved target escapes its
+  # scripts directory.
+  home.activation.hermesCronScripts = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    mkdir -p "${home}/.hermes/scripts"
+    ${installJobScripts}
+
+    for target in \
+      "${home}/.hermes/scripts/morning-check-deliver.sh" \
+      "${home}/.hermes/scripts/sabah-check-deliver.sh"
+    do
+      rm -f "$target"
+      ${pkgs.coreutils}/bin/install -Dm755 ${compatibilityScript} "$target"
+    done
+  '';
 
   # Hermes remains the only scheduler. This activation step only reconciles
-  # machine-owned `vesper:*` records after Home Manager has linked the scripts.
+  # machine-owned `vesper:*` records after the physical scripts are installed.
   # A missing local Hermes setup must not make an otherwise valid NixOS switch fail.
-  home.activation.hermesCronSync = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+  home.activation.hermesCronSync = lib.hm.dag.entryAfter [ "hermesCronScripts" ] ''
     if ! ${hermesAutomations}/bin/vesper-hermes-automations sync-cron --prune; then
       echo "warning: Hermes cron reconciliation failed; run 'vesper-hermes-automations sync-cron --prune' after Hermes is configured" >&2
     fi
