@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
-from hermes_automation_common import RESEARCH_SKILL, STATE_ROOT, atomic_json, invoke_json, invoke_text
+from hermes_automation_common import HERMES_HOME, RESEARCH_SKILL, STATE_ROOT, atomic_json, invoke_json, invoke_text
 from hermes_automation_reports import recent_briefings, research_prompt, state_context, write_report
 from hermes_research_collectors import (
     collect_github,
@@ -106,9 +107,6 @@ def frontier_daily() -> dict[str, Any]:
     if not outputs:
         raise RuntimeError("all unknown-frontier scouts failed: " + json.dumps(failures, ensure_ascii=False))
 
-    # Scouts already consumed the bounded candidate samples. Synthesis only
-    # needs their verified outputs plus lightweight pointers to the full pools;
-    # injecting the candidate corpora again would waste context and reasoning.
     extra = json.dumps(
         {
             "scouts": outputs,
@@ -199,13 +197,48 @@ def _clean_morning_text(text: str) -> str:
     return value
 
 
+def _telegram_target() -> str:
+    explicit = os.environ.get("VESPER_HERMES_MORNING_TARGET", "").strip()
+    if explicit:
+        return explicit
+    jobs_path = HERMES_HOME / "cron" / "jobs.json"
+    try:
+        value = json.loads(jobs_path.read_text(errors="replace"))
+        jobs = value.get("jobs", []) if isinstance(value, dict) else value
+    except Exception:
+        jobs = []
+    if isinstance(jobs, list):
+        preferred = []
+        fallback = []
+        for job in jobs:
+            if not isinstance(job, dict):
+                continue
+            name = str(job.get("name") or "").lower()
+            origin = job.get("origin") or {}
+            if not isinstance(origin, dict) or origin.get("platform") != "telegram" or origin.get("chat_id") is None:
+                continue
+            target = f"telegram:{origin['chat_id']}"
+            if origin.get("thread_id") is not None:
+                target += f":{origin['thread_id']}"
+            if name in {"vesper:morning-check", "morning check", "morning-check", "sabah check", "sabah-check"}:
+                preferred.append(target)
+            else:
+                fallback.append(target)
+        if preferred:
+            return preferred[0]
+        if fallback:
+            return fallback[0]
+    return "telegram"
+
+
 def _send_telegram(text: str) -> None:
     hermes = shutil.which("hermes")
     if not hermes:
         raise RuntimeError("hermes executable not found for Telegram delivery")
-    completed = subprocess.run([hermes, "send", "--to", "telegram", "--quiet"], input=text, text=True, capture_output=True, timeout=60, check=False)
+    target = _telegram_target()
+    completed = subprocess.run([hermes, "send", "--to", target, "--quiet"], input=text, text=True, capture_output=True, timeout=60, check=False)
     if completed.returncode != 0:
-        raise RuntimeError("Telegram delivery failed: " + (completed.stderr or completed.stdout)[-4000:])
+        raise RuntimeError(f"Telegram delivery failed for {target}: " + (completed.stderr or completed.stdout)[-4000:])
 
 
 def morning_check() -> dict[str, Any]:
