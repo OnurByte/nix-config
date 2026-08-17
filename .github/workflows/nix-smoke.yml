@@ -38,10 +38,40 @@ jobs:
             home/yargc/packages/hermes_automation_common.py \
             home/yargc/packages/hermes_automation_reports.py \
             home/yargc/packages/hermes_automation_scheduler.py \
+            home/yargc/packages/hermes_research_collectors.py \
             home/yargc/packages/hermes_tasks_daily.py \
             home/yargc/packages/hermes_tasks_weekly.py \
             home/yargc/packages/hermes_automation_tasks.py \
             home/yargc/packages/hermes-automations.py
+
+      - name: Validate Hermes automation graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          nix eval --json --expr 'import ./home/yargc/hermes-jobs.nix' > /tmp/hermes-jobs.json
+          PYTHONPATH=home/yargc/packages python3 - <<'PY'
+          import json
+          from hermes_automation_tasks import TASKS
+
+          jobs = json.load(open('/tmp/hermes-jobs.json'))
+          watchdogs = {'vesper-health-watch', 'cron-integrity-watch'}
+          valid_modes = {'dispatch', 'monitor', 'watchdog'}
+          errors = []
+          for name, spec in jobs.items():
+              mode = spec.get('mode', 'dispatch')
+              task = spec.get('task', name)
+              if mode not in valid_modes:
+                  errors.append(f'{name}: unsupported mode {mode!r}')
+              elif mode in {'dispatch', 'monitor'} and task not in TASKS:
+                  errors.append(f'{name}: task {task!r} missing from TASKS')
+              elif mode == 'watchdog' and task not in watchdogs:
+                  errors.append(f'{name}: watchdog {task!r} is not implemented')
+              if not spec.get('schedule'):
+                  errors.append(f'{name}: missing schedule')
+          if errors:
+              raise SystemExit('\n'.join(errors))
+          print(f'validated {len(jobs)} Hermes jobs and {len(TASKS)} executable tasks')
+          PY
 
       - name: Parse Hyprland Lua
         shell: bash
