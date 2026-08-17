@@ -56,6 +56,7 @@ fn main() {
         [group, action, domain] if group == "network" && action == "dpi-test" => println!("{}", network::dpi_test_json(domain)),
         [group, action] if group == "privacy" && action == "status" => println!("{}", privacy::status_json()),
         [group, action] if group == "recovery" && action == "status" => println!("{}", recovery::status_json()),
+        [group, action] if group == "recovery" && action == "check" => recovery::run_repository_check().unwrap_or_else(|error| fail(error)),
 
         [group, action] if group == "proxy" && action == "status" => println!("{}", proxy::status_json()),
         [group, action] if group == "proxy" && action == "test" => println!("{}", proxy::test_json()),
