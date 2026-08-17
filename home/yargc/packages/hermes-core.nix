@@ -48,11 +48,6 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
-    # API-key-only Vesper research defaults to the Hermes xAI provider. Native
-    # Hermes OAuth remains available only when the consumer mapping is set to
-    # `native`; no official client auth material is read or copied by Vesper.
-    substituteInPlace main.rs \
-      --replace-fail '"xai-oauth".to_string()' '"xai".to_string()'
     rustc --edition=2021 -C opt-level=2 main.rs -o vesper-hermes-core
     runHook postBuild
   '';
