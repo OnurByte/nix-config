@@ -7,6 +7,9 @@ import qs.services
 StyledRect {
     id: root
 
+    required property Item bar
+    required property var popouts
+
     property int activeCount: 0
     property string cockpitState: "idle"
     property string details: "No active coding agents"
@@ -25,6 +28,13 @@ StyledRect {
     function refresh(): void {
         if (!status.running)
             status.running = true;
+    }
+
+    function togglePopout(): void {
+        const opening = !(root.popouts.hasCurrent && root.popouts.currentName === "agentcockpit");
+        root.popouts.currentName = "agentcockpit";
+        root.popouts.currentCenter = root.mapToItem(root.bar, root.width / 2, root.height / 2).y;
+        root.popouts.hasCurrent = opening;
     }
 
     Component.onCompleted: refresh()
@@ -53,11 +63,6 @@ StyledRect {
                 }
             }
         }
-    }
-
-    Process {
-        id: popup
-        command: ["@agentCockpit@", "popup"]
     }
 
     ColumnLayout {
@@ -90,8 +95,8 @@ StyledRect {
         onClicked: event => {
             if (event.button === Qt.RightButton)
                 root.refresh();
-            else if (!popup.running)
-                popup.running = true;
+            else
+                root.togglePopout();
         }
     }
 }
