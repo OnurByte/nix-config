@@ -71,7 +71,7 @@ fn extract_json_object(text: &str) -> Result<String, String> {
 }
 
 fn invoke_agent(prompt: &str, web_only: bool) -> Result<String, String> {
-    let provider = env::var("HERMES_RESEARCH_PROVIDER").unwrap_or_else(|_| "xai-oauth".to_string());
+    let provider = env::var("HERMES_RESEARCH_PROVIDER").unwrap_or_else(|_| "xai".to_string());
     let model = env::var("HERMES_RESEARCH_MODEL").unwrap_or_else(|_| "grok-4.5".to_string());
     let mut args: Vec<&str> = vec!["-z", prompt, "--provider", provider.as_str(), "-m", model.as_str(), "--yolo"];
     if web_only {
