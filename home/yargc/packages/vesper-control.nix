@@ -31,10 +31,12 @@ stdenv.mkDerivation {
     runHook preBuild
     cp -r ${./vesper-core} vesper-core
     chmod -R u+w vesper-core
+    # Cargo modules include the canonical provider registry from the package
+    # root, so materialize it before compiling the copied workspace.
+    cp ${./vesper-provider-registry.rs} vesper-provider-registry.rs
     cargo build --release --locked --manifest-path vesper-core/Cargo.toml
 
     cp ${./vesper-control.rs} vesper-control-legacy.rs
-    cp ${./vesper-provider-registry.rs} vesper-provider-registry.rs
     rustc --edition=2021 -C opt-level=2 vesper-control-legacy.rs -o vesper-control-legacy
     runHook postBuild
   '';
