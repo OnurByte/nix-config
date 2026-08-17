@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,20 @@ from hermes_automation_common import (
     load_registry,
     now,
 )
+
+UPSTREAM_REPOSITORIES = [
+    "NousResearch/hermes-agent",
+    "numtide/llm-agents.nix",
+    "NixOS/nixpkgs",
+    "nix-community/home-manager",
+    "hyprwm/Hyprland",
+    "caelestia-dots/shell",
+    "0xc000022070/zen-browser-flake",
+    "schembriaiden/helium-browser-nix-flake",
+    "alioguzhan/codexbar-flake",
+    "monero-project/monero",
+    "Cuprate/cuprate",
+]
 
 
 def slug(value: str) -> str:
@@ -97,6 +113,42 @@ def jobs_store() -> tuple[Path, list[dict[str, Any]]]:
     return path, [job for job in jobs if isinstance(job, dict)]
 
 
+def _installed_skill_names() -> set[str]:
+    names: set[str] = set()
+    seen: set[tuple[int, int]] = set()
+    for root in (HERMES_HOME / "skills", Path.home() / ".agents" / "skills"):
+        if not root.exists():
+            continue
+        root = root.resolve()
+        root_depth = len(root.parts)
+        for current, dirs, files in os.walk(root, followlinks=True):
+            path = Path(current)
+            try:
+                stat = path.stat()
+                identity = (stat.st_dev, stat.st_ino)
+            except OSError:
+                dirs[:] = []
+                continue
+            if identity in seen:
+                dirs[:] = []
+                continue
+            seen.add(identity)
+            if len(path.parts) - root_depth > 4:
+                dirs[:] = []
+                continue
+            if "SKILL.md" not in files:
+                continue
+            names.add(path.name)
+            try:
+                for line in (path / "SKILL.md").read_text(errors="replace").splitlines()[:40]:
+                    if line.startswith("name:"):
+                        names.add(line.split(":", 1)[1].strip().strip('"\''))
+                        break
+            except Exception:
+                pass
+    return names
+
+
 def _cron_integrity_watch() -> str:
     registry = load_registry()
     jobs_path, jobs = jobs_store()
@@ -126,14 +178,14 @@ def _cron_integrity_watch() -> str:
         if expected_script and expected_script not in actual_script:
             problems.append(f"script drift {desired_name}: {actual_script!r}")
 
-    roots = [HERMES_HOME / "skills", HERMES_HOME / "skills" / "vesper", Path.home() / ".agents" / "skills"]
+    installed = _installed_skill_names()
     for job in jobs:
         skills = job.get("skills") or ([job["skill"]] if job.get("skill") else [])
         if not isinstance(skills, list):
             continue
         for skill in skills:
             name = str(skill)
-            if not any((root / name).exists() for root in roots):
+            if name and name not in installed:
                 problems.append(f"missing skill {name} referenced by {job.get('name') or job.get('id')}")
 
     status = subprocess.run([hermes_bin(), "cron", "status"], text=True, capture_output=True, timeout=30, check=False)
@@ -149,6 +201,84 @@ def run_watchdog(name: str) -> str:
     if name == "cron-integrity-watch":
         return _cron_integrity_watch()
     raise RuntimeError(f"unknown watchdog: {name}")
+
+
+def _gh_repo_head(repository: str) -> tuple[str, dict[str, Any] | None]:
+    gh = shutil.which("gh")
+    if not gh:
+        return repository, None
+    meta = subprocess.run([gh, "api", f"repos/{repository}"], text=True, capture_output=True, timeout=10, check=False)
+    if meta.returncode != 0:
+        return repository, None
+    try:
+        meta_json = json.loads(meta.stdout)
+    except Exception:
+        return repository, None
+    branch = str(meta_json.get("default_branch") or "main")
+    head = subprocess.run([gh, "api", f"repos/{repository}/commits/{branch}"], text=True, capture_output=True, timeout=10, check=False)
+    if head.returncode != 0:
+        return repository, None
+    try:
+        value = json.loads(head.stdout)
+    except Exception:
+        return repository, None
+    commit = value.get("commit") or {}
+    author = commit.get("author") or {}
+    return repository, {
+        "branch": branch,
+        "sha": value.get("sha"),
+        "date": author.get("date"),
+        "message": str(commit.get("message") or "").splitlines()[0][:180],
+    }
+
+
+def monitor_changed(name: str) -> bool:
+    if name != "upstream-edge-radar":
+        raise RuntimeError(f"unknown monitor-dispatch job: {name}")
+    path = STATE_ROOT / "watches" / "upstream-edge-radar-monitor.json"
+    previous = load_json(path, {})
+    previous_snapshot = previous.get("snapshot", {}) if isinstance(previous, dict) else {}
+    if not isinstance(previous_snapshot, dict):
+        previous_snapshot = {}
+
+    observed: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        futures = [pool.submit(_gh_repo_head, repository) for repository in UPSTREAM_REPOSITORIES]
+        for future in as_completed(futures):
+            repository, value = future.result()
+            if isinstance(value, dict) and value.get("sha"):
+                observed[repository] = value
+
+    # A broad network/auth failure should not wake an expensive research run.
+    if len(observed) < max(3, len(UPSTREAM_REPOSITORIES) // 2):
+        return False
+
+    merged = dict(previous_snapshot)
+    merged.update(observed)
+    changed_repositories = sorted(
+        repository
+        for repository, value in observed.items()
+        if previous_snapshot.get(repository) != value
+    )
+    atomic_json(
+        path,
+        {
+            "snapshot": merged,
+            "changedRepositories": changed_repositories,
+            "checkedAt": now().isoformat(timespec="seconds"),
+        },
+    )
+    atomic_json(
+        STATE_ROOT / "upstream-edge-radar" / "monitor-change.json",
+        {
+            "changedRepositories": changed_repositories,
+            "snapshot": {repository: observed[repository] for repository in changed_repositories},
+            "checkedAt": now().isoformat(timespec="seconds"),
+        },
+    )
+    # First healthy snapshot establishes a baseline but still runs once so the
+    # user receives an initial upstream assessment.
+    return not previous_snapshot or bool(changed_repositories)
 
 
 def _run(argv: list[str]) -> subprocess.CompletedProcess[str]:
