@@ -25,11 +25,16 @@ writeShellApplication {
     set -uo pipefail
 
     json_mode=false
+    export_mode=false
     case "''${1:-}" in
       "") ;;
       --json) json_mode=true ;;
+      --export)
+        json_mode=true
+        export_mode=true
+        ;;
       *)
-        echo "usage: vesper-doctor [--json]" >&2
+        echo "usage: vesper-doctor [--json|--export]" >&2
         exit 2
         ;;
     esac
@@ -160,9 +165,21 @@ writeShellApplication {
     fi
 
     if [ "$json_mode" = true ]; then
-      jq -cn \
+      report="$(jq -cn \
         --argjson checks "$checks" \
-        '{healthy: ([ $checks[] | select(.level == "warn") ] | length == 0), checks:$checks}'
+        '{healthy: ([ $checks[] | select(.level == "warn") ] | length == 0), checks:$checks}')"
+
+      if [ "$export_mode" = true ]; then
+        state_root="''${XDG_STATE_HOME:-$HOME/.local/state}/vesper/diagnostics"
+        install -d -m 0700 "$state_root"
+        path="$state_root/doctor-$(date +%Y%m%dT%H%M%S).json"
+        umask 077
+        printf '%s\n' "$report" > "$path"
+        chmod 0600 "$path"
+        printf '%s\n' "$path"
+      else
+        printf '%s\n' "$report"
+      fi
     fi
   '';
 }
