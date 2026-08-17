@@ -152,7 +152,14 @@
      component WrapInfoRow: ConnectedRect {
 --- a/modules/nexus/pages/NetworkPage.qml
 +++ b/modules/nexus/pages/NetworkPage.qml
-@@ -298,5 +298,10 @@ PageBase {
+@@ -340,12 +340,17 @@ PageBase {
+         // Add provider
+         RowButton {
+             last: true
+             icon: "add"
+             text: qsTr("Add provider")
+             onClicked: {
+                 root.nState.editingVpnIndex = -1;
                  root.nState.openSubPage(4); // Add/edit provider sub-page
              }
          }
