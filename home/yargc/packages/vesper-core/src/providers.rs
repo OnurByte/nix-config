@@ -5,6 +5,8 @@ use crate::json::{bool_lit, escape};
 use crate::paths::{atomic_write_private, config_root};
 use crate::process::output;
 
+include!("../../vesper-provider-registry.rs");
+
 #[derive(Clone, Debug)]
 struct Provider {
     id: String,
@@ -16,14 +18,6 @@ struct Provider {
     enabled: bool,
     custom: bool,
 }
-
-const BUILTINS: &[(&str, &str, &str, &str)] = &[
-    ("openai", "OpenAI", "https://api.openai.com/v1", "openai"),
-    ("anthropic", "Anthropic", "https://api.anthropic.com", "anthropic"),
-    ("xai", "xAI", "https://api.x.ai/v1", "xai"),
-    ("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openrouter"),
-    ("google", "Google AI", "https://generativelanguage.googleapis.com", "google"),
-];
 
 fn providers_path() -> std::path::PathBuf { config_root().join("ai/providers.tsv") }
 fn routing_path() -> std::path::PathBuf { config_root().join("ai/routing") }
@@ -41,7 +35,7 @@ fn valid_url(value: &str) -> bool {
 fn clean(value: &str) -> String { value.replace(['\t', '\n', '\r'], " ") }
 
 fn builtin_map() -> BTreeMap<String, Provider> {
-    BUILTINS.iter().map(|(id, name, url, credential)| {
+    PROVIDER_ENDPOINTS.iter().map(|(id, name, url, credential)| {
         ((*id).to_string(), Provider {
             id: (*id).to_string(), name: (*name).to_string(), base_url: (*url).to_string(),
             credential: (*credential).to_string(), model: String::new(), budget_cents: 0, enabled: true, custom: false,
@@ -90,7 +84,7 @@ fn save(values: &BTreeMap<String, Provider>) -> Result<(), String> {
 
 pub fn add(id: &str, name: &str, base_url: &str, credential: &str) -> Result<(), String> {
     if !valid_token(id) || !valid_token(credential) || !valid_url(base_url) { return Err("custom provider requires a safe id/credential alias and HTTPS (or localhost HTTP) base URL".to_string()); }
-    if BUILTINS.iter().any(|(builtin, _, _, _)| *builtin == id) { return Err("built-in provider ids cannot be replaced".to_string()); }
+    if PROVIDER_ENDPOINTS.iter().any(|(builtin, _, _, _)| *builtin == id) { return Err("built-in provider ids cannot be replaced".to_string()); }
     let mut values = load();
     values.insert(id.to_string(), Provider { id: id.to_string(), name: clean(name), base_url: base_url.trim_end_matches('/').to_string(), credential: credential.to_string(), model: String::new(), budget_cents: 0, enabled: true, custom: true });
     save(&values)
@@ -165,4 +159,7 @@ mod tests {
     use super::*;
     #[test] fn custom_url_policy_requires_tls_except_loopback() { assert!(valid_url("https://example.com/v1")); assert!(valid_url("http://127.0.0.1:8080/v1")); assert!(!valid_url("http://example.com/v1")); }
     #[test] fn builtins_remain_distinct_from_custom() { assert!(builtin_map().values().all(|p| !p.custom)); }
+    #[test] fn endpoint_registry_matches_credential_registry() {
+        assert!(PROVIDER_ENDPOINTS.iter().all(|(id, _, _, _)| PROVIDERS.iter().any(|(credential_id, _, _)| credential_id == id)));
+    }
 }
