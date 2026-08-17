@@ -10,6 +10,7 @@ let
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
   vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
+  vesperNetwork = pkgs.callPackage ./packages/vesper-network.nix { };
   aiHub = pkgs.callPackage ./packages/ai-hub.nix {
     inherit
       codexbar
@@ -45,7 +46,9 @@ let
       substitute ${./packages/AiCredentials.qml} modules/nexus/pages/AiCredentials.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \
-        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+        --subst-var-by vesperNetwork ${vesperNetwork}/bin/vesper-network
+      substitute ${./packages/VesperZapretPage.qml} modules/nexus/pages/VesperZapretPage.qml \
+        --subst-var-by vesperNetwork ${vesperNetwork}/bin/vesper-network
       substitute ${./packages/VesperProxyPage.qml} modules/nexus/pages/VesperProxyPage.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperAppsSettings.qml} modules/nexus/pages/VesperAppsSettings.qml \
@@ -61,9 +64,7 @@ let
   nixSolarized = pkgs.nixos-artwork.wallpapers.nineish-solarized-dark;
 in
 {
-  imports = [
-    inputs.caelestia-shell.homeManagerModules.default
-  ];
+  imports = [ inputs.caelestia-shell.homeManagerModules.default ];
 
   programs.caelestia = {
     enable = true;
@@ -71,8 +72,6 @@ in
     systemd.enable = false;
 
     settings = {
-      # Shell surfaces follow the Vesper glass contract: layered translucency,
-      # readable backdrop blur, calm spacing and larger continuous rounding.
       appearance = {
         rounding.scale = 1.25;
         spacing.scale = 1.05;
@@ -91,28 +90,15 @@ in
         apps = {
           terminal = [ "ghostty" ];
           explorer = [ "thunar" ];
-          audio = [
-            "caelestia"
-            "shell"
-            "nexus"
-            "open"
-          ];
+          audio = [ "caelestia" "shell" "nexus" "open" ];
         };
-
         idle = {
           lockBeforeSleep = true;
           inhibitWhenAudio = true;
           inhibitWhenCharging = false;
           timeouts = [
-            {
-              timeout = 300;
-              idleAction = "lock";
-            }
-            {
-              timeout = 600;
-              idleAction = "dpms off";
-              returnAction = "dpms on";
-            }
+            { timeout = 300; idleAction = "lock"; }
+            { timeout = 600; idleAction = "dpms off"; returnAction = "dpms on"; }
           ];
         };
       };
@@ -199,8 +185,6 @@ in
         enableCava = false;
         iconThemeLight = "Papirus-Light";
         iconThemeDark = "Papirus-Dark";
-        # Upstream currently writes adw-gtk3-dark even in light mode. Correct
-        # that final dconf key after palette generation without forking the CLI.
         postHook = ''
           if [ "$SCHEME_MODE" = "light" ]; then
             ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3'"
@@ -213,8 +197,6 @@ in
     };
   };
 
-  # Caelestia generates live GTK/Qt palettes. Home Manager provides the native
-  # toolkit engines so applications consume those generated files.
   qt = {
     enable = true;
     platformTheme = {
@@ -232,6 +214,7 @@ in
     privacyHud
     aiHub
     vesperControl
+    vesperNetwork
     codexbar
     pkgs.adw-gtk3
     pkgs.papirus-icon-theme
@@ -239,10 +222,7 @@ in
     pkgs.darkly
   ];
 
-  # The AI settings page reads the same MCP registry that Home Manager feeds to
-  # Codex, Claude Code and OpenCode. Keep this generated inventory value-only.
   home.file.".config/vesper/mcp-servers".text = lib.concatStringsSep "\n" mcpServerNames + "\n";
-
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
   home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;
 }
