@@ -10,7 +10,7 @@ import qs.modules.nexus.common
 
 PageBase {
     id: root
-    property var backup: ({ backup: {}, repositoryCheck: {}, snapper: {}, btrfsScrub: {}, retention: {} })
+    property var backup: ({ backup: {}, repositoryCheck: {}, snapper: {}, storage: {}, btrfsScrub: {}, retention: {} })
     property string errorText: ""
     property string actionMessage: ""
     title: qsTr("Backup & Recovery")
@@ -125,19 +125,33 @@ PageBase {
             icon: "restore"
             label: qsTr("Snapper · root")
             subtext: root.backup.snapper?.root || qsTr("snapshot inventory unavailable")
-            value: root.backup.snapper?.root ? qsTr("available") : qsTr("unknown")
+            value: qsTr("%1 snapshots").arg(root.backup.snapper?.rootCount ?? 0)
         }
         InfoRow {
             icon: "home_storage"
             label: qsTr("Snapper · home")
             subtext: root.backup.snapper?.home || qsTr("snapshot inventory unavailable")
-            value: root.backup.snapper?.home ? qsTr("available") : qsTr("unknown")
+            value: qsTr("%1 snapshots").arg(root.backup.snapper?.homeCount ?? 0)
         }
         InfoRow {
             icon: "storage"
             label: qsTr("Btrfs scrub")
             subtext: root.backup.btrfsScrub?.next || qsTr("scrub timer unavailable")
             value: root.backup.btrfsScrub?.result ? qsTr("reported") : qsTr("unknown")
+        }
+
+        SectionHeader { text: qsTr("Storage") }
+        InfoRow {
+            icon: "hard_drive"
+            label: qsTr("Local filesystem usage")
+            subtext: root.backup.storage?.localDiskUsage || qsTr("disk usage unavailable")
+            value: qsTr("observed")
+        }
+        InfoRow {
+            icon: "cloud_off"
+            label: qsTr("Restic repository usage")
+            subtext: root.backup.storage?.repositoryUsageReason || qsTr("repository-size query unavailable to Settings")
+            value: root.backup.storage?.repositoryUsageAvailable ? qsTr("available") : qsTr("unknown")
         }
 
         SectionHeader { text: qsTr("Recovery policy") }
