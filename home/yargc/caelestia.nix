@@ -30,6 +30,7 @@ let
       substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
+      ${pkgs.coreutils}/bin/install -Dm644 ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml
     '';
   });
 
@@ -167,14 +168,30 @@ in
         enableBtop = true;
         enableNvtop = true;
         enableHtop = false;
-        enableGtk = false;
-        enableQt = false;
+        enableGtk = true;
+        enableQt = true;
         enableWarp = false;
         enableChromium = false;
         enableZed = false;
         enableCava = false;
+        iconThemeLight = "Papirus-Light";
+        iconThemeDark = "Papirus-Dark";
         postHook = "hyprctl reload";
       };
+    };
+  };
+
+  # Caelestia's CLI generates the live GTK/Qt palettes. Home Manager only
+  # provides the native toolkit engines so applications actually consume them.
+  qt = {
+    enable = true;
+    platformTheme = {
+      name = "qtengine";
+      package = pkgs.qtengine;
+    };
+    style = {
+      name = "Darkly";
+      package = pkgs.darkly;
     };
   };
 
@@ -183,6 +200,10 @@ in
     privacyHud
     aiHub
     codexbar
+    pkgs.adw-gtk3
+    pkgs.papirus-icon-theme
+    pkgs.qtengine
+    pkgs.darkly
   ];
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
