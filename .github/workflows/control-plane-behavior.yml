@@ -3,7 +3,7 @@ name: Control-plane behavior
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, vesper-control-plane-phase2]
 
 permissions:
   contents: read
