@@ -12,7 +12,7 @@ PageBase {
     id: root
 
     property var control: ({ credentials: [], skills: { count: 0, items: [] }, mcp: { count: 0, items: [] }, hermesRegistry: false })
-    property var hub: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
+    property var ai: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
     property string loadError: ""
 
     readonly property var credentials: control.credentials || []
@@ -25,8 +25,8 @@ PageBase {
     function refresh() {
         if (!controlStatus.running)
             controlStatus.running = true;
-        if (!hubStatus.running)
-            hubStatus.running = true;
+        if (!aiStatus.running)
+            aiStatus.running = true;
     }
 
     Component.onCompleted: refresh()
@@ -54,12 +54,12 @@ PageBase {
     }
 
     Process {
-        id: hubStatus
-        command: ["@aiHub@", "status"]
+        id: aiStatus
+        command: ["@ai@", "status"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
-                    root.hub = JSON.parse(text);
+                    root.ai = JSON.parse(text);
                 } catch (e) {
                     // The settings inventory remains useful even if the usage backend is stale.
                 }
@@ -88,15 +88,15 @@ PageBase {
         InfoRow {
             icon: "smart_toy"
             label: qsTr("Providers")
-            subtext: root.hub.stale ? qsTr("usage snapshot is stale") : qsTr("usage and limits")
-            value: String(root.hub.summary?.providerCount ?? root.hub.providers?.length ?? 0)
+            subtext: root.ai.stale ? qsTr("usage snapshot is stale") : qsTr("usage and limits")
+            value: String(root.ai.summary?.providerCount ?? root.ai.providers?.length ?? 0)
         }
 
         InfoRow {
             icon: "robot_2"
             label: qsTr("Agents")
             subtext: qsTr("live agent processes")
-            value: String(root.hub.agents?.count ?? 0)
+            value: String(root.ai.agents?.count ?? 0)
         }
 
         InfoRow {
@@ -117,7 +117,7 @@ PageBase {
             icon: "schedule"
             label: qsTr("Hermes")
             subtext: root.control.hermesRegistry ? qsTr("job registry available") : qsTr("job registry unavailable")
-            value: qsTr("%1 unread").arg(root.hub.hermes?.unread ?? 0)
+            value: qsTr("%1 unread").arg(root.ai.hermes?.unread ?? 0)
         }
 
         SectionHeader {
