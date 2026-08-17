@@ -2,6 +2,7 @@
   bluez,
   coreutils,
   flatpak,
+  gnupatch,
   hyprland,
   lib,
   libsecret,
@@ -19,13 +20,16 @@ stdenv.mkDerivation {
   dontUnpack = true;
 
   nativeBuildInputs = [
+    gnupatch
     makeWrapper
     rustc
   ];
 
   buildPhase = ''
     runHook preBuild
-    rustc --edition=2021 -C opt-level=2 ${./vesper-control.rs} -o vesper-control
+    cp ${./vesper-control.rs} vesper-control.rs
+    patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
+    rustc --edition=2021 -C opt-level=2 vesper-control.rs -o vesper-control
     runHook postBuild
   '';
 
