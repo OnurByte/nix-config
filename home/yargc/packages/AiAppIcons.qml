@@ -13,10 +13,11 @@ PageBase {
     id: root
 
     property var iconState: ({
-        enabled: true,
+        enabled: false,
         mode: "original",
         tint: "#8aadf4",
         provider: "openai",
+        supportedProviders: ["openai"],
         credential: "openai",
         model: "gpt-5",
         counts: {},
@@ -46,6 +47,20 @@ PageBase {
         root.message = "";
         change.action = "set";
         change.command = ["@vesperControl@", "icons", "set", key, value];
+        change.running = true;
+    }
+
+    function saveCurator() {
+        if (change.running)
+            return;
+        root.message = "";
+        change.action = "curator";
+        change.command = [
+            "@vesperControl@", "icons", "curator",
+            root.iconState.provider || "openai",
+            credentialField.text.trim(),
+            modelField.text.trim()
+        ];
         change.running = true;
     }
 
@@ -83,10 +98,9 @@ PageBase {
                 try {
                     root.iconState = JSON.parse(text);
                     root.message = "";
-                    tintField.text = root.iconState.tint || "#8aadf4";
-                    providerField.text = root.iconState.provider || "openai";
-                    credentialField.text = root.iconState.credential || "openai";
-                    modelField.text = root.iconState.model || "gpt-5";
+                    if (!tintField.activeFocus) tintField.text = root.iconState.tint || "#8aadf4";
+                    if (!credentialField.activeFocus) credentialField.text = root.iconState.credential || "openai";
+                    if (!modelField.activeFocus) modelField.text = root.iconState.model || "gpt-5";
                 } catch (e) {
                     root.message = qsTr("Could not read App Icons state");
                 }
@@ -100,7 +114,9 @@ PageBase {
         stderr: StdioCollector { id: changeError }
         onExited: (code, status) => {
             root.message = code === 0
-                ? (action === "reconcile" ? qsTr("Icon inventory reconciled") : qsTr("App Icons updated"))
+                ? (action === "reconcile"
+                    ? qsTr("Icon inventory reconciled")
+                    : (action === "curator" ? qsTr("AI curator updated") : qsTr("App Icons updated")))
                 : changeError.text.trim();
             root.refresh();
         }
@@ -119,7 +135,7 @@ PageBase {
 
         ToggleRow {
             text: qsTr("App Icons")
-            subtext: qsTr("curated semantic SVGs + automatic AI generation for every other installed app")
+            subtext: qsTr("curated semantic SVGs + automatic AI generation for every other installed app; enabling may make paid API calls")
             checked: root.iconState.enabled === true
             disabled: change.running
             onToggled: root.setValue("enabled", checked ? "on" : "off")
@@ -130,6 +146,13 @@ PageBase {
             label: qsTr("Inventory")
             subtext: qsTr("new apps and changed source icons are detected by reconciliation")
             value: root.stateSummary()
+        }
+
+        InfoRow {
+            icon: "cached"
+            label: qsTr("Generated → active pipeline")
+            subtext: qsTr("semantic SVGs are sanitized and cached first; only prepared assets enter the live registry; failures fall back to original app icons")
+            value: qsTr("automatic")
         }
 
         SectionHeader {
@@ -176,13 +199,11 @@ PageBase {
             text: qsTr("AI curator")
         }
 
-        StyledTextField {
-            id: providerField
-            Layout.fillWidth: true
-            placeholderText: "openai"
-            leadingIcon: "smart_toy"
-            supportingText: qsTr("provider adapter · OpenAI is currently production-enabled")
-            inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+        InfoRow {
+            icon: "smart_toy"
+            label: qsTr("Production provider adapter")
+            subtext: qsTr("the installed generator currently has one audited image-input adapter; unsupported providers cannot be selected and silently fail later")
+            value: root.iconState.provider || "openai"
         }
 
         StyledTextField {
@@ -211,34 +232,8 @@ PageBase {
                 isRound: true
                 icon: "save"
                 text: qsTr("Save curator")
-                disabled: change.running || !providerField.text.trim() || !credentialField.text.trim() || !modelField.text.trim()
-                onClicked: {
-                    root.setValue("provider", providerField.text.trim());
-                    // Subsequent values are applied after the first process finishes
-                    // by explicit user action if the backend rejects a provider.
-                    pendingCuratorSave.running = true;
-                }
-            }
-        }
-
-        Timer {
-            id: pendingCuratorSave
-            property int step: 0
-            interval: 150
-            repeat: true
-            onTriggered: {
-                if (change.running)
-                    return;
-                if (step === 0) {
-                    root.setValue("credential", credentialField.text.trim());
-                    step = 1;
-                } else if (step === 1) {
-                    root.setValue("model", modelField.text.trim());
-                    step = 2;
-                } else {
-                    step = 0;
-                    running = false;
-                }
+                disabled: change.running || !credentialField.text.trim() || !modelField.text.trim()
+                onClicked: root.saveCurator()
             }
         }
 
@@ -257,12 +252,36 @@ PageBase {
         Repeater {
             model: (root.iconState.jobs || []).slice(0, 20)
 
-            delegate: InfoRow {
+            delegate: ColumnLayout {
+                id: iconJob
                 required property var modelData
-                icon: modelData.state === "prepared" ? "check_circle" : (modelData.state === "fallback" ? "warning" : "schedule")
-                label: modelData.name || modelData.id
-                subtext: modelData.error || modelData.sourceType || ""
-                value: modelData.state
+                Layout.fillWidth: true
+
+                InfoRow {
+                    Layout.fillWidth: true
+                    icon: iconJob.modelData.state === "prepared" ? "check_circle" : (iconJob.modelData.state === "fallback" ? "warning" : "schedule")
+                    label: iconJob.modelData.name || iconJob.modelData.id
+                    subtext: iconJob.modelData.error || iconJob.modelData.sourceType || ""
+                    value: iconJob.modelData.state
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: iconJob.modelData.sourceType === "ai-generated"
+                    Item { Layout.fillWidth: true }
+                    IconTextButton {
+                        isRound: true
+                        icon: "refresh"
+                        text: qsTr("Regenerate")
+                        disabled: change.running
+                        onClicked: {
+                            root.message = "";
+                            change.action = "regenerate";
+                            change.command = ["@vesperControl@", "icons", "regenerate", iconJob.modelData.id];
+                            change.running = true;
+                        }
+                    }
+                }
             }
         }
 
