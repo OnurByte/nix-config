@@ -13,6 +13,7 @@ PageBase {
 
     property var report: ({ healthy: false, checks: [] })
     property string loadError: ""
+    property string exportedPath: ""
 
     title: qsTr("System Health")
 
@@ -54,6 +55,22 @@ PageBase {
         }
     }
 
+    Process {
+        id: exportDoctor
+        command: ["@vesperDoctor@", "--export"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.exportedPath = text.trim();
+                root.loadError = "";
+            }
+        }
+        stderr: StdioCollector { id: exportError }
+        onExited: (code, status) => {
+            if (code !== 0)
+                root.loadError = exportError.text.trim() || qsTr("Could not export diagnostic report");
+        }
+    }
+
     ColumnLayout {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
@@ -85,6 +102,19 @@ PageBase {
             subtext: qsTr("run vesper-doctor again; Settings does not duplicate its health logic")
             disabled: doctor.running
             onClicked: root.refresh()
+        }
+
+        RowButton {
+            icon: "download"
+            text: qsTr("Export diagnostic JSON")
+            subtext: root.exportedPath
+                ? root.exportedPath
+                : qsTr("writes the same structured report to a private 0600 file under local Vesper state")
+            disabled: exportDoctor.running
+            onClicked: {
+                root.exportedPath = "";
+                exportDoctor.running = true;
+            }
         }
 
         SectionHeader {
