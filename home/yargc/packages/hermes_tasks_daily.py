@@ -27,6 +27,7 @@ from hermes_research_collectors import (
     persist_bounded_pool,
     persist_discovery_seeds,
 )
+from hermes_upstream_monitor import upstream_change_gate
 
 FRONTIER_SOURCES = ("github", "reddit", "x")
 FRONTIER_MAX_AGE_SECONDS = int(os.environ.get("VESPER_FRONTIER_MAX_AGE_SECONDS", "21600"))
@@ -222,11 +223,17 @@ def agenda() -> dict[str, Any]:
 
 
 def upstream_edge_radar() -> dict[str, Any]:
+    gate = upstream_change_gate()
+    if not gate.get("shouldResearch"):
+        return {"task": "upstream-edge-radar", "modelInvoked": False, **gate}
     objective = "Act as an early-warning radar for Vesper's upstream stack. A deterministic monitor already detected tracked upstream movement, so inspect the changed repository state in durable lane context first instead of re-scanning everything blindly. Investigate meaningful recent PRs, issues, commits, releases and migration notes around NousResearch/hermes-agent, numtide/llm-agents.nix, nixpkgs/NixOS, Home Manager, Hyprland, Caelestia shell, Zen Browser, Helium, CodexBar, Tor, Monero and Cuprate. Surface breaking changes, new capabilities, deprecations, security/privacy implications and workarounds before they become surprises. Ignore routine churn. For each item say act now, watch, or ignore."
-    return write_report(
-        invoke_json(research_prompt("upstream-edge-radar", objective), toolsets=["web"], skills=[RESEARCH_SKILL]),
-        "upstream-edge-radar",
+    report = invoke_json(
+        research_prompt("upstream-edge-radar", objective, json.dumps(gate, ensure_ascii=False, indent=2)),
+        toolsets=["web"],
+        skills=[RESEARCH_SKILL],
     )
+    report["monitorGate"] = gate
+    return write_report(report, "upstream-edge-radar")
 
 
 def _collector_output() -> str:
