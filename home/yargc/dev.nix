@@ -205,11 +205,6 @@ in
       go
       gopls
 
-      # Python
-      python3
-      uv
-      ruff
-
       # JS / TS — Bun is the package manager; Node stays as a runtime/LSP dependency.
       nodejs_24
       bun
