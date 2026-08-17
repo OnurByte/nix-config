@@ -4,7 +4,7 @@ This file is the implementation plan for the current Vesper control-plane work i
 
 It intentionally supersedes older notes/prompts where **Adaptive Icons** were described as an experimental feature under `Settings → Apps`.
 
-The target is now a **production Vesper feature**, controlled from **Settings → AI**, with deterministic rendering, safe AI-assisted preparation, curated SVG assets for default applications, and Apple-style icon appearance modes.
+The target is now a **production Vesper feature**, controlled from **Settings → AI**, with deterministic rendering, safe AI-assisted preparation, curated SVG assets for default applications, automatic onboarding for newly installed applications, and Apple-style icon appearance modes.
 
 ---
 
@@ -28,11 +28,13 @@ The target is now a **production Vesper feature**, controlled from **Settings �
    - Tinted mode includes a user-selectable tint color.
    - Switching mode/color must be deterministic and must never call an AI provider.
 
-4. **AI is only an icon-preparation fallback.**
+4. **AI is an icon-preparation fallback, but onboarding is automatic.**
+   - When App Icons are enabled, newly discovered applications are automatically enrolled in the icon preparation pipeline.
    - Curated semantic SVG available → use it.
    - Existing usable symbolic/vector icon available → normalize deterministically.
    - Deterministic conversion possible → use it.
    - Only difficult/unsupported icons go through the AI icon curator.
+   - The user must not have to manually press `Generate` for every newly installed application.
 
 5. **Default Vesper application icons should have curated SVGs.**
    - Repository-owned default/known applications should resolve to prepared semantic SVG assets before runtime AI is considered.
@@ -40,10 +42,13 @@ The target is now a **production Vesper feature**, controlled from **Settings �
    - The actual curated SVG files can be populated/adjusted manually after Vesper is booted and visually inspected.
    - Runtime AI must not waste quota regenerating icons that already have a curated Vesper SVG.
 
-6. **Settings → AI must expose full provider usage/quota data.**
-   - The existing `@ai@ status` provider model is the source of truth.
-   - Reuse/refactor the existing Dashboard provider-card logic instead of creating a second quota backend.
-   - Settings must show the actual provider windows and reset times, not just `Providers → N`.
+6. **Usage & Quotas exists in two surfaces with one data source.**
+   - Keep quota/usage information in the existing Dashboard/AI bar surface.
+   - Add the detailed version under `Settings → AI → Usage & Quotas`.
+   - Dashboard/bar is compact and glanceable.
+   - Settings is the full diagnostic/control surface.
+   - Both consume the same normalized `@ai@ status` model.
+   - The compact surface should provide an action/button that opens the detailed AI settings/quota page.
 
 7. **API-key-only architecture remains unchanged.**
    - No OAuth broker.
@@ -86,7 +91,77 @@ The Dashboard AI surface already has detailed provider rendering and the backend
 
 Do not build another quota service.
 
-## Target
+## One backend, two presentations
+
+Both surfaces use the same normalized provider objects returned by:
+
+```text
+@ai@ status
+```
+
+Target:
+
+```text
+@ai@ status
+     │
+     ├── Dashboard / AI bar → compact summary
+     │
+     └── Settings → AI → Usage & Quotas → full details
+```
+
+Do not fork the data model or maintain unrelated quota implementations.
+
+## Dashboard / AI bar — compact mode
+
+The existing Dashboard/AI bar remains the fast glance surface.
+
+It may show only the most useful fields, for example:
+
+```text
+AI
+OpenAI / Codex · 91% used · 9% left
+Weekly resets Aug 18 11:54
+CRITICAL
+
+[Open AI settings]
+```
+
+or a compact multi-provider summary such as:
+
+```text
+5 providers · 1 critical · 1 warning
+Most constrained: Codex · 9% remaining
+[Details]
+```
+
+The compact surface should prioritize:
+
+- provider count
+- most constrained provider
+- highest used / lowest remaining quota
+- nearest/relevant reset time
+- warning/critical state
+- stale/error indication
+
+It does **not** need to show every account, credits, cost field or every quota window at once.
+
+Add an explicit button/action such as:
+
+```text
+Open AI settings
+Usage details
+Manage AI
+```
+
+that navigates directly to:
+
+```text
+Settings → AI → Usage & Quotas
+```
+
+if the navigation architecture can target that subpage directly; otherwise open `Settings → AI` with `Usage & Quotas` immediately visible/selectable.
+
+## Settings → AI → Usage & Quotas — detailed mode
 
 Add a first-class:
 
@@ -95,8 +170,6 @@ Settings
 → AI
 → Usage & Quotas
 ```
-
-Use the same normalized provider objects returned by `@ai@ status`.
 
 Each provider card should support, where the provider actually supplies the data:
 
@@ -142,7 +215,7 @@ resets Aug 18 11:54
 CRITICAL
 ```
 
-And another provider may look like:
+Another provider may look like:
 
 ```text
 Claude
@@ -173,7 +246,7 @@ otherwise          → healthy/normal
 
 Do not invent quota windows for providers that do not expose them.
 
-## UI implementation rule
+## Shared UI implementation rule
 
 Do not maintain two separate ProviderCard implementations that drift apart.
 
@@ -184,17 +257,25 @@ Dashboard → AI
 Settings → AI → Usage & Quotas
 ```
 
-render the same normalized schema.
+render the same normalized schema with different density/detail options.
 
-Settings may be more detailed, while Dashboard stays compact.
+Conceptually:
+
+```text
+ProviderQuotaCard.qml
+├── compact: true   → Dashboard/bar
+└── compact: false  → Settings
+```
+
+or equivalent components consistent with the existing Caelestia/QML structure.
 
 ## Refresh behavior
 
-- normal cached/status refresh for opening the page
-- explicit manual refresh action
-- stale snapshot indication
+- normal cached/status refresh for opening either surface
+- explicit manual refresh action in Settings
+- stale snapshot indication in both surfaces
 - provider errors isolated per provider
-- one broken provider must not break the AI page
+- one broken provider must not break the AI page or compact dashboard
 
 ---
 
@@ -242,11 +323,12 @@ Prepared icons
 Curated icons
 Generated icons
 Original fallbacks
-Pending/failed conversions
+Pending conversions
+Failed conversions
 Last rebuild
 ```
 
-Optional per-app actions:
+Per-app actions may include:
 
 ```text
 Preview
@@ -256,15 +338,122 @@ Use original icon
 Reset generated icon
 ```
 
+These actions are overrides/repair tools; normal new-app onboarding should be automatic when the feature is enabled.
+
 ---
 
-# 4. Icon appearance semantics
+# 4. Automatic new-application icon onboarding
+
+This is a production requirement.
+
+When:
+
+```text
+Settings → AI → App Icons = On
+```
+
+Vesper should automatically discover applications that become newly available to the desktop and prepare an icon for them without requiring manual per-app setup.
+
+Examples of discovery events include, where they map cleanly onto the existing Nix/Home Manager/session architecture:
+
+- a new application appears after `nixos-rebuild` / Home Manager activation
+- a new `.desktop` entry becomes available
+- a Flatpak/application is newly visible in the app registry
+- an application identity appears that was not present in the last successful registry snapshot
+
+Do not implement fragile polling if the existing app registry/activation flow provides a cleaner event/reconciliation point.
+
+## Reconciliation model
+
+Treat this as desired-state reconciliation rather than a one-shot installer hook.
+
+Conceptually:
+
+```text
+current app registry
+        ↓
+compare with prepared icon inventory
+        ↓
+new / changed app identities
+        ↓
+icon preparation queue
+```
+
+This ensures apps missed while Vesper was stopped are still picked up later.
+
+## New app flow
+
+```text
+new app detected
+↓
+resolve canonical app/desktop identity
+↓
+curated Vesper SVG exists?
+├── yes → validate → activate semantic source
+└── no
+    ↓
+existing vector/symbolic icon usable?
+├── yes → deterministic normalize
+└── no
+    ↓
+deterministic conversion possible?
+├── yes → convert + validate
+└── no
+    ↓
+AI App Icons enabled + provider/credential available?
+├── yes → enqueue AI icon-curator job
+└── no  → keep original icon + mark waiting/fallback
+```
+
+The important user behavior is:
+
+```text
+install app
+→ app appears
+→ Vesper prepares its themed icon automatically
+```
+
+not:
+
+```text
+install app
+→ open Settings
+→ find app
+→ press Generate manually
+```
+
+## Queue behavior
+
+Automatic AI preparation must use a queue rather than spawning uncontrolled parallel requests.
+
+The queue should support:
+
+```text
+pending
+processing
+prepared
+failed
+fallback
+```
+
+Requirements:
+
+- deduplicate jobs by canonical app identity + source icon hash
+- do not regenerate an unchanged prepared icon
+- retry only with bounded/backoff behavior
+- persist enough state that a reboot/session restart does not cause unnecessary regeneration
+- failure of one app must not block other apps
+- allow manual `Regenerate` for recovery
+
+If AI is unavailable or quota is exhausted, the app must remain usable with its original icon and can be retried later.
+
+---
+
+# 5. Icon appearance semantics
 
 The source asset is a validated semantic SVG/mask. Appearance is applied later by a deterministic renderer.
 
 ## Light
-
-Goal:
 
 - clean icon intended for light desktop surfaces
 - preserve semantic shape
@@ -272,8 +461,6 @@ Goal:
 - no AI call
 
 ## Dark
-
-Goal:
 
 - dark-mode counterpart
 - adapt fill/stroke/background to Vesper dark palette
@@ -312,7 +499,7 @@ The exact visual recipe should be tuned after booting Vesper and inspecting real
 
 ---
 
-# 5. Global App Icon state model
+# 6. Global App Icon state model
 
 Use a backend-owned state similar to:
 
@@ -321,9 +508,12 @@ AppIconSettings
 ├── enabled: bool
 ├── mode: light | dark | tinted | clear
 ├── tintColor
+├── autoPrepareNewApps: bool
 ├── rendererVersion
 └── updatedAt
 ```
+
+`autoPrepareNewApps` should normally follow `enabled` and default to on when App Icons are enabled. It exists in the backend model so behavior is explicit/testable; a separate user-facing toggle is not required unless later proven useful.
 
 QML should display state and invoke explicit backend actions.
 
@@ -335,7 +525,7 @@ QML must not:
 - hold provider credentials
 - perform AI requests directly
 
-Suggested CLI/control surface conceptually:
+Suggested control surface conceptually:
 
 ```text
 vesper-control icon status
@@ -346,6 +536,7 @@ vesper-control icon mode dark
 vesper-control icon mode tinted
 vesper-control icon mode clear
 vesper-control icon tint <validated-color-value>
+vesper-control icon reconcile
 vesper-control icon list
 vesper-control icon regenerate <app-id>
 vesper-control icon reset <app-id>
@@ -355,7 +546,7 @@ Exact command names may be adapted to the existing Rust command structure.
 
 ---
 
-# 6. App identity and curated SVG assets
+# 7. App identity and curated SVG assets
 
 Icons must key off the same central app identity used by permissions/wellbeing rather than filename guessing scattered across QML.
 
@@ -369,6 +560,7 @@ App
 ├── originalIcon
 └── appearance
     ├── source
+    ├── sourceHash
     ├── semanticSvg
     ├── preparedState
     └── fallback
@@ -410,7 +602,7 @@ The curated SVG set is expected to be visually refined manually after the real d
 
 ---
 
-# 7. Icon preparation pipeline
+# 8. Icon preparation pipeline
 
 Target order:
 
@@ -436,9 +628,16 @@ AI icon curator enabled and credential available?
 
 This order is mandatory so AI quota is not consumed for ordinary known icons.
 
+The same pipeline is used for:
+
+- initial bootstrapping
+- newly installed apps
+- changed source icons
+- explicit manual regeneration
+
 ---
 
-# 8. AI icon curator
+# 9. AI icon curator
 
 Keep the `icon-curator` concept, but treat it as a production fallback capability rather than an experimental UI feature.
 
@@ -484,7 +683,7 @@ There must always be a reversible path back to the original icon.
 
 ---
 
-# 9. SVG security and validation
+# 10. SVG security and validation
 
 Treat all SVG input as untrusted, including AI output and icons discovered from applications.
 
@@ -504,7 +703,7 @@ The rendered icon must not be able to execute code or fetch external content.
 
 ---
 
-# 10. Icon caches and generated state
+# 11. Icon caches and generated state
 
 Static curated assets belong in the repository/Nix-managed source.
 
@@ -533,7 +732,7 @@ Tint/light/dark/clear output can be regenerated cheaply/deterministically from t
 
 ---
 
-# 11. Relationship with Settings → Apps
+# 12. Relationship with Settings → Apps
 
 `Settings → Apps` remains responsible for application-centric controls such as:
 
@@ -551,13 +750,11 @@ Do not duplicate icon state independently in Apps and AI.
 
 ---
 
-# 12. AI page consolidation
+# 13. AI page consolidation
 
 The AI page should stop being only an inventory count surface.
 
 Keep its overview, then expose real subpages/sections.
-
-Target responsibilities:
 
 ## Overview
 
@@ -570,6 +767,7 @@ skills
 MCP
 Hermes unread/attention
 App Icons status
+pending/failed icon preparations when relevant
 ```
 
 ## Usage & Quotas
@@ -578,7 +776,7 @@ Detailed normalized provider usage described above.
 
 ## App Icons
 
-Production icon controls and status.
+Production icon controls, automatic new-app preparation state and repair/status.
 
 ## API Keys / Credentials
 
@@ -606,7 +804,7 @@ Hermes registry/status/briefings/control-plane integration.
 
 ---
 
-# 13. Shared provider/quota component refactor
+# 14. Shared provider/quota component refactor
 
 Avoid Dashboard/Settings drift.
 
@@ -620,15 +818,15 @@ ProviderHealthBadge.qml
 
 or equivalent local components consistent with the repository style.
 
-Dashboard can use a compact configuration.
+Dashboard uses compact presentation.
 
-Settings can use the full configuration.
+Settings uses full presentation.
 
 Both consume the same `@ai@ status` schema.
 
 ---
 
-# 14. Backend rules for usage/quota data
+# 15. Backend rules for usage/quota data
 
 Preserve one normalized schema.
 
@@ -659,13 +857,17 @@ Unknown means unknown, not fabricated zeroes.
 
 ---
 
-# 15. Failure isolation
+# 16. Failure isolation
 
 ## App Icons
 
 ```text
 AI unavailable
 → curated/deterministic/original icon path still works
+
+AI quota exhausted
+→ keep original icon for unresolved apps
+→ leave job retryable/waiting
 
 invalid generated SVG
 → reject it
@@ -677,6 +879,10 @@ renderer failure
 tint setting invalid
 → reject setting
 → retain previous valid configuration
+
+new-app reconciliation failure
+→ existing prepared icons continue working
+→ desktop/app launcher remains usable
 ```
 
 ## Usage & Quotas
@@ -686,7 +892,7 @@ one provider API/status failure
 → only that provider card shows the error
 
 usage backend stale
-→ show stale state
+→ show stale state in Dashboard and Settings
 → credentials/skills/MCP/Hermes settings still work
 ```
 
@@ -694,7 +900,7 @@ None of these failures may prevent graphical login or break the Settings applica
 
 ---
 
-# 16. Implementation order
+# 17. Implementation order
 
 ## Phase A — document/current-state cleanup
 
@@ -705,10 +911,12 @@ None of these failures may prevent graphical login or break the Settings applica
 ## Phase B — shared quota UI
 
 1. Extract/reuse Dashboard provider quota components.
-2. Add `Settings → AI → Usage & Quotas`.
-3. Render provider windows, remaining/used percentages and resets.
-4. Render plan/account/credits/cost/error where available.
-5. Preserve stale/manual-refresh behavior.
+2. Keep a compact usage/quota representation in Dashboard/AI bar.
+3. Add a Dashboard/bar action that opens detailed AI settings/quota controls.
+4. Add `Settings → AI → Usage & Quotas`.
+5. Render provider windows, remaining/used percentages and resets.
+6. Render plan/account/credits/cost/error where available.
+7. Preserve stale/manual-refresh behavior.
 
 ## Phase C — App Icon backend state
 
@@ -716,7 +924,8 @@ None of these failures may prevent graphical login or break the Settings applica
 2. Add mode enum: Light/Dark/Tinted/Clear.
 3. Add validated tint color state.
 4. Add icon inventory/status data.
-5. Preserve original icon fallback.
+5. Add explicit automatic-new-app reconciliation state.
+6. Preserve original icon fallback.
 
 ## Phase D — curated semantic SVG foundation
 
@@ -734,38 +943,52 @@ None of these failures may prevent graphical login or break the Settings applica
 5. Implement Clear.
 6. Ensure switching modes/colors is AI-free.
 
-## Phase F — move UI from Apps to AI
+## Phase F — automatic application reconciliation
+
+1. Compare the canonical app registry against prepared icon state.
+2. Detect newly available and source-icon-changed applications.
+3. Automatically queue unresolved apps when App Icons are enabled.
+4. Deduplicate by app identity/source hash.
+5. Persist preparation status across sessions.
+6. Keep original icon active while work is pending or failed.
+
+## Phase G — move UI from Apps to AI
 
 1. Add `Settings → AI → App Icons`.
 2. Add global toggle.
 3. Add appearance mode selector.
 4. Add tint color picker/presets.
-5. Add prepared/generated/fallback state.
+5. Add prepared/generated/fallback/pending/failed state.
 6. Add preview/regenerate/reset actions where practical.
 7. Remove the old Apps experimental toggle/section.
 
-## Phase G — AI curator production fallback
+## Phase H — AI curator production fallback
 
 1. Keep provider/credential selection in the shared AI credential system.
-2. Invoke AI only for icons not solvable by curated/deterministic paths.
-3. Sanitize and validate generated SVG.
-4. Cache semantic output.
-5. Automatically fall back to original icon on any failure.
+2. Invoke AI automatically for queued icons only when curated/deterministic paths cannot solve them.
+3. Rate-limit/serialize requests through the preparation queue.
+4. Sanitize and validate generated SVG.
+5. Cache semantic output.
+6. Automatically fall back to original icon on any failure.
 
-## Phase H — validation
+## Phase I — validation
 
 1. Validate Rust control-plane compilation.
 2. Validate QML/patch application.
 3. Validate Home Manager evaluation/build.
 4. Validate full NixOS configuration.
 5. Boot Vesper.
-6. Visually inspect curated default SVGs.
-7. Tune Tinted and Clear rendering against real light/dark wallpapers/surfaces.
-8. Confirm no icon operation leaks credentials or executes untrusted SVG content.
+6. Install/add at least one previously unknown test application and verify automatic icon preparation.
+7. Verify a missed app is reconciled after session/reboot instead of requiring reinstall.
+8. Visually inspect curated default SVGs.
+9. Tune Tinted and Clear rendering against real light/dark wallpapers/surfaces.
+10. Confirm Dashboard compact quota and Settings detailed quota remain consistent.
+11. Confirm the Dashboard action reaches the AI quota settings.
+12. Confirm no icon operation leaks credentials or executes untrusted SVG content.
 
 ---
 
-# 17. Definition of done
+# 18. Definition of done
 
 The work described by this plan is complete when all of the following are true:
 
@@ -778,26 +1001,31 @@ The work described by this plan is complete when all of the following are true:
 7. Changing tint color never calls AI.
 8. Known/default Vesper applications can use repository-owned curated semantic SVGs.
 9. The curated SVG set can be manually refined after booting the real desktop.
-10. Unknown icons first attempt deterministic preparation.
-11. AI is used only when curated/deterministic preparation cannot produce a usable semantic icon.
-12. AI-generated SVG is sanitized and validated before activation.
-13. Unsafe/invalid SVG cannot execute code or load external content.
-14. Original application icons always remain a fallback.
-15. Users can revert/reset generated icon state.
-16. Generated semantic icons are not regenerated merely because the palette/tint changed.
-17. `Settings → AI → Usage & Quotas` shows detailed provider data from the existing `@ai@ status` model.
-18. Quota windows expose used percentage, remaining percentage and reset time when available.
-19. Provider cards expose plan/account/credits/cost/error when available.
-20. `critical` and `warning` quota states remain consistent with the existing normalized health model.
-21. Dashboard and Settings share provider quota rendering/data components instead of drifting copies.
-22. No new OAuth management is introduced.
-23. API keys remain outside QML, argv, logs, Git and the Nix store.
-24. App Icon failures and provider failures remain isolated and cannot prevent graphical login.
-25. PR #18 ends with passing patch/Rust/Home Manager/NixOS validation and a real-desktop visual pass for the icon modes.
+10. When App Icons are enabled, newly discovered applications are automatically enrolled without manual per-app generation.
+11. New applications first attempt curated/deterministic preparation.
+12. AI is invoked automatically only when curated/deterministic preparation cannot produce a usable semantic icon.
+13. Automatic preparation is queued, deduplicated and resilient across session/reboot reconciliation.
+14. AI-generated SVG is sanitized and validated before activation.
+15. Unsafe/invalid SVG cannot execute code or load external content.
+16. Original application icons always remain a fallback while pending or failed.
+17. Users can revert/reset generated icon state.
+18. Generated semantic icons are not regenerated merely because the palette/tint changed.
+19. Dashboard/AI bar continues to show a compact usage/quota view.
+20. The compact quota view exposes the most important constrained-provider/reset/health information without duplicating the full Settings UI.
+21. Dashboard/AI bar provides a direct action to open detailed AI settings/quota information.
+22. `Settings → AI → Usage & Quotas` shows detailed provider data from the existing `@ai@ status` model.
+23. Quota windows expose used percentage, remaining percentage and reset time when available.
+24. Provider cards expose plan/account/credits/cost/error when available.
+25. `critical` and `warning` quota states remain consistent with the existing normalized health model.
+26. Dashboard and Settings share provider quota rendering/data components instead of drifting copies.
+27. No new OAuth management is introduced.
+28. API keys remain outside QML, argv, logs, Git and the Nix store.
+29. App Icon failures and provider failures remain isolated and cannot prevent graphical login.
+30. PR #18 ends with passing patch/Rust/Home Manager/NixOS validation and a real-desktop visual pass for the icon modes.
 
 ---
 
-# 18. Final target
+# 19. Final target
 
 ```text
                          Settings → AI
@@ -805,11 +1033,11 @@ The work described by this plan is complete when all of the following are true:
         ┌───────────────┬─────┼───────────────┐
         ↓               ↓     ↓               ↓
  Usage & Quotas     App Icons API Keys      Providers
-        │               │     │               │
+        ↑               │     │               │
         │               │     └──────┬────────┘
         │               │            ↓
-        │               │      Credential Vault
-        │               │            │
+Dashboard / AI bar      │      Credential Vault
+ compact quota view     │            │
         │               ↓            ↓
         │        semantic icon    AI providers
         │             source          │
@@ -824,17 +1052,24 @@ The work described by this plan is complete when all of the following are true:
         │                      ↑      │
         │       curated/deterministic │
         │                or AI curator┘
+        │                      ↑
+        │                 auto queue
+        │                      ↑
+        │               new app detected
         │
-        └── same normalized provider quota model as Dashboard AI
+        └── same normalized provider quota model as Settings
 ```
 
 Core principle:
 
 ```text
+Install a new app and Vesper handles its icon automatically.
 AI prepares difficult icons once.
 Vesper renders them many times.
 Theme/tint changes are deterministic.
 Known default icons are curated.
+Dashboard shows quota at a glance.
+Settings shows quota in full detail.
 Usage/quota data has one source of truth.
 Secrets stay centralized.
 ```
