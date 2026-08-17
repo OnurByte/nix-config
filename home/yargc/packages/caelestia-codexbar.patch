@@ -1,9 +1,18 @@
 --- a/modules/bar/Bar.qml
 +++ b/modules/bar/Bar.qml
-@@ -130,6 +130,38 @@ ColumnLayout {
+@@ -130,6 +130,47 @@ ColumnLayout {
                      }
                  }
              }
++            DelegateChoice {
++                roleValue: "systemMonitor"
++                delegate: EntryWrapper {
++                    SystemMonitor {
++                        objectName: "taskbarSystemMonitor"
++                        screenState: root.screenState
++                    }
++                }
++            }
 +            DelegateChoice {
 +                roleValue: "agentCockpit"
 +                delegate: EntryWrapper {

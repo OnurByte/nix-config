@@ -26,6 +26,7 @@ let
         --subst-var-by privacyHud ${privacyHud}/bin/vesper-privacy-hud
       substitute ${./packages/HermesBriefing.qml} modules/bar/components/HermesBriefing.qml \
         --subst-var-by hermesRuntime ${hermesRuntime}/bin/vesper-hermes
+      ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
     '';
   });
 
@@ -95,6 +96,20 @@ in
         useTwelveHourClock = false;
       };
 
+      dashboard = {
+        enabled = true;
+        showPerformance = true;
+        resourceUpdateInterval = 1000;
+        performance = {
+          showBattery = true;
+          showCpu = true;
+          showGpu = true;
+          showMemory = true;
+          showNetwork = true;
+          showStorage = true;
+        };
+      };
+
       launcher = {
         vimKeybinds = true;
         useFuzzy = {
@@ -126,6 +141,7 @@ in
         { id = "activeWindow"; enabled = true; }
         { id = "spacer"; enabled = true; }
         { id = "tray"; enabled = true; }
+        { id = "systemMonitor"; enabled = true; }
         { id = "agentCockpit"; enabled = true; }
         { id = "privacyHud"; enabled = true; }
         { id = "hermesBriefing"; enabled = true; }
