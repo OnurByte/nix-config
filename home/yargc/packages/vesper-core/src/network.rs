@@ -109,7 +109,7 @@ pub fn status_json() -> String {
     let connection = active_connection().unwrap_or_default();
     let airplane = load_airplane_record().is_some();
     let zapret = success("systemctl", &["is-active", "--quiet", "nfqws2@default.service"]);
-    let proxy = config_root().join("proxy.env").exists();
+    let proxy = config_root().join("proxy.tsv").exists();
     format!(
         "{{\"airplane\":{},\"wifi\":{},\"bluetooth\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{},\"airplaneState\":\"{}\"}}",
         bool_lit(airplane),
@@ -152,9 +152,6 @@ pub fn set_airplane(enabled: bool) -> Result<(), String> {
         Ok(())
     } else {
         let Some(previous) = load_airplane_record() else {
-            // Both radios being off manually is not airplane mode. With no
-            // explicit state record, turning airplane mode off must not force
-            // either radio on.
             return Ok(());
         };
 
