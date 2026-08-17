@@ -13,15 +13,8 @@ ColumnLayout {
     id: root
 
     property var app
-    property var status: ({
-        sandbox: "native",
-        flatpakId: "",
-        permissionsManageable: false,
-        enforcementBackend: "native/unrestricted",
-        permissionItems: [],
-        portalPermissions: "",
-        todaySeconds: 0
-    })
+    property var status: ({ sandbox: "native", flatpakId: "", permissionsManageable: false, enforcementBackend: "native/unrestricted", permissionItems: [], portalPermissions: "", todaySeconds: 0 })
+    property var appWellbeing: ({ todaySeconds: 0, excluded: false, dailyLimitSeconds: 0, overLimit: false, category: "", limitBehavior: "advisory", history: [] })
     property string notificationPolicy: "inherit"
     property string message: ""
 
@@ -38,37 +31,34 @@ ColumnLayout {
     }
 
     function packagedLabel(value) {
-        if (value === true)
-            return qsTr("allowed");
-        if (value === false)
-            return qsTr("not requested");
+        if (value === true) return qsTr("allowed");
+        if (value === false) return qsTr("not requested");
         return qsTr("unknown");
     }
 
     function runPermission(command) {
-        if (permissionChange.running)
-            return;
+        if (permissionChange.running) return;
         root.message = "";
         permissionChange.command = command;
         permissionChange.running = true;
     }
 
     function setNotificationPolicy(policy) {
-        if (!root.app || notificationChange.running)
-            return;
+        if (!root.app || notificationChange.running) return;
         root.message = "";
-        notificationChange.command = [
-            "@vesperControl@", "notifications", "set",
-            root.app.id,
-            root.app.name || root.app.id,
-            policy
-        ];
+        notificationChange.command = ["@vesperControl@", "notifications", "set", root.app.id, root.app.name || root.app.id, policy];
         notificationChange.running = true;
     }
 
+    function setWellbeing(field, value) {
+        if (!root.app || wellbeingChange.running) return;
+        root.message = "";
+        wellbeingChange.command = ["@vesperControl@", "wellbeing", "app-set", root.app.id, field, value];
+        wellbeingChange.running = true;
+    }
+
     function refresh() {
-        if (!root.app)
-            return;
+        if (!root.app) return;
         if (!appStatus.running) {
             appStatus.command = ["@vesperControl@", "app-status", root.app.id];
             appStatus.running = true;
@@ -76,6 +66,10 @@ ColumnLayout {
         if (!notificationStatus.running) {
             notificationStatus.command = ["@vesperControl@", "notifications", "get", root.app.id];
             notificationStatus.running = true;
+        }
+        if (!wellbeingStatus.running) {
+            wellbeingStatus.command = ["@vesperControl@", "wellbeing", "app", root.app.id];
+            wellbeingStatus.running = true;
         }
     }
 
@@ -98,8 +92,23 @@ ColumnLayout {
 
     Process {
         id: notificationStatus
+        stdout: StdioCollector { onStreamFinished: root.notificationPolicy = text.trim() || "inherit" }
+    }
+
+    Process {
+        id: wellbeingStatus
         stdout: StdioCollector {
-            onStreamFinished: root.notificationPolicy = text.trim() || "inherit"
+            onStreamFinished: {
+                try {
+                    root.appWellbeing = JSON.parse(text);
+                    if (!limitMinutes.activeFocus)
+                        limitMinutes.text = root.appWellbeing.dailyLimitSeconds > 0 ? String(Math.round(root.appWellbeing.dailyLimitSeconds / 60)) : "";
+                    if (!categoryField.activeFocus)
+                        categoryField.text = root.appWellbeing.category || "";
+                } catch (e) {
+                    root.message = qsTr("Could not read per-app Wellbeing state");
+                }
+            }
         }
     }
 
@@ -113,6 +122,15 @@ ColumnLayout {
     }
 
     Process {
+        id: wellbeingChange
+        stderr: StdioCollector { id: wellbeingError }
+        onExited: (code, status) => {
+            root.message = code === 0 ? "" : wellbeingError.text.trim();
+            root.refresh();
+        }
+    }
+
+    Process {
         id: permissionChange
         stderr: StdioCollector { id: permissionError }
         onExited: (code, status) => {
@@ -121,16 +139,12 @@ ColumnLayout {
         }
     }
 
-    SectionHeader {
-        text: qsTr("Permissions")
-    }
+    SectionHeader { text: qsTr("Permissions") }
 
     InfoRow {
         icon: root.flatpak ? "deployed_code" : "warning"
         label: qsTr("Sandbox")
-        subtext: root.flatpak
-            ? root.status.flatpakId
-            : qsTr("native Nix app · capability restrictions shown here are informational")
+        subtext: root.flatpak ? root.status.flatpakId : qsTr("native Nix app · capability restrictions shown here are informational")
         value: root.flatpak ? qsTr("Flatpak") : qsTr("unrestricted")
         iconColour: root.flatpak ? Colours.palette.m3primary : Colours.palette.m3tertiary
     }
@@ -145,7 +159,6 @@ ColumnLayout {
 
     Repeater {
         model: root.flatpak ? (root.status.permissionItems || []) : []
-
         delegate: ToggleRow {
             required property var modelData
             text: modelData.label
@@ -155,20 +168,11 @@ ColumnLayout {
                 .arg(modelData.backend || qsTr("Flatpak-enforced"))
             checked: modelData.effective === true
             disabled: permissionChange.running
-            onToggled: root.runPermission([
-                "@vesperControl@",
-                "app-permission",
-                root.app.id,
-                modelData.id,
-                checked ? "on" : "off"
-            ])
+            onToggled: root.runPermission(["@vesperControl@", "app-permission", root.app.id, modelData.id, checked ? "on" : "off"])
         }
     }
 
-    SectionHeader {
-        visible: root.flatpak
-        text: qsTr("Custom filesystem")
-    }
+    SectionHeader { visible: root.flatpak; text: qsTr("Custom filesystem") }
 
     StyledTextField {
         id: filesystemField
@@ -186,31 +190,18 @@ ColumnLayout {
         spacing: Tokens.spacing.small
         Item { Layout.fillWidth: true }
         IconTextButton {
-            isRound: true
-            icon: "block"
-            text: qsTr("Deny")
+            isRound: true; icon: "block"; text: qsTr("Deny")
             disabled: !filesystemField.text.trim() || permissionChange.running
-            onClicked: root.runPermission([
-                "@vesperControl@", "app-filesystem", root.app.id,
-                filesystemField.text.trim(), "off"
-            ])
+            onClicked: root.runPermission(["@vesperControl@", "app-filesystem", root.app.id, filesystemField.text.trim(), "off"])
         }
         IconTextButton {
-            isRound: true
-            icon: "check"
-            text: qsTr("Allow")
+            isRound: true; icon: "check"; text: qsTr("Allow")
             disabled: !filesystemField.text.trim() || permissionChange.running
-            onClicked: root.runPermission([
-                "@vesperControl@", "app-filesystem", root.app.id,
-                filesystemField.text.trim(), "on"
-            ])
+            onClicked: root.runPermission(["@vesperControl@", "app-filesystem", root.app.id, filesystemField.text.trim(), "on"])
         }
     }
 
-    SectionHeader {
-        visible: root.flatpak
-        text: qsTr("D-Bus")
-    }
+    SectionHeader { visible: root.flatpak; text: qsTr("D-Bus") }
 
     StyledTextField {
         id: dbusField
@@ -228,24 +219,14 @@ ColumnLayout {
         spacing: Tokens.spacing.small
         Item { Layout.fillWidth: true }
         IconTextButton {
-            isRound: true
-            icon: "block"
-            text: qsTr("Deny session")
+            isRound: true; icon: "block"; text: qsTr("Deny session")
             disabled: !dbusField.text.trim() || permissionChange.running
-            onClicked: root.runPermission([
-                "@vesperControl@", "app-dbus", root.app.id,
-                "session", dbusField.text.trim(), "deny"
-            ])
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "session", dbusField.text.trim(), "deny"])
         }
         IconTextButton {
-            isRound: true
-            icon: "check"
-            text: qsTr("Allow session")
+            isRound: true; icon: "check"; text: qsTr("Allow session")
             disabled: !dbusField.text.trim() || permissionChange.running
-            onClicked: root.runPermission([
-                "@vesperControl@", "app-dbus", root.app.id,
-                "session", dbusField.text.trim(), "talk"
-            ])
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "session", dbusField.text.trim(), "talk"])
         }
     }
 
@@ -255,24 +236,14 @@ ColumnLayout {
         spacing: Tokens.spacing.small
         Item { Layout.fillWidth: true }
         IconTextButton {
-            isRound: true
-            icon: "block"
-            text: qsTr("Deny system")
+            isRound: true; icon: "block"; text: qsTr("Deny system")
             disabled: !dbusField.text.trim() || permissionChange.running
-            onClicked: root.runPermission([
-                "@vesperControl@", "app-dbus", root.app.id,
-                "system", dbusField.text.trim(), "deny"
-            ])
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "system", dbusField.text.trim(), "deny"])
         }
         IconTextButton {
-            isRound: true
-            icon: "check"
-            text: qsTr("Allow system")
+            isRound: true; icon: "check"; text: qsTr("Allow system")
             disabled: !dbusField.text.trim() || permissionChange.running
-            onClicked: root.runPermission([
-                "@vesperControl@", "app-dbus", root.app.id,
-                "system", dbusField.text.trim(), "talk"
-            ])
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "system", dbusField.text.trim(), "talk"])
         }
     }
 
@@ -293,9 +264,7 @@ ColumnLayout {
         onClicked: root.runPermission(["@vesperControl@", "app-reset-permissions", root.app.id])
     }
 
-    SectionHeader {
-        text: qsTr("Notifications")
-    }
+    SectionHeader { text: qsTr("Notifications") }
 
     InfoRow {
         icon: root.notificationPolicy === "block" ? "notifications_off" : "notifications"
@@ -309,37 +278,80 @@ ColumnLayout {
         spacing: Tokens.spacing.small
         Item { Layout.fillWidth: true }
         IconTextButton {
-            isRound: true
-            icon: "notifications_off"
-            text: qsTr("Block")
+            isRound: true; icon: "notifications_off"; text: qsTr("Block")
             disabled: notificationChange.running || root.notificationPolicy === "block"
             onClicked: root.setNotificationPolicy("block")
         }
         IconTextButton {
-            isRound: true
-            icon: "notifications_active"
-            text: qsTr("Allow")
+            isRound: true; icon: "notifications_active"; text: qsTr("Allow")
             disabled: notificationChange.running || root.notificationPolicy === "allow"
             onClicked: root.setNotificationPolicy("allow")
         }
         IconTextButton {
-            isRound: true
-            icon: "restart_alt"
-            text: qsTr("Inherit")
+            isRound: true; icon: "restart_alt"; text: qsTr("Inherit")
             disabled: notificationChange.running || root.notificationPolicy === "inherit"
             onClicked: root.setNotificationPolicy("inherit")
         }
     }
 
-    SectionHeader {
-        text: qsTr("Wellbeing")
-    }
+    SectionHeader { text: qsTr("Wellbeing") }
 
     InfoRow {
-        icon: "timer"
+        icon: root.appWellbeing.overLimit ? "warning" : "timer"
         label: qsTr("Foreground time today")
-        subtext: qsTr("local only · paused while idle or locked")
-        value: root.duration(root.status.todaySeconds)
+        subtext: root.appWellbeing.overLimit
+            ? qsTr("advisory daily limit reached; Vesper is not claiming a hard block")
+            : qsTr("local only · paused while idle or locked")
+        value: root.duration(root.appWellbeing.todaySeconds)
+    }
+
+    ToggleRow {
+        text: qsTr("Exclude from screen time")
+        subtext: qsTr("future foreground samples for this app are not recorded")
+        checked: root.appWellbeing.excluded === true
+        disabled: wellbeingChange.running
+        onToggled: root.setWellbeing("excluded", checked ? "on" : "off")
+    }
+
+    StyledTextField {
+        id: limitMinutes
+        Layout.fillWidth: true
+        placeholderText: qsTr("daily limit in minutes; empty = none")
+        leadingIcon: "hourglass_top"
+        supportingText: qsTr("advisory limit only")
+        inputMethodHints: Qt.ImhDigitsOnly
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "save"; text: qsTr("Save limit")
+            disabled: wellbeingChange.running
+            onClicked: {
+                const minutes = Math.max(0, Number(limitMinutes.text || 0));
+                root.setWellbeing("limit", String(Math.round(minutes * 60)));
+            }
+        }
+    }
+
+    StyledTextField {
+        id: categoryField
+        Layout.fillWidth: true
+        placeholderText: qsTr("category, e.g. Work or Social")
+        leadingIcon: "category"
+        supportingText: qsTr("local Wellbeing grouping")
+        inputMethodHints: Qt.ImhNoPredictiveText
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "save"; text: qsTr("Save category")
+            disabled: wellbeingChange.running
+            onClicked: root.setWellbeing("category", categoryField.text.trim())
+        }
     }
 
     StyledText {

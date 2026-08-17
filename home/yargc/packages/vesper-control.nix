@@ -18,7 +18,7 @@
 }:
 stdenv.mkDerivation {
   pname = "vesper-control";
-  version = "0.4.0";
+  version = "0.6.0";
 
   dontUnpack = true;
 

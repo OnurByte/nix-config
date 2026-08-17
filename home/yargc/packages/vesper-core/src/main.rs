@@ -54,11 +54,32 @@ fn main() {
         [group, action, id, name, policy] if group == "notifications" && action == "set" => {
             notifications::set_policy(id, name, policy).unwrap_or_else(|error| fail(error));
         }
+        [group, action] if group == "wellbeing" && action == "status" => println!("{}", if wellbeing::enabled() { "on" } else { "off" }),
+        [group, action] if group == "wellbeing" && (action == "on" || action == "off") => {
+            wellbeing::set_enabled(action == "on").unwrap_or_else(|error| fail(error));
+        }
+        [group, action, value] if group == "wellbeing" && action == "focus" => {
+            wellbeing::set_focus(on_off(value)).unwrap_or_else(|error| fail(error));
+        }
+        [group, action] if group == "wellbeing" && action == "report" => println!("{}", wellbeing::report_json()),
+        [group, action, id] if group == "wellbeing" && action == "app" => println!("{}", wellbeing::app_json(id)),
+        [group, action, id, field, value] if group == "wellbeing" && action == "app-set" => {
+            wellbeing::set_app_policy(id, field, value).unwrap_or_else(|error| fail(error));
+        }
+        [group, action, seconds] if group == "wellbeing" && action == "goal" => {
+            let seconds = seconds.parse::<u64>().unwrap_or_else(|_| fail("wellbeing goal expects seconds"));
+            wellbeing::set_daily_goal(seconds).unwrap_or_else(|error| fail(error));
+        }
+        [group, action, scope] if group == "wellbeing" && action == "reset" => {
+            wellbeing::reset(scope).unwrap_or_else(|error| fail(error));
+        }
+        [command] if command == "wellbeing-daemon" => wellbeing::daemon().unwrap_or_else(|error| fail(error)),
+        [command] if command == "wellbeing-summary" => println!("{}", wellbeing::summary_json()),
         [group, action] if group == "icons" && action == "status" => println!("{}", icons::status_json()),
         [group, action] if group == "icons" && action == "reconcile" => icons::reconcile().unwrap_or_else(|error| fail(error)),
         [group, action, id] if group == "icons" && action == "regenerate" => icons::regenerate(id).unwrap_or_else(|error| fail(error)),
         [group, action, key, value] if group == "icons" && action == "set" => icons::set_config(key, value).unwrap_or_else(|error| fail(error)),
-        [command] if command == "control-version" => println!("0.5.0"),
+        [command] if command == "control-version" => println!("0.6.0"),
         _ => legacy(&args),
     }
 }
