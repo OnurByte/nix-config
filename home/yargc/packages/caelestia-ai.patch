@@ -1,6 +1,6 @@
 --- a/modules/bar/Bar.qml
 +++ b/modules/bar/Bar.qml
-@@ -130,6 +130,51 @@ ColumnLayout {
+@@ -130,6 +130,36 @@ ColumnLayout {
                      }
                  }
              }
@@ -52,7 +52,7 @@
              {
                  component: weatherComponent,
                  iconName: "cloud",
-@@ -164,6 +170,12 @@ Item {
+@@ -164,4 +170,10 @@ Item {
  
                  Performance {}
              }
@@ -67,7 +67,7 @@
                  id: weatherComponent
 --- a/modules/nexus/PageRegistry.qml
 +++ b/modules/nexus/PageRegistry.qml
-@@ -58,6 +58,18 @@ QtObject {
+@@ -58,5 +58,17 @@ QtObject {
              description: qsTr("Manage plugins"),
              category: "system"
          },
@@ -97,7 +97,7 @@
 +                }
              }
          },
-@@ -92,6 +95,35 @@ QtObject {
+@@ -92,5 +95,19 @@ QtObject {
          Component {
              PlaceholderComp {}
          },
@@ -120,7 +120,7 @@
          Component {
 --- a/modules/nexus/pages/AppsPage.qml
 +++ b/modules/nexus/pages/AppsPage.qml
-@@ -58,6 +58,10 @@ PageBase {
+@@ -58,5 +58,9 @@ PageBase {
              onSelected: app => GlobalConfig.general.apps.explorer = app.command
          }
  
@@ -133,7 +133,7 @@
              text: qsTr("Library")
 --- a/modules/nexus/pages/apps/AppInfo.qml
 +++ b/modules/nexus/pages/apps/AppInfo.qml
-@@ -117,5 +117,10 @@ PageBase {
+@@ -117,4 +117,9 @@ PageBase {
              labelComp.Layout.preferredWidth: Math.max(labelComp.implicitWidth, appId.labelComp.implicitWidth)
          }
 +
@@ -146,7 +146,7 @@
      component WrapInfoRow: ConnectedRect {
 --- a/modules/nexus/pages/NetworkPage.qml
 +++ b/modules/nexus/pages/NetworkPage.qml
-@@ -340,12 +340,17 @@ PageBase {
+@@ -340,11 +340,16 @@ PageBase {
          RowButton {
              last: true
              icon: "add"
@@ -165,13 +165,13 @@
  }
 --- a/modules/nexus/pages/WallpaperAndStyle.qml
 +++ b/modules/nexus/pages/WallpaperAndStyle.qml
-@@ -13,7 +13,7 @@ import qs.modules.nexus.common
+@@ -13,3 +13,3 @@ import qs.modules.nexus.common
  PageBase {
      id: root
  
 -    title: qsTr("Wallpaper & style")
 +    title: qsTr("Appearance")
-@@ -173,23 +173,9 @@ PageBase {
+@@ -173,22 +173,8 @@ PageBase {
              checked: Config.background.wallpaperEnabled
              onToggled: GlobalConfig.background.wallpaperEnabled = checked
          }
