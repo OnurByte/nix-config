@@ -106,7 +106,7 @@
 +                }
              }
          },
-@@ -92,6 +95,17 @@ QtObject {
+@@ -92,6 +95,20 @@ QtObject {
          Component {
              PlaceholderComp {}
          },
@@ -118,6 +118,9 @@
 +                }
 +                Component {
 +                    AiCredentials {}
++                }
++                Component {
++                    AiAppIcons {}
 +                }
 +            }
 +        },

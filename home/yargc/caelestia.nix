@@ -21,6 +21,9 @@ let
   caelestiaAiPatch = pkgs.writeText "caelestia-ai.patch" (
     builtins.readFile ./packages/caelestia-ai.patch + "\n"
   );
+  caelestiaAppIconsPatch = pkgs.writeText "caelestia-app-icons.patch" (
+    builtins.readFile ./packages/caelestia-app-icons.patch + "\n"
+  );
   caelestiaWellbeingPatch = pkgs.writeText "caelestia-wellbeing-ipc.patch" (
     builtins.readFile ./packages/caelestia-wellbeing-ipc.patch + "\n"
   );
@@ -31,6 +34,7 @@ let
   agenticCaelestia = inputs.caelestia-shell.packages.${pkgs.system}.with-cli.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [
       caelestiaAiPatch
+      caelestiaAppIconsPatch
       caelestiaWellbeingPatch
       caelestiaSettingsNamePatch
     ];
@@ -51,6 +55,8 @@ let
         --subst-var-by ai ${ai}/bin/vesper-ai
       substitute ${./packages/AiCredentials.qml} modules/nexus/pages/AiCredentials.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/AiAppIcons.qml} modules/nexus/pages/AiAppIcons.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNetworkSettings.qml} modules/nexus/pages/VesperNetworkSettings.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperProxyPage.qml} modules/nexus/pages/VesperProxyPage.qml \
@@ -70,6 +76,10 @@ let
       vesperControl
     ]}:$PATH
     exec ${vesperControl}/bin/vesper-control wellbeing-daemon
+  '';
+
+  appIconReconcileRunner = pkgs.writeShellScript "vesper-app-icons-reconcile" ''
+    exec ${vesperControl}/bin/vesper-control icons reconcile
   '';
 
   nixDracula = pkgs.nixos-artwork.wallpapers.dracula;
@@ -236,6 +246,25 @@ in
       RestartSec = 5;
     };
     Install.WantedBy = [ "graphical-session.target" ];
+  };
+
+  systemd.user.services.vesper-app-icons-reconcile = {
+    Unit.Description = "Reconcile Vesper semantic app icons";
+    Service = {
+      Type = "oneshot";
+      ExecStart = appIconReconcileRunner;
+    };
+  };
+
+  systemd.user.timers.vesper-app-icons-reconcile = {
+    Unit.Description = "Periodically discover new or changed app icons";
+    Timer = {
+      OnBootSec = "2m";
+      OnUnitActiveSec = "5m";
+      RandomizedDelaySec = "20s";
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
   };
 
   qt = {

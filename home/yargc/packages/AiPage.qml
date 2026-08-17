@@ -121,7 +121,7 @@ PageBase {
         }
 
         SectionHeader {
-            text: qsTr("Credentials")
+            text: qsTr("Control plane")
         }
 
         NavRow {
@@ -129,6 +129,13 @@ PageBase {
             text: qsTr("Manage API keys")
             subtext: qsTr("stored in the desktop keyring and injected only into selected processes")
             onClicked: root.nState.openSubPage(1)
+        }
+
+        NavRow {
+            icon: "palette"
+            text: qsTr("App Icons")
+            subtext: qsTr("automatic semantic SVG curation · Original / Light / Dark / Tinted / Clear")
+            onClicked: root.nState.openSubPage(2)
         }
 
         SectionHeader {

@@ -1,0 +1,63 @@
+--- a/utils/Icons.qml
++++ b/utils/Icons.qml
+@@ -2,12 +2,43 @@ pragma Singleton
+ 
+ import QtQuick
+ import Quickshell
++import Quickshell.Io
+ import Quickshell.Services.Notifications
+ import Caelestia.Config
+ 
+ Singleton {
+     id: root
+ 
++    property var vesperAppIconRegistry: ({})
++
++    readonly property string vesperStateRoot: {
++        const configured = Quickshell.env("XDG_STATE_HOME");
++        if (configured)
++            return configured;
++        const home = Quickshell.env("HOME");
++        return home ? `${home}/.local/state` : "";
++    }
++
++    FileView {
++        id: vesperIconRegistryFile
++        path: root.vesperStateRoot ? `${root.vesperStateRoot}/vesper/icons/registry.json` : ""
++        watchChanges: true
++        printErrors: false
++
++        onTextChanged: {
++            try {
++                root.vesperAppIconRegistry = JSON.parse(text());
++            } catch (e) {
++                root.vesperAppIconRegistry = ({});
++            }
++        }
++    }
++
++    function vesperAppIcon(entry: var): string {
++        if (!entry || !entry.id)
++            return "";
++        const value = root.vesperAppIconRegistry[entry.id];
++        return typeof value === "string" ? value : "";
++    }
++
+     readonly property var weatherIcons: ({
+             "0": "clear_day",
+             "1": "clear_day",
+@@ -93,9 +124,14 @@ Singleton {
+     }
+ 
+     function getAppIcon(name: string, fallback: string): string {
+-        const icon = DesktopEntries.heuristicLookup(name)?.icon;
++        const entry = DesktopEntries.heuristicLookup(name);
++        const replacement = vesperAppIcon(entry);
++        if (replacement)
++            return replacement;
++
++        const icon = entry?.icon;
+         if (fallback !== "undefined")
+             return Quickshell.iconPath(icon, fallback);
+         return Quickshell.iconPath(icon);
+     }
