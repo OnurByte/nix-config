@@ -32,7 +32,7 @@ The MCP list is generated from `programs.mcp.servers`, so the settings page repo
 
 ## adaptive icons
 
-Apps → Experimental contains the opt-in adaptive icon queue. Enabling it does not modify icons by itself.
+The current implementation is still the temporary Apps → Experimental review queue. Enabling it does not modify icons by itself.
 
 A queued app writes metadata under:
 
@@ -41,3 +41,5 @@ A queued app writes metadata under:
 ```
 
 The `vesper-adaptive-icons` skill can produce a candidate under `~/.local/share/vesper/adaptive-icons/generated/`, but activation remains a separate explicit review step.
+
+The replacement architecture is defined in `ADAPTIVE-ICONS.md`. The target moves automatic generation/provider controls into the AI page, replaces per-app manual queueing with automatic `.desktop` discovery and keeps palette/appearance recompilation local so theme changes do not consume AI requests.
