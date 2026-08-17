@@ -51,6 +51,7 @@ PageBase {
         InfoRow { icon: "schedule"; label: qsTr("Hermes"); subtext: root.control.hermesRegistry ? qsTr("job registry available") : qsTr("job registry unavailable"); value: qsTr("%1 unread").arg(root.ai.hermes?.unread ?? 0) }
 
         SectionHeader { text: qsTr("Control plane") }
+        NavRow { icon: "data_usage"; text: qsTr("Usage & Quotas"); subtext: qsTr("provider health · quota windows · resets · credits · costs"); onClicked: root.nState.openSubPageRoute("usageQuotas") }
         NavRow { icon: "password"; text: qsTr("Manage API keys"); subtext: qsTr("desktop keyring · no plaintext files"); onClicked: root.nState.openSubPageRoute("apiKeys") }
         NavRow { icon: "palette"; text: qsTr("App Icons"); subtext: qsTr("semantic SVG curation · Original / Light / Dark / Tinted / Clear"); onClicked: root.nState.openSubPageRoute("appIcons") }
         NavRow { icon: "route"; text: qsTr("Runtime Credentials"); subtext: qsTr("map OpenCode and Hermes to credential aliases"); onClicked: root.nState.openSubPageRoute("runtimeCredentials") }
