@@ -157,6 +157,21 @@ Persistent Agent Cockpit snapshots belong under:
 ~/.local/state/vesper/agents/
 ```
 
+### Agent Cockpit collection contract
+
+Current Agent Cockpit status collection inspects live processes and Git working-tree state. The UI may refresh frequently, but that must not force every expensive process and Git probe to rerun at the same cadence.
+
+Required remediation for the current short-poll implementation:
+
+- cache normalized backend snapshots for a bounded TTL
+- separate cheap liveness refresh from slower repository/dirty-state inspection where useful
+- prefer event-driven updates when the source already exposes them
+- make QML consume normalized state rather than independently repeating process or Git commands
+- keep persisted snapshots bounded and diagnostic; AgentsView remains the durable activity archive
+- do not persist secrets or unsanitized command arguments merely to make the cockpit observable
+
+A five-second visual refresh target is not permission to run a full process/Git scan every five seconds.
+
 ## capability policy
 
 Vesper should grow from inventory into an enforceable AI capability control plane.
