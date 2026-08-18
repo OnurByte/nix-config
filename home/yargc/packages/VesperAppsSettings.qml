@@ -11,7 +11,6 @@ ColumnLayout {
     id: root
 
     property var wellbeing: ({ totalSeconds: 0, apps: [] })
-    property bool adaptiveIcons: false
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
@@ -26,8 +25,6 @@ ColumnLayout {
     function refresh() {
         if (!wellbeingStatus.running)
             wellbeingStatus.running = true;
-        if (!iconStatus.running)
-            iconStatus.running = true;
     }
 
     Component.onCompleted: refresh()
@@ -53,19 +50,6 @@ ColumnLayout {
         }
     }
 
-    Process {
-        id: iconStatus
-        command: ["@vesperControl@", "icon", "status"]
-        stdout: StdioCollector {
-            onStreamFinished: root.adaptiveIcons = text.trim() === "on"
-        }
-    }
-
-    Process {
-        id: iconChange
-        onExited: (code, status) => root.refresh()
-    }
-
     SectionHeader {
         text: qsTr("Wellbeing")
     }
@@ -88,17 +72,12 @@ ColumnLayout {
         }
     }
 
-    SectionHeader {
-        text: qsTr("Experimental")
-    }
-
-    ToggleRow {
-        text: qsTr("AI adaptive icons")
-        subtext: qsTr("enable the reviewed icon-job queue; generated assets are never applied automatically")
-        checked: root.adaptiveIcons
-        onToggled: {
-            iconChange.command = ["@vesperControl@", "icon", checked ? "on" : "off"];
-            iconChange.running = true;
-        }
+    StyledText {
+        Layout.fillWidth: true
+        Layout.topMargin: Tokens.spacing.small
+        text: qsTr("Adaptive icon generation is managed in AI. Per-app icon controls remain in each application page.")
+        color: Colours.palette.m3onSurfaceVariant
+        font: Tokens.font.body.small
+        wrapMode: Text.WordWrap
     }
 }
