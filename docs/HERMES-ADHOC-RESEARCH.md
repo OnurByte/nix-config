@@ -1,5 +1,7 @@
 # Hermes ad-hoc research
 
+Status: **current**
+
 The scheduled frontier stays bounded. One-off research uses `vesper-research` and the same Rust state/report layer without creating another scheduler.
 
 ```bash
