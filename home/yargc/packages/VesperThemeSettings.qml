@@ -16,7 +16,7 @@ ColumnLayout {
     spacing: Tokens.spacing.extraSmall
 
     property string currentVariant: "tonalspot"
-    property var icons: ({ enabled: false, mode: "original", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
+    property var icons: ({ enabled: false, mode: "original", material: "standard", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
     property string iconMessage: ""
 
     function setScheme(name: string, flavour: string): void {
@@ -197,12 +197,21 @@ ColumnLayout {
             text: qsTr("Clear")
             icon: "blur_on"
             onClicked: root.runIcon(["mode", "clear"])
+        }
+    ]
+
+    property list<MenuItem> iconMaterialItems: [
+        MenuItem {
+            objectName: "standard"
+            text: qsTr("Standard")
+            icon: "layers"
+            onClicked: root.runIcon(["material", "standard"])
         },
         MenuItem {
             objectName: "glass"
             text: qsTr("Glass")
             icon: "auto_awesome"
-            onClicked: root.runIcon(["mode", "glass"])
+            onClicked: root.runIcon(["material", "glass"])
         }
     ]
 
@@ -310,6 +319,15 @@ ColumnLayout {
         fallbackText: root.icons.mode || "original"
         menuItems: root.iconModeItems
         active: root.iconModeItems.find(item => item.objectName === root.icons.mode) ?? null
+    }
+
+    SelectRow {
+        label: qsTr("Material")
+        subtext: qsTr("Glass changes rendering only and never re-canonicalizes the icon")
+        fallbackIcon: "layers"
+        fallbackText: root.icons.material || "standard"
+        menuItems: root.iconMaterialItems
+        active: root.iconMaterialItems.find(item => item.objectName === (root.icons.material || "standard")) ?? null
     }
 
     ToggleRow {
