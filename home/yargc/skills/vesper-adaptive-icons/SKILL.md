@@ -20,12 +20,16 @@ Use this skill when working on Vesper adaptive application icons.
 - keep canonical conversion independent from palette and appearance rendering
 - source-hash identical work must be deduplicated before remote conversion
 - provider outages must leave original or previously accepted icons usable
+- remote semantic conversion requires explicit `remoteConsent`; do not infer consent from feature enablement or from an existing API key
+- bulk icon export is intentionally unsupported; keep only per-app local diagnostic export
 
 ## queue behavior
 
 The Rust conversion queue is persistent. Jobs may be `pending`, `ready`, `running`, `retry-wait`, `blocked-no-provider`, `blocked-no-consent`, `succeeded`, `failed`, `superseded` or `cancelled`.
 
 A missing provider key is not a permanent failure. Keep the job blocked and allow the daemon to move it to `ready` automatically when the selected provider becomes available.
+
+Missing remote consent is also a capability block, not a failure. Keep affected work `blocked-no-consent`; enabling consent should automatically make eligible work `ready` when the selected provider is configured. The worker must not claim new remote conversion work while consent is disabled.
 
 Do not create one remote request per desktop entry when several entries share the same trustworthy source fingerprint.
 
@@ -40,6 +44,8 @@ Canonical output follows the `.vicon` package contract in `docs/ADAPTIVE-ICONS.m
 ## operations
 
 Use `vesper-control icon status` for engine state and `vesper-control icon queue-status` for persistent conversion queue state.
+
+Use `vesper-control icon remote-consent on|off` to change the explicit remote artwork-analysis permission. This setting is independent from provider credentials and from enabling the local adaptive-icon feature.
 
 Use `vesper-control icon reconcile` after debugging discovery or source resolution. Use `vesper-control icon app-retry <desktop-id>` only when an explicitly failed or invalidated application should be retried.
 
