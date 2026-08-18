@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const IDENTITY_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug)]
 struct App {
@@ -48,6 +52,18 @@ fn identity_path() -> PathBuf {
     state_root().join("identity.json")
 }
 
+fn db_path() -> PathBuf {
+    state_root().join("state.sqlite3")
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(i64::MAX as u128) as i64
+}
+
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 16);
     for ch in value.chars() {
@@ -62,6 +78,42 @@ fn json_escape(value: &str) -> String {
         }
     }
     out
+}
+
+fn sql_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn sqlite(sql: &str) -> Result<String, String> {
+    fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
+    let mut child = Command::new("sqlite3")
+        .arg("-batch")
+        .arg("-noheader")
+        .arg("-separator")
+        .arg("\t")
+        .arg(db_path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start sqlite3: {error}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(sql.as_bytes())
+            .map_err(|error| format!("failed to write sqlite query: {error}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for sqlite3: {error}"))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            format!("sqlite3 exited with {}", output.status.code().unwrap_or(-1))
+        } else {
+            message
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn write_atomic(path: &Path, data: impl AsRef<[u8]>) -> Result<(), String> {
@@ -435,8 +487,68 @@ fn build_identity() -> BTreeMap<String, Mapping> {
     aliases
 }
 
+fn persist_identity(aliases: &BTreeMap<String, Mapping>) -> Result<(), String> {
+    let mut applications = BTreeMap::<String, String>::new();
+    for mapping in aliases.values() {
+        applications
+            .entry(mapping.desktop_id.clone())
+            .or_insert_with(|| mapping.theme_icon.clone());
+    }
+
+    let mut sql = String::from(
+        "PRAGMA journal_mode=WAL;\n\
+         PRAGMA synchronous=NORMAL;\n\
+         PRAGMA busy_timeout=5000;\n\
+         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);\n\
+         CREATE TABLE IF NOT EXISTS applications (\n\
+           canonical_app_id TEXT PRIMARY KEY,\n\
+           launch_desktop_id TEXT NOT NULL,\n\
+           theme_icon TEXT NOT NULL,\n\
+           updated_ms INTEGER NOT NULL\n\
+         );\n\
+         CREATE TABLE IF NOT EXISTS identity_aliases (\n\
+           alias TEXT PRIMARY KEY,\n\
+           canonical_app_id TEXT NOT NULL,\n\
+           launch_desktop_id TEXT NOT NULL,\n\
+           theme_icon TEXT NOT NULL,\n\
+           evidence TEXT NOT NULL\n\
+         );\n\
+         CREATE INDEX IF NOT EXISTS identity_aliases_app_idx ON identity_aliases(canonical_app_id);\n\
+         BEGIN IMMEDIATE;\n\
+         DELETE FROM identity_aliases;\n\
+         DELETE FROM applications;\n",
+    );
+    let timestamp = now_ms();
+    for (desktop_id, theme_icon) in applications {
+        sql.push_str(&format!(
+            "INSERT INTO applications(canonical_app_id, launch_desktop_id, theme_icon, updated_ms) VALUES({}, {}, {}, {});\n",
+            sql_quote(&desktop_id),
+            sql_quote(&desktop_id),
+            sql_quote(&theme_icon),
+            timestamp,
+        ));
+    }
+    for (alias, mapping) in aliases {
+        sql.push_str(&format!(
+            "INSERT INTO identity_aliases(alias, canonical_app_id, launch_desktop_id, theme_icon, evidence) VALUES({}, {}, {}, {}, {});\n",
+            sql_quote(alias),
+            sql_quote(&mapping.desktop_id),
+            sql_quote(&mapping.desktop_id),
+            sql_quote(&mapping.theme_icon),
+            sql_quote(&mapping.evidence),
+        ));
+    }
+    sql.push_str(&format!(
+        "INSERT INTO meta(key, value) VALUES('identitySchemaVersion', '{}') ON CONFLICT(key) DO UPDATE SET value=excluded.value;\nCOMMIT;\n",
+        IDENTITY_SCHEMA_VERSION
+    ));
+    sqlite(&sql)?;
+    Ok(())
+}
+
 fn sync() -> Result<(), String> {
     let aliases = build_identity();
+    persist_identity(&aliases)?;
     let rows = aliases
         .iter()
         .map(|(alias, mapping)| {
@@ -450,7 +562,8 @@ fn sync() -> Result<(), String> {
         })
         .collect::<Vec<_>>();
     let body = format!(
-        "{{\"schemaVersion\":1,\"aliases\":{{{}}}}}\n",
+        "{{\"schemaVersion\":{},\"aliases\":{{{}}}}}\n",
+        IDENTITY_SCHEMA_VERSION,
         rows.join(",")
     );
     write_atomic(&identity_path(), body)
@@ -503,5 +616,53 @@ fn main() {
     if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mapping(id: &str) -> Mapping {
+        Mapping {
+            desktop_id: id.to_string(),
+            theme_icon: id.trim_end_matches(".desktop").to_string(),
+            evidence: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn conflicting_aliases_are_removed_not_guessed() {
+        let mut aliases = BTreeMap::new();
+        let mut conflicts = BTreeSet::new();
+        add_alias(&mut aliases, &mut conflicts, "shared", &mapping("one.desktop"));
+        add_alias(&mut aliases, &mut conflicts, "shared", &mapping("two.desktop"));
+        assert!(!aliases.contains_key("shared"));
+        assert!(conflicts.contains("shared"));
+    }
+
+    #[test]
+    fn steam_ids_stay_exact() {
+        let tokens = vec!["steam".to_string(), "-applaunch".to_string(), "730".to_string()];
+        assert_eq!(steam_id("steam -applaunch 730", &tokens).as_deref(), Some("730"));
+        assert_eq!(steam_id("steam://rungameid/570", &[]).as_deref(), Some("570"));
+    }
+
+    #[test]
+    fn generic_runtimes_are_never_identity() {
+        for value in ["electron", "wine", "wine64", "steam", "flatpak"] {
+            assert!(generic_runtime(value));
+        }
+    }
+
+    #[test]
+    fn normalized_alias_is_exact_casefold_only() {
+        let mut aliases = BTreeMap::new();
+        let mut conflicts = BTreeSet::new();
+        let item = mapping("Example.desktop");
+        add_alias_with_normalized(&mut aliases, &mut conflicts, "Example.App", &item);
+        assert!(aliases.contains_key("Example.App"));
+        assert!(aliases.contains_key("example.app"));
+        assert!(!aliases.contains_key("example"));
     }
 }
