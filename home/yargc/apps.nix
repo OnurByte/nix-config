@@ -7,6 +7,19 @@ let
   sessionDesktop = pkgs.callPackage ./packages/session-desktop.nix { };
 in
 {
+  programs.vicinae = {
+    enable = true;
+    systemd = {
+      enable = true;
+      autoStart = true;
+    };
+    settings = {
+      close_on_focus_loss = true;
+      pop_to_root_on_close = true;
+      launcher_window.layer_shell.enabled = true;
+    };
+  };
+
   programs.vesktop = {
     enable = true;
     vencord.useSystem = true;

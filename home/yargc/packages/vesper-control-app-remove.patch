@@ -1,0 +1,78 @@
+--- a/vesper-control.rs
++++ b/vesper-control.rs
+@@ -1,16 +1,18 @@
+ fn app_status(id: &str) {
+     let flatpak_id = flatpak_id(id);
+     let is_flatpak = success("flatpak", &["info", flatpak_id]);
++    let removable = is_flatpak && success("flatpak", &["info", "--user", flatpak_id]);
+     let permissions = if is_flatpak {
+         output("flatpak", &["info", "--show-permissions", flatpak_id]).unwrap_or_default()
+     } else {
+         String::new()
+     };
+     println!(
+-        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"todaySeconds\":{}}}",
++        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"removable\":{},\"todaySeconds\":{}}}",
+         if is_flatpak { "flatpak" } else { "native" },
+         json_escape(flatpak_id),
+         json_escape(&permissions),
++        if removable { "true" } else { "false" },
+         wellbeing_seconds_for(id)
+     );
+ }
+@@ -1,15 +1,38 @@
+ fn app_reset_permissions(id: &str) -> Result<(), String> {
+     let id = flatpak_id(id);
+     if !success("flatpak", &["info", id]) {
+         return Err("app is not installed as Flatpak".to_string());
+     }
+     let result = Command::new("flatpak")
+         .args(["override", "--user", "--reset", id])
+         .output()
+         .map_err(|error| format!("failed to run flatpak: {error}"))?;
+     if result.status.success() {
+         Ok(())
+     } else {
+         Err(String::from_utf8_lossy(&result.stderr).trim().to_string())
+     }
+ }
++
++fn app_remove(id: &str) -> Result<(), String> {
++    let id = flatpak_id(id);
++    if !success("flatpak", &["info", "--user", id]) {
++        return Err("removal is only available for user-installed Flatpak apps here".to_string());
++    }
++
++    let result = Command::new("flatpak")
++        .args(["uninstall", "--user", "-y", id])
++        .output()
++        .map_err(|error| format!("failed to run flatpak: {error}"))?;
++    if result.status.success() {
++        Ok(())
++    } else {
++        let message = String::from_utf8_lossy(&result.stderr).trim().to_string();
++        Err(if message.is_empty() {
++            "Flatpak removal failed".to_string()
++        } else {
++            message
++        })
++    }
++}
++
+@@ -1,4 +1,5 @@
+            app-status <desktop-id>\n\
+            app-permission <desktop-id> network|home on|off\n\
+-           app-reset-permissions <desktop-id>"
++           app-reset-permissions <desktop-id>\n\
++           app-remove <desktop-id>"
+     );
+@@ -1,6 +1,9 @@
+         [command, id] if command == "app-reset-permissions" => {
+             app_reset_permissions(id).unwrap_or_else(|error| print_error(&error));
+         }
++        [command, id] if command == "app-remove" => {
++            app_remove(id).unwrap_or_else(|error| print_error(&error));
++        }
+         _ => usage(),
+     }
+ }

@@ -2,9 +2,9 @@
 
 Status: **partial**
 
-This document owns Vesper-specific installed-application settings behavior and the handoff between `Settings -> Apps` and Vesper Store.
+This document owns Vesper-specific installed-application settings behavior, default-application handling, the Spotlight/launcher boundary, and the handoff between `Settings -> Apps` and Vesper Store.
 
-Vesper extends Caelestia's native Apps surface instead of adding a second settings application. Vesper Store is a separate native Qt 6 / QML application for discovery and installation.
+Vesper extends Caelestia's native Apps surface instead of adding a second settings application. Vesper Store is a separate native Qt 6 / QML application for discovery and installation. Vicinae is the default Spotlight-style launcher/search surface; it is not an application manager or package owner.
 
 `SETTINGS.md` owns where Apps, App Inspector and Wellbeing appear in the wider Settings information architecture.
 
@@ -13,6 +13,13 @@ Vesper extends Caelestia's native Apps surface instead of adding a second settin
 Implemented Vesper-specific pieces include:
 
 - `Find New Apps` in Apps, launching `vesper-store`;
+- Vicinae enabled as the default Spotlight-style launcher with a user systemd service;
+- `Super + Space` toggling Vicinae instead of the Caelestia app launcher;
+- the installed Apps list using the existing Quickshell `DesktopEntries` registry;
+- category filtering derived from real desktop-entry `Categories` metadata;
+- installed-app rows showing icon, name, description, default-role state and an inline Open action;
+- application detail exposing canonical Open plus desktop-entry categories/startup class/default-role information;
+- user Flatpak removal through the Vesper control backend with an explicit confirmation step;
 - local wellbeing collection through `vesper-control wellbeing-daemon`;
 - Flatpak network/home override controls where the backend can enforce them;
 - native-app state that does not pretend ordinary Nix applications are Flatpak-sandboxed;
@@ -21,13 +28,19 @@ Implemented Vesper-specific pieces include:
 
 Caelestia may provide base installed-app list/detail behavior independently of these Vesper extensions. Inspect the current QML and backend before assuming every target field or transaction below is already wired end to end.
 
-The full ownership-aware remove/size/source transaction contract and App Inspector fields described later in this document are target behavior and depend on their corresponding backends becoming complete.
+The full ownership-aware Nix Store removal/size/source transaction contract and some App Inspector fields described later in this document remain target behavior until their corresponding backends become complete.
 
 ## ownership boundary
 
 Use this split consistently:
 
 ```text
+Vicinae
+  -> default Spotlight / command-palette surface
+  -> app search and launch
+  -> file/command/extension search where enabled
+  -> never owns package removal or Vesper defaults
+
 Vesper Store
   -> discover applications
   -> inspect catalogue metadata
@@ -36,6 +49,7 @@ Vesper Store
 
 Settings -> Apps
   -> default applications and generic handlers
+  -> browse/filter installed applications
   -> inspect installed applications
   -> launch
   -> installed source/ownership state
@@ -50,11 +64,74 @@ Settings -> Apps
 `ADAPTIVE-ICONS.md` is authoritative for adaptive icon discovery, conversion and appearance semantics.
 `DESKTOP-ERGONOMICS.md` is authoritative for the Quake Agent Console and physical Assistant/Copilot-key interaction.
 
-Do not add a second installed-app management system to Vesper Store.
+Do not add a second installed-app management system to Vesper Store or Vicinae.
+
+## Vicinae as the default Spotlight surface
+
+Vicinae is Vesper's primary keyboard-first launcher/search surface, analogous to the role Spotlight plays on macOS.
+
+Default entry point:
+
+```text
+Super + Space -> vicinae toggle
+```
+
+Vesper uses the packaged Nix/Home Manager integration and runs the Vicinae server as a user service. Do not introduce a separate hand-written daemon wrapper when the upstream/Home Manager service is sufficient.
+
+The initial integration intentionally keeps ownership narrow:
+
+- Vicinae is primary for Spotlight-style search, application launch and command-palette workflows;
+- Caelestia remains the desktop shell and keeps shell-native panels, settings, clipboard, emoji, capture and other existing capabilities unless a later migration explicitly moves one;
+- do not run two competing primary launcher shortcuts;
+- the old Caelestia launcher may remain available internally, but `Super + Space` belongs to Vicinae;
+- Vesper-specific actions should integrate with Vicinae through supported commands/deeplinks/extensions rather than forking Vicinae when practical;
+- Vicinae theme integration should follow Vesper appearance work without creating a second independent visual identity database.
+
+Vicinae's application index and Settings -> Apps both ultimately refer to desktop applications, but Vesper must not create a third app identity database merely to reconcile them. Canonical desktop IDs and `.desktop` metadata remain the common identity layer.
+
+## desktop-entry metadata contract
+
+Installed applications are described from real desktop entries rather than guessed from package names.
+
+Example:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=My Application
+Comment=A description of what the app does
+Exec=/absolute/path/to/executable %U
+Icon=/absolute/path/to/icon.png
+Terminal=false
+Categories=Utility;Development;
+StartupWMClass=AppName
+```
+
+Vesper maps the fields as follows:
+
+```text
+Desktop ID       -> canonical installed-app identity
+Name             -> application title
+Comment          -> primary description
+GenericName      -> description fallback when Comment is absent
+Icon             -> normal icon resolution -> Vesper adaptive-icon layer when active
+Categories       -> Apps category filtering
+StartupWMClass   -> window-identity hint, never sole package ownership proof
+Exec             -> parsed by the desktop-entry implementation; never execute raw text from QML
+Terminal         -> launch semantics owned by the desktop-entry implementation
+```
+
+Rules:
+
+- use Quickshell `DesktopEntry` / the canonical desktop-entry resolver already used by Caelestia;
+- launch with the resolved desktop entry (`execute()` or equivalent canonical launch path), not by evaluating raw `Exec=` text;
+- do not infer package ownership from `Name`, `StartupWMClass` or executable basename alone;
+- preserve unknown/empty metadata instead of inventing descriptions or categories;
+- adaptive icons may replace presentation of `Icon`, but do not replace the underlying desktop identity.
 
 ## Find New Apps
 
-Current behavior: Apps exposes a `Find New Apps` action near the top of the page.
+Apps exposes a `Find New Apps` action near the top of the page.
 
 ```text
 Find New Apps
@@ -69,9 +146,7 @@ Do not add `Open in Vesper Store` to installed application details. Once an appl
 
 ## Default Apps
 
-`Settings -> Apps` should expose a native **Default Apps** section for user-level generic handlers. This is a settings surface, not Store catalogue metadata.
-
-The section should include **Default Agent** alongside the other default-application choices supported by the underlying Caelestia/Vesper settings model.
+`Settings -> Apps` exposes a native **Default Apps** section for user-level generic handlers. This is a Settings surface, not Vicinae or Store catalogue metadata.
 
 Target structure:
 
@@ -79,15 +154,28 @@ Target structure:
 Settings
 └── Apps
     └── Default Apps
-        ├── ...existing supported defaults...
+        ├── Terminal
+        ├── Audio
+        ├── Media playback
+        ├── File manager
+        ├── other supported handlers as they become real
         └── Default Agent
 ```
+
+Installed-app rows/details may display a compact `Default` indicator such as:
+
+```text
+Default: Terminal
+Default: File manager
+```
+
+Do not expose an ambiguous one-click `Make Default` action when an application could fill several roles. A future per-app default action must name the exact role and update the same canonical Default Apps setting.
 
 ### Default Agent
 
 `Default Agent` selects which installed supported coding-agent runtime handles the generic Vesper "open my coding agent" intent.
 
-Candidate values should be derived from supported installed runtimes rather than a hard-coded provider list. Examples may include, only when installed/supported:
+Candidate values are derived from supported installed runtimes rather than a hard-coded provider list. Examples may include, only when installed/supported:
 
 ```text
 Codex
@@ -107,109 +195,156 @@ Rules:
 - the selected runtime is an application/agent default, not a provider/model preference;
 - provider credentials, model/router policy and per-agent capabilities remain owned by `Settings -> AI`;
 - the generic agent launcher, Quake Agent Console and physical Assistant/Copilot key all consume this one canonical selection;
-- the physical Copilot key does not imply `GitHub Copilot CLI`; its default action is the generic `Toggle Agent Console` action described in `DESKTOP-ERGONOMICS.md`;
+- the physical Copilot key does not imply `GitHub Copilot CLI`;
 - do not store separate defaults for keyboard hardware, launcher and console;
-- if the selected agent is removed or stops being supported, show the stale selection as unavailable and require an explicit new selection rather than silently launching a different agent;
-- persist through the normal Vesper settings/config ownership path, not an unrelated hidden mutable file;
-- the row must use native Caelestia/Nexus settings components and Vesper semantic tokens rather than introducing custom Omarchy-styled UI.
+- if the selected agent is removed or stops being supported, show it as unavailable and require an explicit new selection rather than silently launching a different agent;
+- persist through the normal Vesper settings/config ownership path;
+- use native Caelestia/Nexus settings components and Vesper semantic tokens.
 
-## installed application list
+## installed application library
 
-Target contract: Apps should show installed desktop applications discovered through real desktop-entry reconciliation.
+`Settings -> Apps -> All apps` is the canonical installed-app browser.
 
-Keep each row compact:
+Each row should stay compact and native to Nexus:
 
-- active Vesper/adaptive icon;
-- application name;
-- short description when available;
-- source/ownership only when it changes an available action.
+```text
+[icon]  Application name                         [Open] [>]
+        Comment / GenericName
+        Default: <role>        # only when applicable
+```
 
-Selecting a row should open the application detail view inside Settings.
+Required row data:
+
+- active Vesper/adaptive icon when available, otherwise resolved packaged icon;
+- application `Name`;
+- `Comment`, falling back to `GenericName`;
+- compact default-role indicator only when the app is actually a current default;
+- existing favourite state when applicable;
+- inline **Open** action using the canonical desktop entry;
+- navigation to App Inspector/detail.
 
 Do not infer installed state from Store catalogue membership alone.
 
+### category filter
+
+Category filtering uses `.desktop` `Categories` values directly.
+
+Vesper's user-facing categories are:
+
+```text
+All
+Development
+Internet
+Office
+Graphics
+Audio & Video
+Games
+Utilities
+System
+Other
+```
+
+Mapping:
+
+```text
+Development  <- Development
+Internet     <- Network, WebBrowser, Email
+Office       <- Office
+Graphics     <- Graphics
+Audio & Video<- AudioVideo, Audio, Video
+Games        <- Game
+Utilities    <- Utility
+System       <- System, Settings
+Other        <- no recognized major category above
+```
+
+Rules:
+
+- an app with multiple categories may appear under every matching filter;
+- `Other` is a deterministic metadata fallback, not an AI classification bucket;
+- do not classify apps from their names/descriptions merely to make the category list look complete;
+- filtering changes the view only; it does not mutate desktop entries.
+
 ## App Inspector
 
-The target application detail should evolve into an **App Inspector** rather than a page full of generic permission toggles.
+The application detail should evolve into an **App Inspector** rather than a page full of generic permission toggles.
 
-When reliable sources exist, useful inspectable state includes:
+The header should contain the active icon, application name and short description. Primary application controls belong near the top.
 
-- executable and package/source owner
-- canonical desktop entry
-- installed version and size
-- native/Flatpak/sandbox ownership
-- Wayland/XWayland state
-- current processes
-- CPU and memory use
-- GPU activity
-- current network connections
-- autostart state
-- file associations
-- wellbeing usage
-- adaptive-icon state
+Useful inspectable state, when reliable sources exist, includes:
+
+- canonical desktop entry / desktop ID;
+- categories;
+- StartupWMClass/window identity hint;
+- executable and package/source owner;
+- installed version and size;
+- native/Flatpak/sandbox ownership;
+- current default roles;
+- Wayland/XWayland state;
+- current processes;
+- CPU and memory use;
+- GPU activity;
+- current network connections;
+- autostart state;
+- file associations;
+- wellbeing usage;
+- adaptive-icon state.
 
 Unknown data stays unknown. Do not fabricate process, GPU, network or package ownership from application names alone.
 
 The inspector can combine data from several local sources, but the backend owns attribution and normalization. QML should not scrape `/proc`, shell output or package-manager text directly.
 
-## application detail
+## application actions
 
-Target contract: the detail view is the canonical installed-app management surface.
+### Open
 
-The primary header should contain, when implemented and known:
+`Open` launches the resolved installed desktop entry.
 
-- active icon, including the actual current Tinted appearance when Tinted mode is active;
-- application name;
-- short description;
-- `Open` primary action;
-- `Remove` destructive action only when the real source owner supports removal from this surface.
+Never reconstruct a shell command from raw `Exec=` text. The desktop-entry implementation owns field-code parsing and working-directory semantics.
 
-The main information may include:
+The installed-app list may expose a compact inline Open button; the detail view also exposes Open as a primary action.
 
-- installed size;
-- installed version;
-- source and ownership;
-- native or Flatpak sandbox state;
-- App Inspector runtime state;
-- wellbeing usage;
-- per-app adaptive icon state and actions.
+### Remove
 
-Do not duplicate Store screenshots, ratings, discovery categories or marketing metadata here. Those are discovery concerns.
+Removal always follows the real owner and always requires explicit user intent.
 
-### open
+Current enforceable behavior:
 
-Target behavior: `Open` launches the resolved installed desktop entry rather than reconstructing a command from package metadata.
+```text
+user-installed Flatpak
+  -> Vesper backend
+  -> flatpak uninstall --user
+  -> explicit confirmation in Apps
+```
 
-If several launchable desktop entries exist, use the canonical application desktop ID from the shared identity layer. Never execute arbitrary catalogue command text.
-
-### remove
-
-Removal must follow the real owner.
+Target routing as Store ownership becomes complete:
 
 ```text
 Store-managed Nix app
   -> shared Vesper Store transaction core
 
-Store-managed Flatpak
+Store-managed/user Flatpak
   -> Flatpak removal transaction
 
 externally managed app
-  -> no ownership claim
+  -> no ownership claim / no fake Remove button
 
 Vesper-config-managed app
   -> Managed by Vesper config
   -> do not silently edit home/yargc/apps.nix
 ```
 
-This routing is a target contract until the corresponding Store transaction backend is implemented.
+Rules:
 
-For removable applications, `Remove` should be explicit and destructive and use a small confirmation sheet naming the application.
-
-After successful removal, desktop-entry and adaptive-icon state must be reconciled.
+- do not show an enabled Remove button unless the backend can identify and invoke the actual owner;
+- destructive removal requires confirmation naming the application;
+- a system/global Flatpak is not the same as a user Flatpak and must not be removed through the user-only path;
+- successful removal triggers normal desktop-entry/adaptive-icon reconciliation;
+- removal must never be implemented by deleting a `.desktop` file while leaving the package installed.
 
 ### installed size
 
-Target behavior: show a human-readable installed size such as `184 MB` or `1.3 GB` only when a reliable source can provide it.
+Show a human-readable installed size such as `184 MB` or `1.3 GB` only when a reliable source can provide it.
 
 The backend owns the calculation.
 
@@ -219,36 +354,28 @@ For Flatpak, use Flatpak's installed/deployed size information.
 
 Do not estimate from download metadata. Show `Unknown` when the source cannot provide a trustworthy value.
 
-### icon
-
-Current Vesper per-app controls use the installed application identity and the adaptive-icon pipeline.
-
-When adaptive icons are active, the detail surface should preview the actual active appearance rather than catalogue artwork. In Tinted mode that means the current tinted icon.
-
-Keep per-app actions such as regenerate, retry, revert, export or exclude with the installed application. Global appearance/material selection remains in Appearance and global remote-generation controls remain in AI.
-
 ## permissions and sandboxing
 
-Current Vesper backend behavior supports real user Flatpak overrides for the permissions it exposes, including network and home-directory access.
+The Vesper backend supports real user Flatpak overrides for the permissions it exposes, including network and home-directory access.
 
 Native Nix applications are shown as native/unsandboxed. Vesper must not present Flatpak-style toggles as if they can restrict an ordinary native process.
 
-Vesper Store does not own or duplicate the permission editor.
+Vesper Store and Vicinae do not own or duplicate the permission editor.
 
 A future **Vesper sandbox launch profile** may add real isolation for selected native applications through an enforceable backend such as bubblewrap or systemd sandboxing.
 
-Only after a real sandbox profile exists may Apps expose native restriction toggles such as network or home access for that launch path.
+Only after a real sandbox profile exists may Apps expose native restriction toggles for that launch path.
 
 Rules:
 
-- a permission toggle must correspond to a real enforcement mechanism
-- native/unsandboxed must remain explicit when no sandbox is active
-- do not imply that observing a process or network connection means Vesper can restrict it
-- sandbox launch profiles must be reversible and must not silently rewrite the underlying application package
+- a permission toggle must correspond to a real enforcement mechanism;
+- native/unsandboxed must remain explicit when no sandbox is active;
+- do not imply that observing a process or network connection means Vesper can restrict it;
+- sandbox launch profiles must be reversible and must not silently rewrite the underlying application package.
 
 ## wellbeing
 
-Current behavior: `vesper-control wellbeing-daemon` samples the active Hyprland window class every five seconds and stores daily local counters under:
+`vesper-control wellbeing-daemon` samples the active Hyprland window class every five seconds and stores daily local counters under:
 
 ```text
 ~/.local/state/vesper/wellbeing/
@@ -256,31 +383,20 @@ Current behavior: `vesper-control wellbeing-daemon` samples the active Hyprland 
 
 No wellbeing usage data is uploaded by this feature.
 
-Known accuracy issue: the current collector can keep charging the last foreground application while the desktop is idle or locked because foreground-window presence alone is not proof of active use.
+Known accuracy issue: the collector can keep charging the last foreground application while the desktop is idle or locked because foreground-window presence alone is not proof of active use.
 
 The remediation contract is:
 
-- obtain idle/lock truth from the shell/session owner rather than inferring it from the last active window
-- do not increment application usage while the session is idle or locked
-- do not backfill missed samples as if continuous attention were proven
-- keep foreground sampling explicitly approximate even after idle/lock gating
-- prefer cached/event-driven session state over adding another fast subprocess poll
+- obtain idle/lock truth from the shell/session owner;
+- do not increment application usage while the session is idle or locked;
+- do not backfill missed samples as if continuous attention were proven;
+- keep foreground sampling explicitly approximate even after idle/lock gating;
+- prefer cached/event-driven session state over adding another fast subprocess poll.
 
-Target wellbeing can grow into a local Digital Wellbeing surface with:
-
-- daily and weekly graphs
-- application categories
-- category distribution such as coding/browser/social
-- focus mode
-- app timers
-- break reminders
-
-The existing foreground collector can remain a source where its granularity is sufficient after the idle/lock accounting bug is fixed.
+Target wellbeing can grow into a local Digital Wellbeing surface with daily/weekly graphs, categories, focus mode, app timers and break reminders.
 
 Do not claim exact human attention time from foreground-window sampling alone.
 Do not upload usage history merely to build charts, reminders or category summaries.
-
-Focus/timer controls must have a real enforcement or notification path before they are shown as active restrictions.
 
 ## adaptive icons
 
@@ -288,18 +404,22 @@ Focus/timer controls must have a real enforcement or notification path before th
 
 Store catalogue icons are read-only discovery assets before installation. After installation, the real `.desktop` entry is reconciled and the existing adaptive-icon pipeline owns the installed application identity.
 
-Apps keeps per-application icon status and actions. It must not create a second Store-specific icon pipeline.
+Apps keeps per-application icon status and actions. Vicinae and Vesper Store must not create parallel adaptive-icon pipelines.
 
-## implementation rule
+## implementation rules
 
-When implementing any target behavior from this document:
+When implementing or extending this surface:
 
-1. inspect the current Caelestia Apps surface first;
-2. extend rather than duplicate existing installed-app UI;
-3. keep Default Agent in the existing/native Default Apps surface and share that selection with every generic agent launch path;
-4. keep Store transaction logic in the shared Rust Store core, not QML;
-5. keep App Inspector normalization and process attribution in a Vesper backend, not QML shell parsing;
-6. keep source ownership explicit;
-7. never expose a permission/restriction toggle without enforcement;
-8. keep wellbeing local by default;
-9. update this document's `current state` section when the feature actually lands.
+1. inspect the current Caelestia Apps/DesktopEntries behavior first;
+2. extend rather than duplicate existing installed-app UI and identity;
+3. keep Vicinae as the primary Spotlight/command-palette surface, not an installed-app manager;
+4. keep `Super + Space` as one primary launcher binding rather than two competing surfaces;
+5. use `.desktop` metadata for icon/name/description/category/window hints;
+6. use canonical desktop-entry execution, never raw `Exec=` shell evaluation;
+7. keep Default Agent and other defaults in the existing/native Default Apps surface;
+8. keep Store transaction logic in the shared Rust Store core, not QML;
+9. keep App Inspector normalization and process attribution in a Vesper backend, not QML shell parsing;
+10. keep source ownership explicit and never expose Remove without a real owner;
+11. never expose a permission/restriction toggle without enforcement;
+12. keep wellbeing local by default;
+13. update this document's `current state` section when behavior changes.

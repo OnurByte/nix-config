@@ -12,11 +12,12 @@ ColumnLayout {
     id: root
 
     property var app
-    property var status: ({ sandbox: "native", flatpakId: "", permissions: "", todaySeconds: 0 })
+    property var status: ({ sandbox: "native", flatpakId: "", permissions: "", removable: false, todaySeconds: 0 })
     property var iconStatus: ({ id: "", iconKey: "", sourcePath: "", sourceKind: "", fingerprint: "", canonicalState: "missing", active: false, excluded: false, error: "" })
     property var queueStatus: ({ state: "none", provider: "", attempts: 0, nextRunMs: 0, lastError: "" })
     property string message: ""
     property bool messageOk: false
+    property bool removalArmed: false
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
@@ -30,6 +31,28 @@ ColumnLayout {
         if (minutes < 60)
             return qsTr("%1 min").arg(minutes);
         return qsTr("%1 h %2 min").arg(Math.floor(minutes / 60)).arg(minutes % 60);
+    }
+
+    function commandKey(command) {
+        return [...(command ?? [])].join("\u0000");
+    }
+
+    function defaultRoles() {
+        if (!root.app)
+            return [];
+
+        const key = root.commandKey(root.app.command);
+        const defaults = GlobalConfig.general.apps;
+        const roles = [];
+        if (root.commandKey(defaults.terminal) === key)
+            roles.push(qsTr("Terminal"));
+        if (root.commandKey(defaults.audio) === key)
+            roles.push(qsTr("Audio"));
+        if (root.commandKey(defaults.playback) === key)
+            roles.push(qsTr("Media playback"));
+        if (root.commandKey(defaults.explorer) === key)
+            roles.push(qsTr("File manager"));
+        return roles;
     }
 
     function refresh() {
@@ -59,7 +82,10 @@ ColumnLayout {
         iconAction.running = true;
     }
 
-    onAppChanged: refresh()
+    onAppChanged: {
+        root.removalArmed = false;
+        refresh();
+    }
     Component.onCompleted: refresh()
 
     Timer {
@@ -120,6 +146,22 @@ ColumnLayout {
     }
 
     Process {
+        id: appRemove
+        stderr: StdioCollector { id: appRemoveError }
+        onExited: (code, status) => {
+            root.removalArmed = false;
+            if (code === 0) {
+                root.message = qsTr("Application removed");
+                root.messageOk = true;
+            } else {
+                root.message = appRemoveError.text.trim() || qsTr("Could not remove application");
+                root.messageOk = false;
+                root.refresh();
+            }
+        }
+    }
+
+    Process {
         id: iconAction
         property string successMessage: ""
         stdout: StdioCollector { id: iconOutput }
@@ -135,6 +177,78 @@ ColumnLayout {
             }
             root.refresh();
         }
+    }
+
+    SectionHeader {
+        text: qsTr("Application")
+    }
+
+    RowButton {
+        icon: "open_in_new"
+        text: qsTr("Open")
+        subtext: qsTr("Launch the canonical desktop entry")
+        disabled: !root.app
+        onClicked: {
+            if (root.app)
+                root.app.execute();
+        }
+    }
+
+    InfoRow {
+        visible: (root.app?.categories?.length ?? 0) > 0
+        icon: "category"
+        label: qsTr("Categories")
+        value: [...(root.app?.categories ?? [])].join(", ")
+    }
+
+    InfoRow {
+        visible: (root.app?.startupClass ?? "").length > 0
+        icon: "window"
+        label: qsTr("Startup class")
+        subtext: qsTr("window identity hint from the desktop entry")
+        value: root.app?.startupClass ?? ""
+    }
+
+    InfoRow {
+        visible: root.defaultRoles().length > 0
+        icon: "check_circle"
+        label: qsTr("Default")
+        subtext: qsTr("managed by Apps → Default applications")
+        value: root.defaultRoles().join(", ")
+        iconColour: Colours.palette.m3primary
+    }
+
+    RowButton {
+        visible: root.status.removable && !root.removalArmed
+        icon: "delete"
+        text: qsTr("Remove")
+        subtext: qsTr("Uninstall this user Flatpak")
+        disabled: appRemove.running
+        onClicked: root.removalArmed = true
+    }
+
+    RowButton {
+        visible: root.status.removable && root.removalArmed
+        icon: "warning"
+        text: qsTr("Confirm removal")
+        subtext: qsTr("Uninstall %1 from this user").arg(root.app?.name ?? qsTr("this application"))
+        disabled: appRemove.running
+        onClicked: {
+            if (!root.app || appRemove.running)
+                return;
+            root.message = "";
+            root.messageOk = false;
+            appRemove.command = ["@vesperControl@", "app-remove", root.app.id];
+            appRemove.running = true;
+        }
+    }
+
+    RowButton {
+        visible: root.status.removable && root.removalArmed
+        icon: "close"
+        text: qsTr("Cancel removal")
+        disabled: appRemove.running
+        onClicked: root.removalArmed = false
     }
 
     SectionHeader {
