@@ -2,7 +2,7 @@
 
 This document is the normative Apple-compatibility layer for `ADAPTIVE-ICONS.md`.
 
-If the older implementation prompt conflicts with this document on icon geometry, layer structure, appearance modes or Liquid Glass behavior, follow this document.
+If the older implementation prompt conflicts with this document on icon geometry, layer structure, shape normalization, appearance modes or Liquid Glass behavior, follow this document.
 
 The goal is not to reproduce Apple's private renderer or file format byte-for-byte. The goal is to preserve the design model that makes current Apple app icons coherent while adapting it to Linux, freedesktop icon themes and Vesper-owned Caelestia surfaces.
 
@@ -88,11 +88,107 @@ Do not copy a rounded mask into the canonical artwork. The grid is guidance; the
 
 Allow controlled per-icon optical offsets and scale corrections in metadata. A single rigid percentage for every logo will make visually light and visually heavy logos look inconsistent.
 
+## mandatory shape normalization
+
+This is required, not optional.
+
+Linux application icons frequently arrive as circles, isolated transparent logos, irregular silhouettes or glyphs with no enclosing application-icon background. Vesper must not render those shapes at full canvas size beside enclosed app icons.
+
+Every discovered source must go through a shape-analysis stage before canonicalization or compilation.
+
+Classify the visible source geometry into at least:
+
+- `enclosed` — already has a full square or rounded-square app-icon composition
+- `circular` — dominant visible silhouette is circular or near-circular
+- `glyph` — isolated logo/symbol on transparent canvas
+- `irregular` — non-rectangular silhouette that does not fill an app-icon enclosure
+- `full-bleed` — artwork intentionally reaches the full source bounds
+
+The classifier must use actual geometry, not the application name. For raster sources inspect alpha bounds and visible-pixel distribution. For vector sources inspect visible path bounds, fill coverage and clipping/masking structure.
+
+For `circular`, `glyph` and `irregular` sources the normal path is:
+
+```text
+source artwork
+    ↓
+measure alpha/geometry bounds
+    ↓
+measure optical mass and edge proximity
+    ↓
+scale down into the Vesper safe area
+    ↓
+apply per-icon optical offset if needed
+    ↓
+place on a semantic app-icon background/enclosure
+    ↓
+compile final rounded enclosure
+```
+
+Do not use one fixed scale such as 70% or 75% for every icon.
+
+Determine scale and offset from a combination of:
+
+- alpha bounds
+- vector geometry bounds
+- occupied-area ratio
+- aspect ratio
+- edge proximity
+- optical center / visual mass
+- circularity or silhouette class
+- small-size recognition
+- enclosure clipping risk
+
+Store the normalization decision in canonical metadata so the same geometry can be recompiled without AI.
+
+The metadata should be able to represent concepts equivalent to:
+
+```json
+{
+  "shapeClass": "circular",
+  "contentScale": 0.72,
+  "opticalOffsetX": 0.0,
+  "opticalOffsetY": -0.01,
+  "needsEnclosure": true,
+  "backgroundStrategy": "brand-derived"
+}
+```
+
+The exact schema may differ, but these decisions must be explicit and deterministic.
+
+### enclosure background selection
+
+Do not let the model invent arbitrary backgrounds independently for each appearance.
+
+Choose the enclosure background using this priority:
+
+1. preserve an official/background color already present in the source when suitable
+2. derive a stable brand-supporting background from the official icon palette
+3. use canonical light/dark background metadata defined during normalization
+4. fall back to a Vesper neutral or current palette-aware surface when the brand has no meaningful background
+
+Tinted and clear outputs may reinterpret the enclosure through the active Caelestia palette, but the default appearance should not unnecessarily erase brand identity.
+
+### already enclosed icons
+
+If the source already has a coherent full app-icon enclosure, do not blindly shrink it and add a second background.
+
+Normalize its canvas, optical size and layer semantics while preserving the existing composition where it already fits the Vesper grid.
+
+### full-bleed artwork
+
+Do not automatically shrink intentional full-bleed artwork into a floating tile. Preserve it when doing so is necessary to retain the icon's identity, while still validating final mask clipping and small-size behavior.
+
+### transparent circular icons
+
+A transparent circular icon must not remain a giant circle touching the same outer bounds as a rounded-square Vesper icon.
+
+The normalizer must reduce it to the primary-glyph region and add an enclosure/background unless the icon is explicitly excluded or marked original-only.
+
+This rule is particularly important on Linux because circular and transparent standalone application icons are common and otherwise destroy the visual rhythm of the generated theme.
+
 ## material model
 
 `Glass` is not an artwork appearance.
-
-This is the largest correction to the first adaptive-icons prompt.
 
 Liquid Glass is a material/rendering treatment applied to layers and groups. Default, dark, clear and tinted are user-facing appearances.
 
@@ -111,13 +207,9 @@ These are semantic parameters, not instructions to paint permanent highlights in
 
 Vesper does not need to clone Apple's numeric shader implementation. The contract should remain stable while the renderer can improve independently.
 
-This matters because Apple's own material rendering can change between system versions while the underlying artwork remains valid.
-
 ## appearance model
 
 Do not expose `Original / Light / Dark / Tinted / Clear / Glass` as six equivalent modes.
-
-Use an Apple-compatible artwork/appearance model.
 
 Canonical appearance annotations are:
 
@@ -125,7 +217,7 @@ Canonical appearance annotations are:
 - `dark`
 - `mono`
 
-The compiler derives the six desktop outputs:
+The compiler derives:
 
 - default
 - dark
@@ -138,15 +230,11 @@ The compiler derives the six desktop outputs:
 
 If an icon does not need custom dark or mono geometry, those annotations may inherit the default geometry and vary only material/color properties.
 
-Keep core geometry and recognizable features consistent between all appearances. Do not add or remove major logo elements just because the user changed appearance.
-
-Use the default icon as the starting point for dark. Dark should normally be a more subdued complementary treatment, not a completely unrelated recolor.
+Keep core geometry and recognizable features consistent between all appearances.
 
 Tinted and clear should be more restrained than default. Recognition must survive even when most brand color is removed.
 
-The UI may still offer a separate Vesper material control such as `standard` versus `glass`, but this control is orthogonal to appearance.
-
-A useful settings model is therefore:
+Use separate settings axes:
 
 ```text
 appearance
@@ -161,38 +249,35 @@ material
   glass
 ```
 
-`automatic` follows the current Caelestia light/dark state and any configured global icon-style preference.
-
-For clear and tinted, light/dark remains an internal rendering axis so the compiler can emit both variants.
+`automatic` follows the current Caelestia light/dark state and configured global icon style.
 
 ## original brand mode
 
-`Original` may remain available as a diagnostic or per-app escape hatch, but it must not be part of the Apple-compatible appearance matrix.
+`Original` may remain available as a diagnostic or per-app escape hatch, but it is not part of the Apple-compatible appearance matrix.
 
-When a user chooses original for one app, use the packaged icon or a minimally normalized version without pretending it is an Apple-compatible appearance variant.
-
-This gives difficult brands a clean fallback without contaminating the global appearance semantics.
+When a user chooses original for one app, use the packaged icon or a minimally normalized version.
 
 ## Linux enclosure strategy
 
 Apple's system masks square icon layers after composition. Freedesktop icon loaders generally do not provide an equivalent universal application-icon mask.
 
-Therefore Vesper needs two outputs from the same canonical asset.
+Vesper therefore needs two outputs from the same canonical asset.
 
 ### normal Linux icon theme
 
 The appearance compiler applies the Vesper enclosure itself and emits a self-contained SVG or raster fallback.
 
-The enclosure should be consistent across applications and must be applied after artwork composition.
+The enclosure must be consistent across applications and applied after artwork composition and shape normalization.
 
 Do not permanently clip the canonical source.
 
 ### Vesper-owned surfaces
 
-Caelestia/Quickshell receives the unmasked canonical composition and material metadata.
+Caelestia/Quickshell receives the unmasked canonical composition, normalization metadata and material metadata.
 
 The Vesper renderer owns:
 
+- content scaling and optical offset
 - enclosure mask
 - live tint
 - backdrop-aware translucency
@@ -202,21 +287,18 @@ The Vesper renderer owns:
 - shadow
 - interaction/lighting changes
 
-This is the closest Linux equivalent to Apple's system-rendered icon material.
-
 ## static freedesktop glass fallback
 
 Ordinary GTK, Qt and Electron launchers cannot receive the live wallpaper behind an arbitrary icon.
 
 For those surfaces the compiler may create a flattened glass-looking approximation.
 
-That approximation may contain rendered transparency, gradient, border, highlight and shadow because it is a final compatibility asset, not canonical artwork.
+Never feed that compatibility asset back into the canonical cache.
 
-Never feed the flattened compatibility SVG back into the canonical cache as source artwork.
-
-Keep a provenance flag that distinguishes:
+Keep provenance distinguishing:
 
 - canonical artwork
+- normalization metadata
 - runtime material metadata
 - compiled static compatibility output
 
@@ -224,17 +306,13 @@ Keep a provenance flag that distinguishes:
 
 Do not send every SVG through AI.
 
-Classify sources first.
+Classify source quality separately from shape class.
 
 ### class A — already suitable
 
-Official vector artwork with clean geometry.
-
-Normalize coordinates, analyze layers and add metadata locally. Do not redraw it.
+Official vector artwork with clean geometry. Normalize coordinates, shape placement, layers and metadata locally.
 
 ### class B — vector but structurally unsuitable
-
-Official SVG with baked effects, excessive groups, text/fonts, unusual transforms or poor semantic separation.
 
 Sanitize and restructure locally where reliable. Use AI only for semantic interpretation that cannot be recovered deterministically.
 
@@ -248,7 +326,7 @@ Use vision-assisted reconstruction into simple illustrative layers. The goal is 
 
 ### class E — unsafe to reinterpret
 
-If reconstruction changes identity too much, keep the original app icon or apply only an enclosure treatment. Do not publish a confident-looking wrong logo.
+Keep the original app icon or apply enclosure-only normalization. Do not publish a confident-looking wrong logo.
 
 ## AI contract additions
 
@@ -257,6 +335,7 @@ The model must be told that it is producing Icon-Composer-like source artwork, n
 Require it to:
 
 - target a 1024-square unmasked canvas
+- identify whether the source is enclosed, circular, glyph-like, irregular or full-bleed
 - separate background and foreground artwork
 - preserve back-to-front layer order
 - keep effect groups between one and four where practical
@@ -265,6 +344,7 @@ Require it to:
 - avoid baked blur, glow, drop shadow, bevel and generated specular highlights
 - avoid painting the final rounded enclosure mask
 - keep the primary mark optically centered
+- return recommended content scale/optical offset/enclosure intent when semantic interpretation is needed
 - preserve the same core geometry for default, dark and mono annotations
 - use outlines for essential text
 - return semantic material metadata separately from SVG artwork
@@ -273,9 +353,7 @@ The validator must reject an AI result that simply puts the original raster imag
 
 ## small-size behavior
 
-Apple scales app icons down automatically. Vesper must validate the same design at real Linux sizes.
-
-At minimum preview and validate representative sizes around:
+Validate representative sizes around:
 
 - 16 px
 - 24 px
@@ -285,15 +363,13 @@ At minimum preview and validate representative sizes around:
 - 128 px
 - 256 px
 
-The exact exported set can follow the freedesktop theme layout, but validation must include very small sizes.
+When detail disappears at small sizes, prefer canonical geometry simplification before manually different micro-icons.
 
-When detail disappears at small sizes, prefer canonical geometry simplification before creating manually different micro-icons. Only introduce size-specific simplification if tests prove the single design cannot remain legible.
+Shape normalization must also be checked at these sizes. A circular/glyph icon that looks balanced at 256 px but too small or too dominant at 32 px needs revised scale metadata.
 
 ## color
 
 Use sRGB as the canonical Linux output color space unless the renderer gains a verified wide-gamut path.
-
-Do not claim Display P3 support merely because SVG can contain color values. The entire Linux rendering chain would need to preserve it correctly.
 
 Tinted output must use the current Caelestia palette as a rendering input. Palette changes must never cause AI regeneration.
 
@@ -306,7 +382,10 @@ Validation must test more than whether the SVG parses.
 For every canonical icon test:
 
 - identity recognition against the source
-- content centering
+- source shape classification
+- occupied-area ratio after normalization
+- optical centering
+- consistency against neighboring enclosed icons
 - enclosure clipping
 - clearly defined foreground edges
 - no accidental transparency in required full-bleed background
@@ -318,21 +397,23 @@ For every canonical icon test:
 - tinted-light output
 - tinted-dark output
 - small-size recognition
-- at least several representative accent colors
-- both bright and dark wallpapers/background samples for clear/glass previews
+- representative accent colors
+- bright and dark backgrounds for clear/glass previews
 
-An icon that passes default but becomes unreadable in clear or tinted mode is not complete.
+A circular or irregular source is not complete merely because it parses and is recognizable. It must also look optically consistent beside enclosed application icons.
 
 ## compatibility scoring
 
-Track an internal compliance score per generated canonical asset instead of treating validation as only pass/fail.
+Track an internal compliance score per generated canonical asset.
 
 Useful dimensions are:
 
 - source identity preservation
+- shape normalization quality
 - layer quality
 - edge quality
 - optical balance
+- neighboring-icon size consistency
 - small-size legibility
 - dark compatibility
 - mono compatibility
@@ -340,24 +421,24 @@ Useful dimensions are:
 - tinted compatibility
 - material suitability
 
-Hard safety failures still reject the asset. A low style score should fall back to the previous known-good/original icon rather than activating a visibly inconsistent conversion.
+Hard safety failures reject the asset. A low style score should fall back to the previous known-good/original icon.
 
 ## settings changes
-
-Update the planned Vesper Appearance controls.
-
-Do not show `Glass` beside `Dark` and `Tinted` as though they are the same type of choice.
 
 Use separate controls:
 
 - icon appearance: Automatic / Default / Dark / Clear / Tinted
 - icon material: Standard / Glass
 - follow Caelestia accent
-- glass intensity or refraction only when supported by the actual renderer
+- glass intensity or refraction only when supported
 
-Per-app controls may additionally expose `Use original icon`.
+Per-app controls may additionally expose:
 
-The AI page continues to own provider and generation status. It does not own appearance or glass styling.
+- Use original icon
+- Re-run shape normalization
+- Enclosure strategy/status for diagnostics
+
+Do not expose raw scale/offset tuning in the normal UI unless a developer/debug view is explicitly added.
 
 ## acceptance criteria additions
 
@@ -370,20 +451,27 @@ The adaptive icon implementation is not Apple-compatible enough until all of the
 5. effect/composition grouping stays within four groups by default
 6. foreground edges remain crisp enough for system-style material treatment
 7. the same recognizable core design survives default, dark, clear and tinted appearances
-8. default, dark and mono exist as canonical appearance annotations or explicit inherited mappings
+8. default, dark and mono exist as canonical appearance annotations or inherited mappings
 9. the compiler can produce default, dark, clear-light, clear-dark, tinted-light and tinted-dark without another AI call
-10. Glass is implemented as material behavior, not as a seventh artwork identity
+10. Glass is material behavior, not an artwork identity
 11. clear and tinted output are tested on bright and dark backgrounds
 12. the icon remains recognizable at small Linux icon sizes
 13. difficult source icons can fall back to original rather than being force-redesigned
 14. Vesper-owned surfaces can apply richer runtime material effects without making freedesktop loaders responsible for live refraction
+15. every source is classified as enclosed, circular, glyph, irregular or full-bleed before final compilation
+16. circular, glyph and irregular sources are automatically scaled into the shared safe area and enclosed unless a validated exception applies
+17. shape scaling is based on measured geometry/optical balance rather than one hard-coded percentage
+18. transparent circular icons cannot occupy the full outer icon bounds in the generated Vesper theme
+19. already-enclosed sources are not double-enclosed
+20. shape normalization decisions are cached as metadata and do not require AI when only the theme or palette changes
+21. validation checks normalized occupied area and visual size against neighboring icons
 
 ## real-world lessons
 
-Legacy automatic enclosure is not enough for visual consistency. Projects adapting to macOS Tahoe have found that old icons can still look wrong beside native Liquid Glass icons even when the system places them into transitional containers.
+Legacy automatic enclosure is not enough for visual consistency. A system can put an old icon inside a container and still get the size wrong if the original circular/glyph artwork is not optically normalized first.
 
-Cross-platform projects that adopted Icon Composer commonly keep platform-independent source artwork while compiling the Apple-specific material representation separately. Vesper should follow the same separation: canonical brand artwork first, platform/rendering treatment second.
+Linux makes this more important because many application icons are transparent circles or isolated symbols rather than complete app-icon compositions.
 
-Static Linux themes that resemble Tahoe are useful references for coverage and enclosure proportions, but they do not replace the layered runtime model.
+Cross-platform projects should keep platform-independent brand artwork while compiling platform-specific enclosure/material treatment separately. Vesper follows the same separation: canonical brand artwork first, shape normalization second, platform/rendering treatment last.
 
-The Vesper implementation should therefore optimize for semantic artwork quality and renderer independence rather than trying to make AI generate a finished shiny SVG in one step.
+The implementation should optimize for semantic artwork quality, consistent optical size and renderer independence rather than trying to make AI generate a finished shiny SVG in one step.
