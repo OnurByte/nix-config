@@ -47,7 +47,7 @@ StyledRect {
 
     Process {
         id: status
-        command: ["@aiHub@", "status"]
+        command: ["@ai@", "status"]
         stdout: StdioCollector {
             onStreamFinished: {
                 try {

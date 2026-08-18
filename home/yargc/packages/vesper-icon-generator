@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+provider="${1:-}"
+model="${2:-}"
+app_id="${3:-}"
+app_name="${4:-}"
+source_icon="${5:-}"
+
+if [[ "$provider" != openai ]]; then
+  printf 'unsupported icon provider adapter: %s\n' "$provider" >&2
+  exit 2
+fi
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  printf 'OpenAI credential is not configured\n' >&2
+  exit 3
+fi
+if [[ -z "$model" || -z "$app_id" || -z "$app_name" || ! -f "$source_icon" ]]; then
+  printf 'invalid icon generator input\n' >&2
+  exit 4
+fi
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+chmod 700 "$work"
+
+preview="$work/source.png"
+payload="$work/payload.json"
+response="$work/response.json"
+chmod 600 "$payload" "$response" 2>/dev/null || true
+
+magick "$source_icon" -background none -alpha on -resize '512x512>' "$preview"
+base64 -w0 "$preview" > "$work/source.b64"
+
+prompt="$(cat <<EOF
+You are Vesper's semantic app-icon curator.
+Return ONLY one self-contained SVG document for application '$app_name' ($app_id).
+Preserve recognizable product identity and important geometry from the supplied original icon, but simplify it into a semantic vector suitable for deterministic recoloring.
+Requirements: viewBox='0 0 256 256'; vector paths/shapes only; no raster images; no text or external fonts; no scripts; no event handlers; no external URLs/files; no foreignObject; no animation; no CSS imports; no data URIs; avoid complex filters; keep under 256 KiB and under 256 path elements.
+Do not choose light/dark/tint styling. The output is a neutral semantic master asset and Vesper will render appearance modes later.
+EOF
+)"
+
+image_data="data:image/png;base64,$(cat "$work/source.b64")"
+jq -n \
+  --arg model "$model" \
+  --arg prompt "$prompt" \
+  --arg image "$image_data" \
+  '{model:$model,input:[{role:"user",content:[{type:"input_text",text:$prompt},{type:"input_image",image_url:$image,detail:"high"}]}]}' \
+  > "$payload"
+
+# The API key is fed through curl's stdin config rather than argv. It is inherited
+# only by this process through Vesper's Secret Service credential adapter.
+{
+  printf 'url = "https://api.openai.com/v1/responses"\n'
+  printf 'request = "POST"\n'
+  printf 'header = "Content-Type: application/json"\n'
+  printf 'header = "Authorization: Bearer %s"\n' "$OPENAI_API_KEY"
+  printf 'fail-with-body\n'
+  printf 'silent\n'
+  printf 'show-error\n'
+} | curl --config - --data-binary "@$payload" > "$response"
+
+jq -er '[.output[]?.content[]? | select(.type == "output_text") | .text] | join("\n") | select(length > 0)' "$response"

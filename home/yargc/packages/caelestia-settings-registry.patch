@@ -1,0 +1,85 @@
+--- a/modules/nexus/PageRegistry.qml
++++ b/modules/nexus/PageRegistry.qml
+@@ -55,6 +55,30 @@
+             description: qsTr("Manage plugins"),
+             category: "system"
+         },
++        {
++            label: qsTr("AI"),
++            icon: "smart_toy",
++            description: qsTr("API keys, agents, skills, MCP, Hermes"),
++            category: "system"
++        },
++        {
++            label: qsTr("System Health"),
++            icon: "health_and_safety",
++            description: qsTr("Vesper doctor checks and diagnostics"),
++            category: "system"
++        },
++        {
++            label: qsTr("Privacy"),
++            icon: "privacy_tip",
++            description: qsTr("Tor, DPI, firewall, DNS and MAC privacy"),
++            category: "system"
++        },
++        {
++            label: qsTr("Backup & Recovery"),
++            icon: "backup",
++            description: qsTr("Backup job health, schedule and recovery policy"),
++            category: "system"
++        },
+ 
+         // Shell
+         {
+--- a/modules/nexus/PageCompRegistry.qml
++++ b/modules/nexus/PageCompRegistry.qml
+@@ -43,6 +43,7 @@
+         Component {
+             // Network
+             StackPage {
++                routes: ({ proxy: 7, dpi: 8 })
+                 Component {
+                     NetworkPage {}
+                 }
+@@ -64,6 +65,12 @@
+                 Component {
+                     SavedNetworksPage {}
+                 }
++                Component {
++                    VesperProxyPage {}
++                }
++                Component {
++                    VesperDpiPage {}
++                }
+             }
+         },
+         Component {
+@@ -98,6 +102,28 @@
+         },
+         Component {
+             PlaceholderComp {}
++        },
++        Component {
++            StackPage {
++                routes: ({ apiKeys: 1, appIcons: 2, runtimeCredentials: 3, providers: 4, skillsMcp: 5, hermes: 6, usageQuotas: 7 })
++                Component { AiPage {} }
++                Component { AiCredentials {} }
++                Component { AiAppIcons {} }
++                Component { AiRuntimeCredentials {} }
++                Component { AiProviders {} }
++                Component { AiSkillsMcp {} }
++                Component { AiHermes {} }
++                Component { AiUsageQuotas {} }
++            }
++        },
++        Component {
++            SystemHealth {}
++        },
++        Component {
++            PrivacyPage {}
++        },
++        Component {
++            BackupRecovery {}
+         },
+ 
+         // Shell

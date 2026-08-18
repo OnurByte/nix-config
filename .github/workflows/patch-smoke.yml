@@ -1,0 +1,212 @@
+name: Patch smoke check
+
+on:
+  push:
+    branches: [main, vesper-control-plane-phase2]
+  pull_request:
+
+concurrency:
+  group: patch-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825a76410c181273ba90b1 # v7.0.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Validate upstream patch syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' patch_file; do
+            echo "checking $patch_file"
+            git apply --numstat "$patch_file" >/dev/null
+          done < <(find home/yargc/packages -maxdepth 1 -type f -name 'caelestia-*.patch' -print0)
+
+      - name: Reject credential extraction and legacy AI naming
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R --line-number --fixed-strings 'gh auth token' home/yargc; then
+            echo "Vesper must not extract credentials from gh CLI state" >&2
+            exit 1
+          fi
+          if grep -R --line-number -E 'AI Hub|Vesper Hub|aiHub|AiHub|ai-hub|VESPER_AI_HUB|vesper-ai-hub' home/yargc .github/workflows/nix-smoke.yml; then
+            echo "Legacy Hub naming is forbidden; the product surface and backend are AI" >&2
+            exit 1
+          fi
+          if find .github/workflows -maxdepth 1 -type f -name 'one-shot-*' -print -quit | grep -q .; then
+            echo "One-shot migration workflows must not remain in the production tree" >&2
+            exit 1
+          fi
+          if grep -nE 'openSubPage\([[:space:]]*[0-9]+' \
+            home/yargc/packages/AiPage.qml \
+            home/yargc/packages/VesperNetworkSettings.qml; then
+            echo "Vesper-owned Settings navigation must use symbolic routes" >&2
+            exit 1
+          fi
+          grep -F 'openSubPageRoute("providers")' home/yargc/packages/AiPage.qml >/dev/null
+          grep -F 'openSubPageRoute("proxy")' home/yargc/packages/VesperNetworkSettings.qml >/dev/null
+
+      - name: Check private local-state contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'root, fs::Permissions::from_mode(0o700)' home/yargc/packages/vesper-control.rs >/dev/null
+          grep -F 'path, fs::Permissions::from_mode(0o600)' home/yargc/packages/vesper-control.rs >/dev/null
+          grep -F 'Permissions::from_mode(0o700)' home/yargc/packages/vesper-core/src/paths.rs >/dev/null
+          grep -F 'Permissions::from_mode(0o600)' home/yargc/packages/vesper-core/src/paths.rs >/dev/null
+          grep -F 'OpenOptionsExt, PermissionsExt' home/yargc/packages/ai.rs >/dev/null
+          grep -F 'mode(0o600)' home/yargc/packages/ai.rs >/dev/null
+          grep -F 'from_mode(0o700)' home/yargc/packages/ai.rs >/dev/null
+
+      - name: Compile and exercise Vesper control plane
+        shell: bash
+        run: |
+          nix shell nixpkgs#rustc nixpkgs#cargo nixpkgs#jq -c bash -c '
+            set -euo pipefail
+
+            cargo test --locked --manifest-path home/yargc/packages/vesper-core/Cargo.toml
+            CARGO_TARGET_DIR=/tmp/vesper-target cargo build --release --locked --manifest-path home/yargc/packages/vesper-core/Cargo.toml
+            cp /tmp/vesper-target/release/vesper-control /tmp/vesper-control
+
+            cp home/yargc/packages/vesper-control.rs /tmp/vesper-control-legacy.rs
+            cp home/yargc/packages/vesper-provider-registry.rs /tmp/vesper-provider-registry.rs
+            rustc --edition=2021 /tmp/vesper-control-legacy.rs -o /tmp/vesper-control-legacy
+
+            export HOME="$TMPDIR/vesper-test-home"
+            export XDG_CONFIG_HOME="$HOME/.config"
+            export XDG_STATE_HOME="$HOME/.local/state"
+            export VESPER_FAKE_SECRET_DIR="$TMPDIR/vesper-fake-secret"
+            mkdir -p "$HOME" "$VESPER_FAKE_SECRET_DIR"
+            cp .github/scripts/fake-secret-tool /tmp/secret-tool
+            chmod +x /tmp/secret-tool
+            export PATH="/tmp:$PATH"
+
+            test "$(/tmp/vesper-control control-version)" = 0.8.0
+            test "$(/tmp/vesper-control wellbeing status)" = on
+            /tmp/vesper-control wellbeing off
+            test "$(/tmp/vesper-control wellbeing status)" = off
+            /tmp/vesper-control wellbeing on
+            test "$(/tmp/vesper-control wellbeing status)" = on
+            /tmp/vesper-control wellbeing-summary | jq -e ".totalSeconds == 0 and (.apps | type == \"array\")" >/dev/null
+
+            today="$(date +%F)"
+            mkdir -p "$XDG_STATE_HOME/vesper/wellbeing"
+            printf "ExampleApp\\t120\\n" > "$XDG_STATE_HOME/vesper/wellbeing/$today.tsv"
+            /tmp/vesper-control wellbeing report | jq -e ".todaySeconds == 120 and .monthSeconds >= 120" >/dev/null
+            export_path="$(/tmp/vesper-control wellbeing export)"
+            test -f "$export_path"
+            test "$(stat -c %a "$export_path")" = 600
+            jq -e ".todaySeconds == 120" "$export_path" >/dev/null
+            /tmp/vesper-control wellbeing reset today
+            /tmp/vesper-control wellbeing report | jq -e ".todaySeconds == 0" >/dev/null
+            /tmp/vesper-control wellbeing reset all
+            /tmp/vesper-control wellbeing reset all
+
+            printf "default-secret\n" | /tmp/vesper-control credential set openai
+            test "$(/tmp/vesper-control credential status openai)" = configured
+            /tmp/vesper-control credential exec openai -- bash -c "test \"\$OPENAI_API_KEY\" = default-secret"
+
+            printf "alias-secret\n" | /tmp/vesper-control credential set openai openai-main
+            test "$(/tmp/vesper-control credential status openai-main)" = configured
+            /tmp/vesper-control credential list | jq -e ".credentials[] | select(.id == \"openai-main\" and .provider == \"openai\" and .configured == true)" >/dev/null
+            /tmp/vesper-control credential exec openai-main -- bash -c "test \"\$OPENAI_API_KEY\" = alias-secret"
+
+            printf "github-secret\n" | /tmp/vesper-control credential set github
+            test "$(/tmp/vesper-control credential status github)" = configured
+            /tmp/vesper-control credential exec github -- bash -c "test \"\$GITHUB_PERSONAL_ACCESS_TOKEN\" = github-secret"
+
+            /tmp/vesper-control credential clear openai-main
+            test "$(/tmp/vesper-control credential list | jq ".credentials | length")" = 0
+
+            printf "http://127.0.0.1:8080\n" | /tmp/vesper-control proxy set
+            /tmp/vesper-control proxy status | jq -e ".configured == true and .http == \"http://127.0.0.1:8080\" and .https == \"http://127.0.0.1:8080\"" >/dev/null
+            grep -Fx "HTTP_PROXY=\"http://127.0.0.1:8080\"" "$HOME/.config/environment.d/90-vesper-proxy.conf"
+            /tmp/vesper-control proxy clear
+            /tmp/vesper-control proxy status | jq -e ".configured == false" >/dev/null
+
+            printf "socks5h://localhost:9050\n" | /tmp/vesper-control proxy set
+            /tmp/vesper-control proxy status | jq -e ".configured == true and .socks == \"socks5h://localhost:9050\"" >/dev/null
+            grep -Fx "ALL_PROXY=\"socks5h://localhost:9050\"" "$HOME/.config/environment.d/90-vesper-proxy.conf"
+            /tmp/vesper-control proxy clear
+
+            if printf "http://user:pass@localhost:8080\n" | /tmp/vesper-control proxy set >/dev/null 2>&1; then
+              echo "credential-bearing proxy URL was accepted" >&2
+              exit 1
+            fi
+            if printf "http://localhost/path\n" | /tmp/vesper-control proxy set >/dev/null 2>&1; then
+              echo "proxy URL with a path was accepted" >&2
+              exit 1
+            fi
+            if printf "http://localhost:0\n" | /tmp/vesper-control proxy set >/dev/null 2>&1; then
+              echo "invalid proxy port was accepted" >&2
+              exit 1
+            fi
+
+            radio_root="$TMPDIR/vesper-radio-state"
+            mkdir -p "$radio_root"
+            printf "enabled\n" > "$radio_root/wifi"
+            printf "yes\n" > "$radio_root/bluetooth"
+
+            cat > /tmp/fake-nmcli <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+root="$radio_root"
+case "\$*" in
+  "radio wifi") cat "\$root/wifi" ;;
+  "radio wifi on") printf "enabled\\n" > "\$root/wifi" ;;
+  "radio wifi off") printf "disabled\\n" > "\$root/wifi" ;;
+  "-t -f NAME,TYPE connection show --active") exit 0 ;;
+  *) exit 2 ;;
+esac
+EOF
+            cat > /tmp/fake-bluetoothctl <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+root="$radio_root"
+case "\$*" in
+  "show") if [[ "\$(cat \"\$root/bluetooth\")" == yes ]]; then printf "Powered: yes\\n"; else printf "Powered: no\\n"; fi ;;
+  "power on") printf "yes\\n" > "\$root/bluetooth" ;;
+  "power off") printf "no\\n" > "\$root/bluetooth" ;;
+  *) exit 2 ;;
+esac
+EOF
+            chmod +x /tmp/fake-nmcli /tmp/fake-bluetoothctl
+            export VESPER_CMD_NMCLI=/tmp/fake-nmcli
+            export VESPER_CMD_BLUETOOTHCTL=/tmp/fake-bluetoothctl
+            export VESPER_CMD_SYSTEMCTL=/bin/false
+            export VESPER_CMD_RESOLVECTL=/bin/false
+            export VESPER_CMD_SS=/bin/false
+            export VESPER_CMD_PGREP=/bin/false
+            export VESPER_CMD_SNAPPER=/bin/false
+
+            /tmp/vesper-control privacy status | jq -e ".tor.mutable == false and .zapret.mutable == false and .node.selectionManagedByVesper == false" >/dev/null
+            /tmp/vesper-control recovery status | jq -e ".backend == \"restic\" and .restoreAvailableInSettings == false and .mutable == false" >/dev/null
+
+            printf "disabled\n" > "$radio_root/wifi"
+            printf "no\n" > "$radio_root/bluetooth"
+            /tmp/vesper-control network status | jq -e ".airplane == false and .wifi == false and .bluetooth == false" >/dev/null
+            /tmp/vesper-control network airplane off
+            test "$(cat "$radio_root/wifi")" = disabled
+            test "$(cat "$radio_root/bluetooth")" = no
+
+            printf "enabled\n" > "$radio_root/wifi"
+            printf "no\n" > "$radio_root/bluetooth"
+            /tmp/vesper-control network airplane on
+            test "$(cat "$radio_root/wifi")" = disabled
+            test "$(cat "$radio_root/bluetooth")" = no
+            /tmp/vesper-control network status | jq -e ".airplane == true and .airplaneState == \"explicit\"" >/dev/null
+            /tmp/vesper-control network airplane off
+            test "$(cat "$radio_root/wifi")" = enabled
+            test "$(cat "$radio_root/bluetooth")" = no
+            /tmp/vesper-control network status | jq -e ".airplane == false" >/dev/null
+          '

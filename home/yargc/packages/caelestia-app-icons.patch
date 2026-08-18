@@ -1,0 +1,176 @@
+--- a/utils/Icons.qml
++++ b/utils/Icons.qml
+@@ -2,12 +2,44 @@ pragma Singleton
+ 
+ import QtQuick
+ import Quickshell
++import Quickshell.Io
+ import Quickshell.Services.Notifications
+ import Caelestia.Config
+ 
+ Singleton {
+     id: root
+ 
++    property var vesperAppIconRegistry: ({})
++
++    readonly property string vesperStateRoot: {
++        const configured = Quickshell.env("XDG_STATE_HOME");
++        if (configured)
++            return configured;
++        const home = Quickshell.env("HOME");
++        return home ? `${home}/.local/state` : "";
++    }
++
++    FileView {
++        id: vesperIconRegistryFile
++        path: root.vesperStateRoot ? `${root.vesperStateRoot}/vesper/icons/registry.json` : ""
++        watchChanges: true
++        printErrors: false
++        onFileChanged: reload()
++
++        onTextChanged: {
++            try {
++                root.vesperAppIconRegistry = JSON.parse(text());
++            } catch (e) {
++                root.vesperAppIconRegistry = ({});
++            }
++        }
++    }
++
++    function vesperAppIcon(entry: var): string {
++        if (!entry || !entry.id)
++            return "";
++        const value = root.vesperAppIconRegistry[entry.id];
++        return typeof value === "string" ? value : "";
++    }
++
+     readonly property var weatherIcons: ({
+             "0": "clear_day",
+             "1": "clear_day",
+@@ -93,9 +125,14 @@ Singleton {
+     }
+ 
+     function getAppIcon(name: string, fallback: string): string {
+-        const icon = DesktopEntries.heuristicLookup(name)?.icon;
++        const entry = DesktopEntries.heuristicLookup(name);
++        const replacement = vesperAppIcon(entry);
++        if (replacement)
++            return replacement;
++
++        const icon = entry?.icon;
+         if (fallback !== "undefined")
+             return Quickshell.iconPath(icon, fallback);
+         return Quickshell.iconPath(icon);
+     }
+--- a/services/Notifs.qml
++++ b/services/Notifs.qml
+@@ -17,6 +17,67 @@ Singleton {
+     property alias dnd: props.dnd
+ 
+     property bool loaded
++    property var vesperPolicies: ({})
++
++    readonly property string vesperConfigRoot: {
++        const configured = Quickshell.env("XDG_CONFIG_HOME");
++        if (configured)
++            return configured;
++        const home = Quickshell.env("HOME");
++        return home ? `${home}/.config` : "";
++    }
++
++    function normaliseIdentity(value: var): string {
++        if (value === undefined || value === null)
++            return "";
++        return String(value).toLowerCase().replace(/[^a-z0-9]/g, "");
++    }
++
++    function policyFor(value: var): string {
++        const key = normaliseIdentity(value);
++        if (!key)
++            return "inherit";
++        const policy = vesperPolicies[key];
++        return policy === "block" || policy === "allow" ? policy : "inherit";
++    }
++
++    function runtimeDesktopEntry(notif: var): string {
++        const hints = notif.hints || ({});
++        const rawPid = hints["sender-pid"] ?? hints["pid"] ?? hints["x-kde-pid"] ?? 0;
++        const pid = Number(rawPid);
++        if (!pid)
++            return "";
++
++        for (const toplevel of Hypr.toplevels.values) {
++            const data = toplevel?.lastIpcObject;
++            if (!data || Number(data.pid) !== pid)
++                continue;
++            const runtimeId = data.initialClass || data.class || "";
++            const entry = runtimeId ? DesktopEntries.heuristicLookup(runtimeId) : null;
++            return entry?.id || runtimeId;
++        }
++        return "";
++    }
++
++    function notificationPolicy(notif: var): string {
++        // Matching precedence: supplied desktop entry (which includes Flatpak
++        // app IDs), runtime PID/Hyprland metadata, desktop-entry heuristic,
++        // and finally the normalised Notify appName.
++        const runtimeId = runtimeDesktopEntry(notif);
++        const heuristic = notif.appName ? DesktopEntries.heuristicLookup(notif.appName) : null;
++        const candidates = [
++            notif.desktopEntry,
++            runtimeId,
++            heuristic?.id || "",
++            notif.appName
++        ];
++        for (const candidate of candidates) {
++            const policy = policyFor(candidate);
++            if (policy !== "inherit")
++                return policy;
++        }
++        return "inherit";
++    }
++
++    function loadVesperPolicies(): void {
++        try {
++            root.vesperPolicies = JSON.parse(policyFile.text() || "{}");
++        } catch (e) {
++            root.vesperPolicies = ({});
++        }
++    }
+ 
+     function hasFullscreen(): bool {
+         for (const monitor of Hypr.monitors.values) {
+@@ -72,6 +133,11 @@ Singleton {
+         persistenceSupported: true
+ 
+         onNotification: notif => {
++            if (root.notificationPolicy(notif) === "block") {
++                notif.dismiss();
++                return;
++            }
++
+             notif.tracked = true;
+ 
+             const comp = notifComp.createObject(root, {
+@@ -82,6 +148,21 @@ Singleton {
+         }
+     }
+ 
++    FileView {
++        id: policyFile
++
++        printErrors: false
++        path: root.vesperConfigRoot ? `${root.vesperConfigRoot}/vesper/notifications/policy.json` : ""
++        watchChanges: true
++        onLoaded: root.loadVesperPolicies()
++        onFileChanged: reload()
++        onTextChanged: root.loadVesperPolicies()
++        onLoadFailed: err => {
++            if (err === FileViewError.FileNotFound)
++                root.vesperPolicies = ({});
++        }
++    }
++
+     FileView {
+         id: storage
+ 

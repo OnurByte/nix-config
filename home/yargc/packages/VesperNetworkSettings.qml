@@ -42,7 +42,7 @@ ColumnLayout {
                     root.net = JSON.parse(text);
                     root.errorText = "";
                 } catch (e) {
-                    root.errorText = qsTr("Could not read Vesper network state");
+                    root.errorText = qsTr("Could not read network state");
                 }
             }
         }
@@ -54,6 +54,16 @@ ColumnLayout {
         onExited: (code, status) => {
             if (code !== 0)
                 root.errorText = airplaneError.text.trim();
+            root.refresh();
+        }
+    }
+
+    Process {
+        id: dpi
+        stderr: StdioCollector { id: dpiError }
+        onExited: (code, status) => {
+            if (code !== 0)
+                root.errorText = dpiError.text.trim() || qsTr("Could not change DPI state");
             root.refresh();
         }
     }
@@ -75,7 +85,7 @@ ColumnLayout {
     }
 
     SectionHeader {
-        text: qsTr("Vesper connectivity")
+        text: qsTr("Connectivity")
     }
 
     ToggleRow {
@@ -104,11 +114,10 @@ ColumnLayout {
     }
 
     NavRow {
-        last: true
         icon: "language"
         text: qsTr("Proxy")
-        subtext: root.net.proxy ? qsTr("configured for new processes") : qsTr("off")
-        onClicked: root.nState.openSubPage(7)
+        subtext: root.net.proxy ? qsTr("HTTP / HTTPS / SOCKS / NO_PROXY configured") : qsTr("off")
+        onClicked: root.nState.openSubPageRoute("proxy")
     }
 
     StyledRect {
@@ -134,12 +143,24 @@ ColumnLayout {
         text: qsTr("DPI")
     }
 
-    InfoRow {
-        icon: "shield"
-        label: qsTr("Zapret2")
-        subtext: qsTr("adaptive host detection · TLS ClientHello · TCP 443")
-        value: root.net.zapret ? qsTr("active") : qsTr("inactive")
-        iconColour: root.net.zapret ? Colours.palette.m3primary : Colours.palette.m3error
+    ToggleRow {
+        text: qsTr("Zapret2 DPI bypass")
+        subtext: qsTr("current boot · declarative adaptive host detection profile")
+        checked: root.net.zapret
+        disabled: dpi.running
+        onToggled: {
+            root.errorText = "";
+            dpi.command = ["@vesperControl@", "network", "dpi", checked ? "on" : "off"];
+            dpi.running = true;
+        }
+    }
+
+    NavRow {
+        last: true
+        icon: "network_check"
+        text: qsTr("Zapret profile & diagnostics")
+        subtext: qsTr("inspect the Nix-owned profile and run HTTPS reachability tests")
+        onClicked: root.nState.openSubPageRoute("dpi")
     }
 
     StyledText {

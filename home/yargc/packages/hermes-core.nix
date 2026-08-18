@@ -1,4 +1,5 @@
 {
+  callPackage,
   coreutils,
   curl,
   ghostty,
@@ -11,10 +12,55 @@
   rustc,
   stdenv,
   systemd,
+  writeShellApplication,
 }:
+let
+  vesperControl = callPackage ./vesper-control.nix { };
+
+  hermesCredentialProxy = writeShellApplication {
+    name = "hermes";
+    runtimeInputs = [
+      coreutils
+      vesperControl
+    ];
+    text = ''
+      credential="$(${vesperControl}/bin/vesper-control consumer credential hermes)"
+      exec ${vesperControl}/bin/vesper-control credential exec "$credential" -- \
+        ${hermesAgent}/bin/hermes "$@"
+    '';
+  };
+
+  hermesJobsStatus = writeShellApplication {
+    name = "vesper-hermes-jobs-status";
+    runtimeInputs = [ coreutils jq ];
+    text = ''
+      registry="''${VESPER_HERMES_JOB_REGISTRY:-$HOME/.config/vesper/hermes-jobs.json}"
+      state="''${VESPER_RESEARCH_STATE_DIR:-$HOME/.local/state/vesper/research}"
+
+      if [ ! -f "$registry" ]; then
+        printf '{}\n'
+        exit 0
+      fi
+
+      {
+        ${jq}/bin/jq -c 'to_entries[]' "$registry" | while IFS= read -r entry; do
+          task="$(printf '%s\n' "$entry" | ${jq}/bin/jq -r '.value.task // .key')"
+          last='{}'
+          if [[ "$task" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            latest="$state/runs/$task/latest.json"
+            if [ -f "$latest" ]; then
+              last="$(${jq}/bin/jq -c 'if type == "object" then . else {} end' "$latest" 2>/dev/null || printf '{}')"
+            fi
+          fi
+          printf '%s\n' "$entry" | ${jq}/bin/jq -c --argjson last "$last" '.value.lastRun = $last'
+        done
+      } | ${jq}/bin/jq -s 'from_entries'
+    '';
+  };
+in
 stdenv.mkDerivation {
   pname = "vesper-hermes-core";
-  version = "2.0.0";
+  version = "2.1.0";
 
   src = ./hermes-rs;
 
@@ -36,12 +82,13 @@ stdenv.mkDerivation {
 
     install -Dm755 vesper-hermes-core $out/bin/vesper-hermes-core
     wrapProgram $out/bin/vesper-hermes-core \
+      --set-default HERMES_RESEARCH_PROVIDER xai \
       --prefix PATH : ${lib.makeBinPath [
         coreutils
         curl
         ghostty
         git
-        hermesAgent
+        hermesCredentialProxy
         jq
         libnotify
         systemd
@@ -50,6 +97,7 @@ stdenv.mkDerivation {
     ln -s vesper-hermes-core $out/bin/vesper-hermes
     ln -s vesper-hermes-core $out/bin/vesper-hermes-automations
     ln -s vesper-hermes-core $out/bin/vesper-research
+    ln -s ${hermesJobsStatus}/bin/vesper-hermes-jobs-status $out/bin/vesper-hermes-jobs-status
 
     runHook postInstall
   '';

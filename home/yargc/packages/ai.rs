@@ -1,6 +1,7 @@
 use std::env;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -31,15 +32,15 @@ fn env_u64(name: &str, default: u64, minimum: u64) -> u64 {
 fn cache_root() -> PathBuf {
     if let Ok(path) = env::var("XDG_CACHE_HOME") {
         if !path.trim().is_empty() {
-            return PathBuf::from(path).join("vesper-ai-hub");
+            return PathBuf::from(path).join("vesper-ai");
         }
     }
     if let Ok(home) = env::var("HOME") {
         if !home.trim().is_empty() {
-            return PathBuf::from(home).join(".cache/vesper-ai-hub");
+            return PathBuf::from(home).join(".cache/vesper-ai");
         }
     }
-    env::temp_dir().join("vesper-ai-hub")
+    env::temp_dir().join("vesper-ai")
 }
 
 fn briefing_index() -> PathBuf {
@@ -155,8 +156,8 @@ fn hermes_status() -> Result<String, String> {
 }
 
 fn transform_snapshot(codexbar: &str, agents: &str, hermes: &str, privacy: &str) -> Result<String, String> {
-    let filter = env::var("VESPER_AI_HUB_JQ_FILTER")
-        .map_err(|_| "VESPER_AI_HUB_JQ_FILTER is not set".to_string())?;
+    let filter = env::var("VESPER_AI_JQ_FILTER")
+        .map_err(|_| "VESPER_AI_JQ_FILTER is not set".to_string())?;
 
     let mut child = Command::new("jq")
         .args(["-s", "-c", "-f", filter.as_str()])
@@ -194,7 +195,7 @@ fn transform_snapshot(codexbar: &str, agents: &str, hermes: &str, privacy: &str)
 
 fn build_fresh() -> Result<String, String> {
     let codexbar_timeout = env_u64(
-        "VESPER_AI_HUB_CODEXBAR_TIMEOUT",
+        "VESPER_AI_CODEXBAR_TIMEOUT",
         DEFAULT_CODEXBAR_TIMEOUT,
         5,
     );
@@ -244,15 +245,19 @@ fn write_cache(path: &Path, value: &str) -> Result<(), String> {
         .parent()
         .ok_or_else(|| "cache path has no parent".to_string())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
     let tmp = parent.join(format!(".snapshot.{}.tmp", std::process::id()));
     fs::write(&tmp, format!("{value}\n")).map_err(|error| error.to_string())?;
+    fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
     fs::rename(&tmp, path).map_err(|error| error.to_string())?;
     Ok(())
 }
 
 fn acquire_lock(path: &Path) -> Result<LockGuard, String> {
     for _ in 0..60 {
-        match OpenOptions::new().write(true).create_new(true).open(path) {
+        match OpenOptions::new().write(true).create_new(true).mode(0o600).open(path) {
             Ok(mut file) => {
                 let _ = writeln!(file, "{}", std::process::id());
                 return Ok(LockGuard {
@@ -269,7 +274,7 @@ fn acquire_lock(path: &Path) -> Result<LockGuard, String> {
             Err(error) => return Err(format!("failed to acquire refresh lock: {error}")),
         }
     }
-    Err("timed out waiting for AI Hub refresh lock".to_string())
+    Err("timed out waiting for AI refresh lock".to_string())
 }
 
 fn stale_snapshot(cached: Option<String>, error: &str) -> String {
@@ -295,6 +300,7 @@ fn snapshot(force: bool, max_age: u64) -> String {
     let cache = root.join("snapshot.json");
     let lock = root.join("refresh.lock");
     let _ = fs::create_dir_all(&root);
+    let _ = fs::set_permissions(&root, fs::Permissions::from_mode(0o700));
 
     let cached = read_cache(&cache);
     if !force && cached.is_some() && cache_age(&cache) <= Duration::from_secs(max_age) {
@@ -372,13 +378,13 @@ fn pretty_json(value: &str) -> String {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: vesper-ai-hub [status|refresh] [--max-age SECONDS] [--pretty]");
+    eprintln!("usage: vesper-ai [status|refresh] [--max-age SECONDS] [--pretty]");
     std::process::exit(2);
 }
 
 fn main() {
     let mut command = "status".to_string();
-    let mut max_age = env_u64("VESPER_AI_HUB_MAX_AGE", DEFAULT_MAX_AGE, 15);
+    let mut max_age = env_u64("VESPER_AI_MAX_AGE", DEFAULT_MAX_AGE, 15);
     let mut pretty = false;
     let args: Vec<String> = env::args().skip(1).collect();
     let mut index = 0usize;

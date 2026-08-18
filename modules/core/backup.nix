@@ -167,4 +167,18 @@ in
       RandomizedDelaySec = "2h";
     };
   };
+
+  # Settings may start only the read-only repository verification job. This is
+  # intentionally narrower than granting general systemd unit management or a
+  # passwordless path to the backup/restore machinery.
+  security.polkit.extraConfig = ''
+    polkit.addRule(function(action, subject) {
+      if (action.id == "org.freedesktop.systemd1.manage-units" &&
+          action.lookup("unit") == "vesper-backup-check.service" &&
+          action.lookup("verb") == "start" &&
+          subject.user == "${username}") {
+        return polkit.Result.YES;
+      }
+    });
+  '';
 }

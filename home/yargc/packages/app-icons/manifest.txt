@@ -1,0 +1,9 @@
+# Repository-owned semantic icon masters for Vesper's default desktop apps.
+# desktop-id=svg filename
+zen-beta.desktop=zen.svg
+com.mitchellh.ghostty.desktop=ghostty.svg
+thunar.desktop=thunar.svg
+vesktop.desktop=vesktop.svg
+org.telegram.desktop.desktop=telegram.svg
+obsidian.desktop=obsidian.svg
+session-desktop.desktop=session.svg

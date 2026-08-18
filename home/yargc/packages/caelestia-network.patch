@@ -1,0 +1,19 @@
+--- a/modules/nexus/pages/NetworkPage.qml
++++ b/modules/nexus/pages/NetworkPage.qml
+@@ -340,11 +340,16 @@ PageBase {
+         RowButton {
+             last: true
+             icon: "add"
+             text: qsTr("Add provider")
+             onClicked: {
+                 root.nState.editingVpnIndex = -1;
+                 root.nState.openSubPage(4); // Add/edit provider sub-page
+             }
+         }
++
++        VesperNetworkSettings {
++            Layout.fillWidth: true
++            nState: root.nState
++        }
+     }
+ }

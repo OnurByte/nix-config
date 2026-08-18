@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="${VESPER_FAKE_FLATPAK_DIR:?}"
+mkdir -p "$root"
+app="org.example.App"
+
+case "$*" in
+  "info $app")
+    exit 0
+    ;;
+  "info --show-metadata $app")
+    cat <<'EOF'
+[Context]
+shared=network;ipc;
+sockets=wayland;pulseaudio;!x11;
+devices=dri;
+features=bluetooth;
+filesystems=home:ro;xdg-download;
+EOF
+    ;;
+  "info --show-permissions $app")
+    cat <<'EOF'
+shared=!network;ipc;
+sockets=wayland;pulseaudio;!x11;
+devices=dri;
+features=bluetooth;
+filesystems=home:ro;xdg-download;
+EOF
+    ;;
+  "override --user --show $app")
+    cat <<'EOF'
+[Context]
+shared=!network;
+sockets=!x11;
+EOF
+    ;;
+  "permission-show $app")
+    printf 'notifications: yes\n'
+    ;;
+  "override --user --reset $app")
+    printf '%s\n' "$*" >> "$root/actions"
+    ;;
+  "override --user "*" $app")
+    printf '%s\n' "$*" >> "$root/actions"
+    ;;
+  *)
+    printf 'unsupported fake flatpak invocation: %s\n' "$*" >&2
+    exit 2
+    ;;
+esac

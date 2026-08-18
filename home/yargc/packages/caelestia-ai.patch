@@ -1,0 +1,67 @@
+--- a/modules/bar/Bar.qml
++++ b/modules/bar/Bar.qml
+@@ -130,6 +130,36 @@ ColumnLayout {
+                     }
+                 }
+             }
++            DelegateChoice {
++                roleValue: "systemMonitor"
++                delegate: EntryWrapper {
++                    SystemMonitor { objectName: "taskbarSystemMonitor"; screenState: root.screenState }
++                }
++            }
++            DelegateChoice {
++                roleValue: "agentCockpit"
++                delegate: EntryWrapper {
++                    AgentCockpit { objectName: "taskbarAgentCockpit"; screenState: root.screenState }
++                }
++            }
++            DelegateChoice {
++                roleValue: "privacyHud"
++                delegate: EntryWrapper {
++                    PrivacyHud { objectName: "taskbarPrivacyHud"; screenState: root.screenState }
++                }
++            }
++            DelegateChoice {
++                roleValue: "hermesBriefing"
++                delegate: EntryWrapper {
++                    HermesBriefing { objectName: "taskbarHermesBriefing"; screenState: root.screenState }
++                }
++            }
++            DelegateChoice {
++                roleValue: "aiUsage"
++                delegate: EntryWrapper {
++                    CodexUsage { objectName: "taskbarAiUsage"; screenState: root.screenState }
++                }
++            }
+             DelegateChoice {
+                 roleValue: "clock"
+                 delegate: EntryWrapper {
+--- a/modules/dashboard/Content.qml
++++ b/modules/dashboard/Content.qml
+@@ -30,6 +30,12 @@ Item {
+                 text: qsTr("Performance"),
+                 enabled: Config.dashboard.showPerformance
+             },
++            {
++                component: aiComponent,
++                iconName: "smart_toy",
++                text: qsTr("AI"),
++                enabled: true
++            },
+             {
+                 component: weatherComponent,
+                 iconName: "cloud",
+@@ -164,4 +170,10 @@ Item {
+ 
+                 Performance {}
+             }
++
++            Component {
++                id: aiComponent
++
++                Ai {}
++            }
+ 
+             Component {
+                 id: weatherComponent

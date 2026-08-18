@@ -10,8 +10,8 @@
   stdenv,
 }:
 stdenv.mkDerivation {
-  pname = "vesper-ai-hub";
-  version = "1.1.0";
+  pname = "vesper-ai";
+  version = "1.3.0";
 
   dontUnpack = true;
 
@@ -22,16 +22,17 @@ stdenv.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
-    rustc --edition=2021 -C opt-level=2 ${./ai-hub.rs} -o vesper-ai-hub
+    cp ${./ai.rs} ai.rs
+    rustc --edition=2021 -C opt-level=2 ai.rs -o vesper-ai
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
 
-    install -Dm755 vesper-ai-hub $out/bin/vesper-ai-hub
-    wrapProgram $out/bin/vesper-ai-hub \
-      --set VESPER_AI_HUB_JQ_FILTER ${./ai-hub.jq} \
+    install -Dm755 vesper-ai $out/bin/vesper-ai
+    wrapProgram $out/bin/vesper-ai \
+      --set VESPER_AI_JQ_FILTER ${./ai.jq} \
       --prefix PATH : ${lib.makeBinPath [
         coreutils
         jq
@@ -44,9 +45,9 @@ stdenv.mkDerivation {
   '';
 
   meta = {
-    description = "Native Rust data bridge for the Caelestia Vesper AI Hub";
+    description = "Native Rust data bridge for Vesper AI";
     license = lib.licenses.mit;
-    mainProgram = "vesper-ai-hub";
+    mainProgram = "vesper-ai";
     platforms = lib.platforms.linux;
   };
 }

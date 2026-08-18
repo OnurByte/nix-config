@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
+import qs.components.controls
 import qs.services
 import qs.modules.nexus.common
 
@@ -12,15 +13,15 @@ ColumnLayout {
     id: root
 
     property var app
-    property var status: ({ sandbox: "native", flatpakId: "", permissions: "", todaySeconds: 0 })
+    property var status: ({ sandbox: "native", flatpakId: "", permissionsManageable: false, enforcementBackend: "native/unrestricted", permissionItems: [], portalPermissions: "", todaySeconds: 0 })
+    property var appWellbeing: ({ todaySeconds: 0, excluded: false, dailyLimitSeconds: 0, overLimit: false, category: "", limitBehavior: "advisory", history: [] })
+    property string notificationPolicy: "inherit"
     property string message: ""
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
 
     readonly property bool flatpak: status.sandbox === "flatpak"
-    readonly property bool networkAllowed: flatpak && status.permissions.includes("shared=network")
-    readonly property bool homeAllowed: flatpak && (status.permissions.includes("filesystems=home") || status.permissions.includes(";home;") || status.permissions.includes(";home:"))
 
     function duration(seconds) {
         const minutes = Math.floor((seconds || 0) / 60);
@@ -29,10 +30,51 @@ ColumnLayout {
         return qsTr("%1 h %2 min").arg(Math.floor(minutes / 60)).arg(minutes % 60);
     }
 
+    function packagedLabel(value) {
+        if (value === true) return qsTr("allowed");
+        if (value === false) return qsTr("not requested");
+        return qsTr("unknown");
+    }
+
+    function runPermission(command) {
+        if (permissionChange.running) return;
+        root.message = "";
+        permissionChange.command = command;
+        permissionChange.running = true;
+    }
+
+    function resetCategory(category) {
+        if (!root.app) return;
+        root.runPermission(["@vesperControl@", "app-reset-category", root.app.id, category]);
+    }
+
+    function setNotificationPolicy(policy) {
+        if (!root.app || notificationChange.running) return;
+        root.message = "";
+        notificationChange.command = ["@vesperControl@", "notifications", "set", root.app.id, root.app.name || root.app.id, policy];
+        notificationChange.running = true;
+    }
+
+    function setWellbeing(field, value) {
+        if (!root.app || wellbeingChange.running) return;
+        root.message = "";
+        wellbeingChange.command = ["@vesperControl@", "wellbeing", "app-set", root.app.id, field, value];
+        wellbeingChange.running = true;
+    }
+
     function refresh() {
-        if (root.app && !appStatus.running) {
+        if (!root.app) return;
+        if (!appStatus.running) {
             appStatus.command = ["@vesperControl@", "app-status", root.app.id];
             appStatus.running = true;
+        }
+        if (!notificationStatus.running) {
+            notificationStatus.command = ["@vesperControl@", "notifications", "get", root.app.id];
+            notificationStatus.running = true;
+        }
+        if (!wellbeingStatus.running) {
+            wellbeingStatus.command = ["@vesperControl@", "wellbeing", "app", root.app.id];
+            wellbeingStatus.running = true;
         }
     }
 
@@ -45,10 +87,51 @@ ColumnLayout {
             onStreamFinished: {
                 try {
                     root.status = JSON.parse(text);
+                    root.message = "";
                 } catch (e) {
                     root.message = qsTr("Could not read app controls");
                 }
             }
+        }
+    }
+
+    Process {
+        id: notificationStatus
+        stdout: StdioCollector { onStreamFinished: root.notificationPolicy = text.trim() || "inherit" }
+    }
+
+    Process {
+        id: wellbeingStatus
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.appWellbeing = JSON.parse(text);
+                    if (!limitMinutes.activeFocus)
+                        limitMinutes.text = root.appWellbeing.dailyLimitSeconds > 0 ? String(Math.round(root.appWellbeing.dailyLimitSeconds / 60)) : "";
+                    if (!categoryField.activeFocus)
+                        categoryField.text = root.appWellbeing.category || "";
+                } catch (e) {
+                    root.message = qsTr("Could not read per-app Wellbeing state");
+                }
+            }
+        }
+    }
+
+    Process {
+        id: notificationChange
+        stderr: StdioCollector { id: notificationError }
+        onExited: (code, status) => {
+            root.message = code === 0 ? "" : notificationError.text.trim();
+            root.refresh();
+        }
+    }
+
+    Process {
+        id: wellbeingChange
+        stderr: StdioCollector { id: wellbeingError }
+        onExited: (code, status) => {
+            root.message = code === 0 ? "" : wellbeingError.text.trim();
+            root.refresh();
         }
     }
 
@@ -61,85 +144,337 @@ ColumnLayout {
         }
     }
 
-    Process {
-        id: iconRequest
-        stderr: StdioCollector { id: iconError }
-        onExited: (code, status) => {
-            root.message = code === 0 ? qsTr("Adaptive icon job queued") : iconError.text.trim();
-        }
-    }
-
-    SectionHeader {
-        text: qsTr("Privacy & permissions")
-    }
+    SectionHeader { text: qsTr("Permissions") }
 
     InfoRow {
         icon: root.flatpak ? "deployed_code" : "warning"
         label: qsTr("Sandbox")
-        subtext: root.flatpak ? root.status.flatpakId : qsTr("native Nix app · Flatpak overrides do not apply")
-        value: root.flatpak ? qsTr("Flatpak") : qsTr("native")
+        subtext: root.flatpak ? root.status.flatpakId : qsTr("native Nix app · capability restrictions shown here are informational")
+        value: root.flatpak ? qsTr("Flatpak") : qsTr("unrestricted")
         iconColour: root.flatpak ? Colours.palette.m3primary : Colours.palette.m3tertiary
     }
 
-    ToggleRow {
-        visible: root.flatpak
-        text: qsTr("Network access")
-        subtext: qsTr("Flatpak network share override")
-        checked: root.networkAllowed
-        disabled: permissionChange.running
-        onToggled: {
-            permissionChange.command = ["@vesperControl@", "app-permission", root.app.id, "network", checked ? "on" : "off"];
-            permissionChange.running = true;
+    InfoRow {
+        visible: !root.flatpak
+        icon: "info"
+        label: qsTr("Enforcement backend")
+        subtext: qsTr("Vesper does not pretend Flatpak overrides exist for native applications")
+        value: root.status.enforcementBackend || qsTr("informational")
+    }
+
+    Repeater {
+        model: root.flatpak ? (root.status.permissionItems || []) : []
+        delegate: ColumnLayout {
+            required property var modelData
+            Layout.fillWidth: true
+            spacing: 0
+
+            ToggleRow {
+                Layout.fillWidth: true
+                text: modelData.label
+                subtext: qsTr("packaged: %1 · override: %2 · %3")
+                    .arg(root.packagedLabel(modelData.packaged))
+                    .arg(modelData.userOverride || qsTr("inherit"))
+                    .arg(modelData.backend || qsTr("Flatpak-enforced"))
+                checked: modelData.effective === true
+                disabled: permissionChange.running
+                onToggled: root.runPermission(["@vesperControl@", "app-permission", root.app.id, modelData.id, checked ? "on" : "off"])
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: modelData.userOverride && modelData.userOverride !== "inherit"
+                Item { Layout.fillWidth: true }
+                IconTextButton {
+                    isRound: true
+                    icon: "undo"
+                    text: qsTr("Inherit packaged default")
+                    disabled: permissionChange.running
+                    onClicked: root.runPermission(["@vesperControl@", "app-reset-permission", root.app.id, modelData.id])
+                }
+            }
         }
     }
 
-    ToggleRow {
+    SectionHeader { visible: root.flatpak; text: qsTr("Reset override category") }
+
+    RowLayout {
         visible: root.flatpak
-        text: qsTr("Home folder access")
-        subtext: qsTr("Flatpak home filesystem override")
-        checked: root.homeAllowed
-        disabled: permissionChange.running
-        onToggled: {
-            permissionChange.command = ["@vesperControl@", "app-permission", root.app.id, "home", checked ? "on" : "off"];
-            permissionChange.running = true;
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Shared"); disabled: permissionChange.running; onClicked: root.resetCategory("shared") }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Sockets"); disabled: permissionChange.running; onClicked: root.resetCategory("sockets") }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Devices"); disabled: permissionChange.running; onClicked: root.resetCategory("devices") }
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Features"); disabled: permissionChange.running; onClicked: root.resetCategory("features") }
+        IconTextButton { isRound: true; icon: "undo"; text: qsTr("Filesystems"); disabled: permissionChange.running; onClicked: root.resetCategory("filesystems") }
+    }
+
+    SectionHeader { visible: root.flatpak; text: qsTr("Custom filesystem") }
+
+    StyledTextField {
+        id: filesystemField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("/path, ~/path or xdg-download/subdir")
+        leadingIcon: "folder"
+        supportingText: qsTr("adds or denies an explicit Flatpak filesystem path")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "block"; text: qsTr("Deny")
+            disabled: !filesystemField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-filesystem", root.app.id, filesystemField.text.trim(), "off"])
+        }
+        IconTextButton {
+            isRound: true; icon: "check"; text: qsTr("Allow")
+            disabled: !filesystemField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-filesystem", root.app.id, filesystemField.text.trim(), "on"])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset category")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("filesystems")
         }
     }
 
-    RowButton {
+    SectionHeader { visible: root.flatpak; text: qsTr("D-Bus") }
+
+    StyledTextField {
+        id: dbusField
         visible: root.flatpak
-        icon: "restart_alt"
-        text: qsTr("Reset Flatpak overrides")
-        subtext: qsTr("return this app to its packaged permissions")
-        disabled: permissionChange.running
-        onClicked: {
-            permissionChange.command = ["@vesperControl@", "app-reset-permissions", root.app.id];
-            permissionChange.running = true;
+        Layout.fillWidth: true
+        placeholderText: qsTr("org.example.Service")
+        leadingIcon: "cable"
+        supportingText: qsTr("well-known name · explicit Flatpak talk/deny override")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "block"; text: qsTr("Deny session")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "session", dbusField.text.trim(), "deny"])
+        }
+        IconTextButton {
+            isRound: true; icon: "check"; text: qsTr("Allow session")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "session", dbusField.text.trim(), "talk"])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset session")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("session-bus")
         }
     }
 
-    SectionHeader {
-        text: qsTr("Wellbeing")
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "block"; text: qsTr("Deny system")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "system", dbusField.text.trim(), "deny"])
+        }
+        IconTextButton {
+            isRound: true; icon: "check"; text: qsTr("Allow system")
+            disabled: !dbusField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-dbus", root.app.id, "system", dbusField.text.trim(), "talk"])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset system")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("system-bus")
+        }
+    }
+
+    SectionHeader { visible: root.flatpak; text: qsTr("Environment overrides") }
+
+    InfoRow {
+        visible: root.flatpak
+        icon: "warning"
+        label: qsTr("Non-secret values only")
+        subtext: qsTr("Flatpak environment overrides are persisted as app configuration; API keys and passwords belong in Secret Service")
+        value: qsTr("plaintext")
+    }
+
+    StyledTextField {
+        id: envNameField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("VARIABLE_NAME")
+        leadingIcon: "data_object"
+        supportingText: qsTr("letters, digits and underscore; must not start with a digit")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    StyledTextField {
+        id: envValueField
+        visible: root.flatpak
+        Layout.fillWidth: true
+        placeholderText: qsTr("value")
+        leadingIcon: "edit"
+        supportingText: qsTr("stored by Flatpak; do not enter credentials")
+        inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
+    }
+
+    RowLayout {
+        visible: root.flatpak
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "delete"; text: qsTr("Unset")
+            disabled: !envNameField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-unset-env", root.app.id, envNameField.text.trim()])
+        }
+        IconTextButton {
+            isRound: true; icon: "save"; text: qsTr("Set")
+            disabled: !envNameField.text.trim() || permissionChange.running
+            onClicked: root.runPermission(["@vesperControl@", "app-env", root.app.id, envNameField.text.trim(), envValueField.text])
+        }
+        IconTextButton {
+            isRound: true; icon: "undo"; text: qsTr("Reset all env")
+            disabled: permissionChange.running
+            onClicked: root.resetCategory("environment")
+        }
     }
 
     InfoRow {
-        icon: "timer"
-        label: qsTr("Foreground time today")
-        subtext: qsTr("local Hyprland activity sample")
-        value: root.duration(root.status.todaySeconds)
-    }
-
-    SectionHeader {
-        text: qsTr("Experimental")
+        visible: root.flatpak
+        icon: "shield"
+        label: qsTr("Portal permission store")
+        subtext: qsTr("camera, location and other portal-mediated decisions stay owned by the portal permission store")
+        value: root.status.portalPermissions ? qsTr("entries present") : qsTr("no entries")
     }
 
     RowButton {
-        icon: "auto_awesome"
-        text: qsTr("Queue adaptive icon")
-        subtext: qsTr("hand this app icon to the Vesper AI icon workflow for review")
-        disabled: !root.app || iconRequest.running
-        onClicked: {
-            iconRequest.command = ["@vesperControl@", "icon", "request", root.app.id, root.app.icon || ""];
-            iconRequest.running = true;
+        visible: root.flatpak && root.status.permissionsManageable !== false
+        icon: "restart_alt"
+        text: qsTr("Reset all Flatpak overrides")
+        subtext: qsTr("return this app to its packaged permission defaults")
+        disabled: permissionChange.running
+        onClicked: root.runPermission(["@vesperControl@", "app-reset-permissions", root.app.id])
+    }
+
+    SectionHeader { text: qsTr("Notifications") }
+
+    InfoRow {
+        icon: root.notificationPolicy === "block" ? "notifications_off" : "notifications"
+        label: qsTr("Notification policy")
+        subtext: qsTr("packaging-independent · enforced before Caelestia stores or shows the notification")
+        value: root.notificationPolicy
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Tokens.spacing.small
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "notifications_off"; text: qsTr("Block")
+            disabled: notificationChange.running || root.notificationPolicy === "block"
+            onClicked: root.setNotificationPolicy("block")
+        }
+        IconTextButton {
+            isRound: true; icon: "notifications_active"; text: qsTr("Allow")
+            disabled: notificationChange.running || root.notificationPolicy === "allow"
+            onClicked: root.setNotificationPolicy("allow")
+        }
+        IconTextButton {
+            isRound: true; icon: "restart_alt"; text: qsTr("Inherit")
+            disabled: notificationChange.running || root.notificationPolicy === "inherit"
+            onClicked: root.setNotificationPolicy("inherit")
+        }
+    }
+
+    SectionHeader { text: qsTr("Wellbeing") }
+
+    InfoRow {
+        icon: root.appWellbeing.overLimit ? "warning" : "timer"
+        label: qsTr("Foreground time today")
+        subtext: root.appWellbeing.overLimit
+            ? qsTr("advisory daily limit reached; Vesper is not claiming a hard block")
+            : qsTr("local only · paused while idle or locked")
+        value: root.duration(root.appWellbeing.todaySeconds)
+    }
+
+    Repeater {
+        model: (root.appWellbeing.history || []).slice(0, 7).reverse()
+        delegate: InfoRow {
+            required property var modelData
+            Layout.fillWidth: true
+            icon: "history"
+            label: modelData.date || ""
+            subtext: qsTr("foreground activity")
+            value: root.duration(modelData.seconds || 0)
+        }
+    }
+
+    ToggleRow {
+        text: qsTr("Exclude from screen time")
+        subtext: qsTr("future foreground samples for this app are not recorded")
+        checked: root.appWellbeing.excluded === true
+        disabled: wellbeingChange.running
+        onToggled: root.setWellbeing("excluded", checked ? "on" : "off")
+    }
+
+    StyledTextField {
+        id: limitMinutes
+        Layout.fillWidth: true
+        placeholderText: qsTr("daily limit in minutes; empty = none")
+        leadingIcon: "hourglass_top"
+        supportingText: qsTr("advisory limit only")
+        inputMethodHints: Qt.ImhDigitsOnly
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "save"; text: qsTr("Save limit")
+            disabled: wellbeingChange.running
+            onClicked: {
+                const minutes = Math.max(0, Number(limitMinutes.text || 0));
+                root.setWellbeing("limit", String(Math.round(minutes * 60)));
+            }
+        }
+    }
+
+    StyledTextField {
+        id: categoryField
+        Layout.fillWidth: true
+        placeholderText: qsTr("category, e.g. Work or Social")
+        leadingIcon: "category"
+        supportingText: qsTr("local Wellbeing grouping")
+        inputMethodHints: Qt.ImhNoPredictiveText
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        Item { Layout.fillWidth: true }
+        IconTextButton {
+            isRound: true; icon: "save"; text: qsTr("Save category")
+            disabled: wellbeingChange.running
+            onClicked: root.setWellbeing("category", categoryField.text.trim())
         }
     }
 
@@ -148,7 +483,7 @@ ColumnLayout {
         Layout.leftMargin: Tokens.padding.largeIncreased
         visible: root.message
         text: root.message
-        color: root.message.includes(qsTr("queued")) ? Colours.palette.m3primary : Colours.palette.m3error
+        color: Colours.palette.m3error
         font: Tokens.font.label.small
         wrapMode: Text.WordWrap
     }

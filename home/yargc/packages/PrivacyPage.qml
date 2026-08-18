@@ -1,0 +1,182 @@
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import QtQuick.Layouts
+import Quickshell.Io
+import Caelestia.Config
+import qs.components
+import qs.components.controls
+import qs.modules.nexus.common
+
+PageBase {
+    id: root
+    property var privacy: ({ tor: {}, zapret: {}, firewall: {}, network: {}, metadataSanitizer: {}, onionShare: {}, monero: {}, cuprate: {}, node: {} })
+    property string errorText: ""
+    title: qsTr("Privacy")
+
+    function refresh() {
+        if (!status.running)
+            status.running = true;
+    }
+
+    Component.onCompleted: refresh()
+    Timer { interval: 10000; repeat: true; running: root.visible; onTriggered: root.refresh() }
+
+    Process {
+        id: status
+        command: ["@vesperControl@", "privacy", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.privacy = JSON.parse(text);
+                    root.errorText = "";
+                } catch (e) {
+                    root.errorText = qsTr("Could not read privacy state");
+                }
+            }
+        }
+        stderr: StdioCollector { id: statusError }
+        onExited: (code, status) => {
+            if (code !== 0)
+                root.errorText = statusError.text.trim();
+        }
+    }
+
+    ColumnLayout {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        width: root.cappedWidth
+        spacing: Tokens.spacing.extraSmall / 2
+
+        SectionHeader { first: true; text: qsTr("Anonymity") }
+        InfoRow {
+            icon: "security"
+            label: qsTr("Tor")
+            subtext: qsTr("Nix-managed system client; Settings reports state without mutating declarative policy")
+            value: root.privacy.tor?.active ? qsTr("active") : qsTr("inactive")
+        }
+        InfoRow {
+            icon: "lan"
+            label: qsTr("Tor SOCKS")
+            subtext: qsTr("local listener on 127.0.0.1:9050")
+            value: root.privacy.tor?.socksListening ? qsTr("listening") : qsTr("not detected")
+        }
+        InfoRow {
+            icon: "shield"
+            label: qsTr("Zapret DPI bypass")
+            subtext: qsTr("system policy from the privacy module")
+            value: root.privacy.zapret?.active ? qsTr("active") : qsTr("inactive")
+        }
+
+        SectionHeader { text: qsTr("Safe sharing") }
+        InfoRow {
+            icon: "cleaning_services"
+            label: qsTr("Metadata sanitizer")
+            subtext: qsTr("mat2 is used on disposable copies before outbound OnionShare file sharing")
+            value: root.privacy.metadataSanitizer?.available ? qsTr("available") : qsTr("missing")
+        }
+        InfoRow {
+            icon: "share"
+            label: qsTr("OnionShare")
+            subtext: root.privacy.onionShare?.safeWrapperAvailable
+                ? qsTr("onionshare-safe wrapper available")
+                : qsTr("safe wrapper unavailable; Settings will not claim automatic sanitization")
+            value: root.privacy.onionShare?.available ? qsTr("installed") : qsTr("missing")
+        }
+
+        SectionHeader { text: qsTr("Monero") }
+        InfoRow {
+            icon: "currency_bitcoin"
+            label: qsTr("monerod")
+            subtext: root.privacy.monero?.walletCliInstalled ? qsTr("reference CLI/wallet stack installed") : qsTr("wallet CLI not detected")
+            value: root.privacy.monero?.monerodRunning ? qsTr("running") : (root.privacy.monero?.monerodInstalled ? qsTr("installed") : qsTr("missing"))
+        }
+        InfoRow {
+            icon: "memory"
+            label: qsTr("Cuprate")
+            subtext: qsTr("Rust node implementation installed for opt-in use")
+            value: root.privacy.cuprate?.running ? qsTr("running") : (root.privacy.cuprate?.installed ? qsTr("installed") : qsTr("missing"))
+        }
+        InfoRow {
+            icon: "account_tree"
+            label: qsTr("Runtime node backend")
+            subtext: root.privacy.node?.selectionManagedByVesper
+                ? qsTr("selected by Vesper")
+                : qsTr("observed from running processes; no fake default-node selector")
+            value: root.privacy.node?.runtimeBackend || qsTr("none")
+        }
+
+        SectionHeader { text: qsTr("Network privacy") }
+        InfoRow {
+            icon: "local_fire_department"
+            label: qsTr("Firewall")
+            subtext: qsTr("NixOS firewall service")
+            value: root.privacy.firewall?.active ? qsTr("active") : qsTr("inactive")
+        }
+        InfoRow {
+            icon: "dns"
+            label: qsTr("DNS servers")
+            subtext: root.privacy.network?.dns || qsTr("resolver details unavailable")
+            value: qsTr("observed")
+        }
+        InfoRow {
+            icon: "verified_user"
+            label: qsTr("Resolver security")
+            subtext: root.privacy.network?.resolverSecurity || qsTr("DNSSEC / DNS-over-TLS status unavailable from resolvectl")
+            value: qsTr("status only")
+        }
+        InfoRow {
+            icon: "vpn_lock"
+            label: qsTr("VPN")
+            subtext: (root.privacy.network?.vpnProfiles || []).length
+                ? (root.privacy.network.vpnProfiles || []).join(", ")
+                : qsTr("no NetworkManager VPN/WireGuard/tunnel profile is active")
+            value: root.privacy.network?.vpnActive ? qsTr("active") : qsTr("inactive")
+        }
+        InfoRow {
+            icon: "shield_lock"
+            label: qsTr("VPN kill switch")
+            subtext: qsTr("no cross-backend kill-switch enforcement is claimed by Vesper")
+            value: root.privacy.network?.killSwitchSupported ? qsTr("available") : qsTr("unsupported")
+        }
+        InfoRow {
+            icon: "route"
+            label: qsTr("Process proxy")
+            subtext: root.privacy.network?.proxyUsesTorSocks
+                ? qsTr("Vesper process proxy points at the local Tor SOCKS endpoint")
+                : (root.privacy.network?.proxyConfigured
+                    ? qsTr("a Vesper process proxy is configured but it is not the canonical local Tor SOCKS endpoint")
+                    : qsTr("no Vesper process proxy configured"))
+            value: root.privacy.network?.proxyUsesTorSocks ? qsTr("Tor") : (root.privacy.network?.proxyConfigured ? qsTr("proxy") : qsTr("direct/default"))
+        }
+        InfoRow {
+            icon: "wifi_lock"
+            label: qsTr("Wi-Fi MAC policy")
+            subtext: root.privacy.network?.wifiMacPolicy || qsTr("no active Wi-Fi profile or no explicit policy")
+            value: root.privacy.network?.wifiMacPolicy ? qsTr("configured") : qsTr("default")
+        }
+        InfoRow {
+            icon: "info"
+            label: qsTr("Leak-test semantics")
+            subtext: qsTr("proxy diagnostics can report observed egress IP, but Vesper does not label that alone as proof of DNS/IP leak protection")
+            value: qsTr("no fake claim")
+        }
+
+        InfoRow {
+            icon: "deployed_code"
+            label: qsTr("Ownership")
+            subtext: qsTr("Tor, Zapret, firewall and privacy tooling remain Nix-managed; Settings only exposes controls with a real runtime enforcement path")
+            value: qsTr("Nix-first")
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            Layout.topMargin: Tokens.spacing.medium
+            visible: root.errorText
+            text: root.errorText
+            color: Colours.palette.m3error
+            font: Tokens.font.body.small
+            wrapMode: Text.WordWrap
+        }
+    }
+}

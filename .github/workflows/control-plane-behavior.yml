@@ -1,0 +1,113 @@
+name: Control-plane behavior
+
+on:
+  pull_request:
+  push:
+    branches: [main, vesper-control-plane-phase2]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: control-plane-behavior-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-behavior:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Test Cargo control plane
+        shell: bash
+        run: |
+          nix shell nixpkgs#cargo nixpkgs#rustc nixpkgs#jq -c bash -c '
+            set -euo pipefail
+            cargo test --locked --manifest-path home/yargc/packages/vesper-core/Cargo.toml
+            CARGO_TARGET_DIR=/tmp/vesper-target cargo build --locked --manifest-path home/yargc/packages/vesper-core/Cargo.toml
+            cp /tmp/vesper-target/debug/vesper-control /tmp/vesper-control
+
+            export HOME="$TMPDIR/vesper-behavior-home"
+            export XDG_CONFIG_HOME="$HOME/.config"
+            export XDG_STATE_HOME="$HOME/.local/state"
+            export VESPER_FAKE_FLATPAK_DIR="$TMPDIR/vesper-flatpak"
+            mkdir -p "$HOME" "$VESPER_FAKE_FLATPAK_DIR"
+            cp .github/scripts/fake-flatpak /tmp/fake-flatpak
+            chmod +x /tmp/fake-flatpak
+            export VESPER_CMD_FLATPAK=/tmp/fake-flatpak
+
+            /tmp/vesper-control app-status org.example.App.desktop > /tmp/app.json
+            jq -e ".sandbox == \"flatpak\" and .enforcementBackend == \"Flatpak-enforced\"" /tmp/app.json >/dev/null
+            jq -e ".permissionItems[] | select(.id == \"network\" and .category == \"shared\" and .packaged == true and .userOverride == \"deny\" and .effective == false)" /tmp/app.json >/dev/null
+            jq -e ".permissionItems[] | select(.id == \"home\" and .category == \"filesystems\" and .packaged == true and .effective == true)" /tmp/app.json >/dev/null
+            jq -e ".portalPermissions | contains(\"notifications\")" /tmp/app.json >/dev/null
+
+            /tmp/vesper-control app-permission org.example.App.desktop network on
+            grep -Fx "override --user --share=network org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-permission org.example.App.desktop x11 off
+            grep -Fx "override --user --nosocket=x11 org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-permission org.example.App.desktop bluetooth off
+            grep -Fx "override --user --disallow=bluetooth org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-filesystem org.example.App.desktop /srv/data on
+            grep -Fx "override --user --filesystem=/srv/data org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-dbus org.example.App.desktop session org.example.Service talk
+            grep -Fx "override --user --talk-name=org.example.Service org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-env org.example.App.desktop MODE test
+            grep -Fx "override --user --env=MODE=test org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+            /tmp/vesper-control app-unset-env org.example.App.desktop MODE
+            grep -Fx "override --user --unset-env=MODE org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+
+            override="$HOME/.local/share/flatpak/overrides/org.example.App"
+            mkdir -p "$(dirname "$override")"
+            cat > "$override" <<EOF
+[Context]
+shared=!network;ipc;
+sockets=!x11;wayland;
+filesystems=!home;xdg-download;
+[Environment]
+MODE=test
+[Session Bus Policy]
+org.example.Service=talk
+[System Bus Policy]
+org.example.System=talk
+EOF
+
+            /tmp/vesper-control app-reset-permission org.example.App.desktop network
+            grep -Fx "shared=ipc;" "$override"
+            grep -Fx "sockets=!x11;wayland;" "$override"
+            /tmp/vesper-control app-reset-category org.example.App.desktop sockets
+            ! grep -q "^sockets=" "$override"
+            grep -Fx "filesystems=!home;xdg-download;" "$override"
+            /tmp/vesper-control app-reset-category org.example.App.desktop environment
+            ! grep -q "^MODE=" "$override"
+            /tmp/vesper-control app-reset-category org.example.App.desktop session-bus
+            ! grep -q "^org.example.Service=" "$override"
+            grep -Fx "org.example.System=talk" "$override"
+
+            /tmp/vesper-control app-reset-permissions org.example.App.desktop
+            grep -Fx "override --user --reset org.example.App" "$VESPER_FAKE_FLATPAK_DIR/actions"
+
+            /tmp/vesper-control notifications set org.example.App.desktop "Example App" block
+            test "$(/tmp/vesper-control notifications get org.example.App.desktop)" = block
+            jq -e ".\"orgexampleappdesktop\" == \"block\" and .\"exampleapp\" == \"block\"" "$XDG_CONFIG_HOME/vesper/notifications/policy.json" >/dev/null
+            /tmp/vesper-control notifications set org.example.App.desktop "Example App" inherit
+            test "$(/tmp/vesper-control notifications get org.example.App.desktop)" = inherit
+
+            cat > /tmp/fake-caelestia-shell <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+printf "%s\\n" "\$*" >> "$TMPDIR/vesper-caelestia-actions"
+EOF
+            chmod +x /tmp/fake-caelestia-shell
+            export VESPER_CMD_CAELESTIA_SHELL=/tmp/fake-caelestia-shell
+            /tmp/vesper-control wellbeing focus on
+            grep -Fx "ipc call notifs enableDnd" "$TMPDIR/vesper-caelestia-actions"
+            test "$(cat "$XDG_CONFIG_HOME/vesper/wellbeing/focus.enabled")" = 1
+            /tmp/vesper-control wellbeing focus off
+            grep -Fx "ipc call notifs disableDnd" "$TMPDIR/vesper-caelestia-actions"
+            test "$(cat "$XDG_CONFIG_HOME/vesper/wellbeing/focus.enabled")" = 0
+          '

@@ -7,6 +7,8 @@
   imports = [
     inputs.spicetify-nix.homeManagerModules.spicetify
     inputs.sops-nix.homeManagerModules.sops
+    ./ai-consumers.nix
+    ./ai-control-plane.nix
     ./apps.nix
     ./caelestia.nix
     ./cli.nix
@@ -21,6 +23,7 @@
     ./neovim.nix
     ./privacy.nix
     ./secrets.nix
+    ./settings.nix
     ./skills.nix
     ./zsh.nix
   ];
@@ -29,23 +32,14 @@
     inherit username;
     homeDirectory = "/home/${username}";
     stateVersion = "26.05";
-
-    # PychoVIM intentionally keeps its own updater and mutable config checkout.
-    # Zed is Nix-managed from the locked stable nixpkgs package.
     sessionPath = [ "$HOME/.local/bin" ];
-
     sessionVariables = {
       EDITOR = "pycho";
       VISUAL = "pycho";
       GIT_EDITOR = "pycho";
       TERMINAL = "ghostty";
       BROWSER = "zen-beta";
-
-      # bb stays the control plane without sending its optional telemetry.
       BB_TELEMETRY = "false";
-
-      # Use absolute paths here: Home Manager session variables are shell-escaped
-      # values, so a literal $HOME would not be expanded a second time.
       VESPER_AGENT_STATE_DIR = "/home/${username}/.local/state/vesper/agents";
       VESPER_RESEARCH_STATE_DIR = "/home/${username}/.local/state/vesper/research";
       VESPER_BRIEFING_DIR = "/home/${username}/.local/share/vesper/briefings";

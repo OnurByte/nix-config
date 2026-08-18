@@ -2,19 +2,14 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const PROVIDERS: &[(&str, &str, &str)] = &[
-    ("openai", "OpenAI", "OPENAI_API_KEY"),
-    ("anthropic", "Anthropic", "ANTHROPIC_API_KEY"),
-    ("xai", "xAI", "XAI_API_KEY"),
-    ("openrouter", "OpenRouter", "OPENROUTER_API_KEY"),
-    ("google", "Google AI", "GEMINI_API_KEY"),
-];
+include!("vesper-provider-registry.rs");
 
 struct LockGuard(PathBuf);
 
@@ -181,6 +176,7 @@ fn credential_clear(id: &str) -> Result<(), String> {
 
 fn credential_exec(id: &str, command: &[String]) -> ! {
     let (_, _, env_name) = provider(id).unwrap_or_else(|| print_error(&format!("unknown provider: {id}")));
+    let command = if command.first().map(String::as_str) == Some("--") { &command[1..] } else { command };
     if command.is_empty() {
         print_error("credential exec needs a command");
     }
@@ -190,6 +186,198 @@ fn credential_exec(id: &str, command: &[String]) -> ! {
         .env(env_name, key)
         .exec();
     print_error(&format!("failed to exec {}: {error}", command[0]));
+}
+
+fn credential_registry_path() -> PathBuf {
+    config_root().join("credentials.tsv")
+}
+
+fn valid_credential_alias(alias: &str) -> bool {
+    !alias.is_empty()
+        && alias.len() <= 80
+        && alias.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
+}
+
+fn load_credential_registry() -> BTreeMap<String, String> {
+    let mut values = BTreeMap::new();
+    for line in fs::read_to_string(credential_registry_path()).unwrap_or_default().lines() {
+        let Some((alias, provider_id)) = line.split_once('\t') else {
+            continue;
+        };
+        if valid_credential_alias(alias) && provider(provider_id).is_some() {
+            values.insert(alias.to_string(), provider_id.to_string());
+        }
+    }
+    values
+}
+
+fn write_credential_registry(values: &BTreeMap<String, String>) -> Result<(), String> {
+    let path = credential_registry_path();
+    let parent = path.parent().ok_or_else(|| "invalid credential registry path".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let tmp = parent.join(format!(".credentials.{}.tmp", std::process::id()));
+    let mut data = String::new();
+    for (alias, provider_id) in values {
+        data.push_str(alias);
+        data.push('\t');
+        data.push_str(provider_id);
+        data.push('\n');
+    }
+    fs::write(&tmp, data).map_err(|error| error.to_string())?;
+    fs::rename(tmp, path).map_err(|error| error.to_string())
+}
+
+fn credential_alias_provider(alias: &str) -> Result<String, String> {
+    load_credential_registry()
+        .get(alias)
+        .cloned()
+        .ok_or_else(|| format!("unknown credential alias: {alias}"))
+}
+
+fn credential_alias_configured(alias: &str, provider_id: &str) -> bool {
+    Command::new("secret-tool")
+        .args([
+            "lookup",
+            "service",
+            "vesper-ai",
+            "credential",
+            alias,
+            "provider",
+            provider_id,
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+}
+
+fn credential_alias_lookup(alias: &str, provider_id: &str) -> Result<String, String> {
+    output(
+        "secret-tool",
+        &[
+            "lookup",
+            "service",
+            "vesper-ai",
+            "credential",
+            alias,
+            "provider",
+            provider_id,
+        ],
+    )
+    .and_then(|value| if value.is_empty() { Err("credential is empty".to_string()) } else { Ok(value) })
+}
+
+fn credential_alias_set(provider_id: &str, alias: &str) -> Result<(), String> {
+    let (_, label, _) = provider(provider_id).ok_or_else(|| format!("unknown provider: {provider_id}"))?;
+    if !valid_credential_alias(alias) {
+        return Err("credential alias may contain only letters, digits, '.', '_' and '-'".to_string());
+    }
+    if provider(alias).is_some() {
+        return Err("provider IDs are reserved as default credential names; choose another alias".to_string());
+    }
+
+    let mut registry = load_credential_registry();
+    if let Some(existing) = registry.get(alias) {
+        if existing != provider_id {
+            return Err(format!("credential alias {alias} already belongs to provider {existing}"));
+        }
+    }
+
+    let key = stdin_line()?;
+    let key = key.trim();
+    if key.is_empty() {
+        return Err("API key is empty".to_string());
+    }
+
+    let mut child = Command::new("secret-tool")
+        .args([
+            "store",
+            &format!("--label=Vesper AI · {label} · {alias}"),
+            "service",
+            "vesper-ai",
+            "credential",
+            alias,
+            "provider",
+            provider_id,
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start secret-tool: {error}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(key.as_bytes()).map_err(|error| error.to_string())?;
+        stdin.write_all(b"\n").map_err(|error| error.to_string())?;
+    }
+
+    let result = child.wait_with_output().map_err(|error| error.to_string())?;
+    if !result.status.success() {
+        let message = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        return Err(if message.is_empty() { "Secret Service rejected the API key".to_string() } else { message });
+    }
+
+    registry.insert(alias.to_string(), provider_id.to_string());
+    write_credential_registry(&registry)
+}
+
+fn credential_alias_clear(alias: &str) -> Result<(), String> {
+    let provider_id = credential_alias_provider(alias)?;
+    let result = Command::new("secret-tool")
+        .args([
+            "clear",
+            "service",
+            "vesper-ai",
+            "credential",
+            alias,
+            "provider",
+            &provider_id,
+        ])
+        .output()
+        .map_err(|error| format!("failed to run secret-tool: {error}"))?;
+    if !result.status.success() {
+        let message = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        return Err(if message.is_empty() { "failed to clear credential".to_string() } else { message });
+    }
+
+    let mut registry = load_credential_registry();
+    registry.remove(alias);
+    write_credential_registry(&registry)
+}
+
+fn credential_alias_exec(alias: &str, command: &[String]) -> ! {
+    let provider_id = credential_alias_provider(alias).unwrap_or_else(|error| print_error(&error));
+    let (_, _, env_name) = provider(&provider_id).unwrap_or_else(|| print_error(&format!("unknown provider: {provider_id}")));
+    let command = if command.first().map(String::as_str) == Some("--") { &command[1..] } else { command };
+    if command.is_empty() {
+        print_error("credential exec needs a command");
+    }
+    let key = credential_alias_lookup(alias, &provider_id).unwrap_or_else(|error| print_error(&error));
+    let error = Command::new(&command[0])
+        .args(&command[1..])
+        .env(env_name, key)
+        .exec();
+    print_error(&format!("failed to exec {}: {error}", command[0]));
+}
+
+fn credential_alias_list() {
+    let registry = load_credential_registry();
+    let items = registry
+        .iter()
+        .filter_map(|(alias, provider_id)| {
+            let (_, name, env_name) = provider(provider_id)?;
+            Some(format!(
+                "{{\"id\":\"{}\",\"provider\":\"{}\",\"providerName\":\"{}\",\"env\":\"{}\",\"configured\":{},\"managedBy\":\"vesper\"}}",
+                json_escape(alias),
+                json_escape(provider_id),
+                json_escape(name),
+                json_escape(env_name),
+                if credential_alias_configured(alias, provider_id) { "true" } else { "false" }
+            ))
+        })
+        .collect::<Vec<_>>();
+    println!("{{\"credentials\":[{}]}}", items.join(","));
 }
 
 fn list_dir_names(path: &Path) -> Vec<String> {
@@ -278,8 +466,7 @@ fn active_connection() -> Option<String> {
 fn network_status() {
     let (wifi, bluetooth) = radio_status();
     let connection = active_connection().unwrap_or_default();
-    let zapret = success("systemctl", &["is-active", "--quiet", "zapret2.service"])
-        || success("systemctl", &["is-active", "--quiet", "zapret2"]);
+    let zapret = success("systemctl", &["is-active", "--quiet", "nfqws2@default.service"]);
     let proxy = config_root().join("proxy.env").exists();
     println!(
         "{{\"airplane\":{},\"wifi\":{},\"bluetooth\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{}}}",
@@ -304,6 +491,24 @@ fn airplane(enabled: bool) -> Result<(), String> {
         .stderr(Stdio::null())
         .status();
     Ok(())
+}
+
+fn dpi_set(enabled: bool) -> Result<(), String> {
+    let action = if enabled { "start" } else { "stop" };
+    let result = Command::new("systemctl")
+        .args([action, "nfqws2@default.service"])
+        .output()
+        .map_err(|error| format!("failed to run systemctl: {error}"))?;
+    if result.status.success() {
+        Ok(())
+    } else {
+        let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        Err(if stderr.is_empty() {
+            format!("failed to {action} Zapret2")
+        } else {
+            stderr
+        })
+    }
 }
 
 fn wifi_qr() -> Result<PathBuf, String> {
@@ -344,34 +549,114 @@ fn wifi_qr() -> Result<PathBuf, String> {
     );
     let root = runtime_root();
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
     let path = root.join("wifi-share.svg");
     let path_string = path.to_string_lossy().into_owned();
-    let result = Command::new("qrencode")
-        .args(["-t", "SVG", "-o", &path_string, "-m", "2", &payload])
-        .output()
-        .map_err(|error| format!("failed to run qrencode: {error}"))?;
+    let mut child = Command::new("qrencode")
+        .args(["-t", "SVG", "-o", &path_string, "-m", "2"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start qrencode: {error}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(payload.as_bytes()).map_err(|error| error.to_string())?;
+        stdin.write_all(b"\n").map_err(|error| error.to_string())?;
+    }
+
+    let result = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for qrencode: {error}"))?;
     if !result.status.success() {
         return Err(String::from_utf8_lossy(&result.stderr).trim().to_string());
     }
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
     Ok(path)
+}
+
+fn validate_proxy_port(port: Option<&str>) -> Result<(), String> {
+    let Some(port) = port else {
+        return Ok(());
+    };
+    let port = port
+        .parse::<u16>()
+        .map_err(|_| "proxy port must be between 1 and 65535".to_string())?;
+    if port == 0 {
+        return Err("proxy port must be between 1 and 65535".to_string());
+    }
+    Ok(())
+}
+
+fn validate_proxy_url(value: &str) -> Result<bool, String> {
+    let (authority, is_socks) = if let Some(authority) = value.strip_prefix("http://") {
+        (authority, false)
+    } else if let Some(authority) = value.strip_prefix("https://") {
+        (authority, false)
+    } else if let Some(authority) = value.strip_prefix("socks5://") {
+        (authority, true)
+    } else if let Some(authority) = value.strip_prefix("socks5h://") {
+        (authority, true)
+    } else {
+        return Err("proxy must start with http://, https://, socks5:// or socks5h://".to_string());
+    };
+
+    if authority.is_empty()
+        || authority.chars().any(|ch| ch.is_whitespace() || ch.is_control())
+        || authority.contains(['/', '?', '#', '@', '"', '\\', '$', '`'])
+    {
+        return Err("proxy must be a credential-free host[:port] URL".to_string());
+    }
+
+    if let Some(rest) = authority.strip_prefix('[') {
+        let close = rest.find(']').ok_or_else(|| "invalid bracketed proxy host".to_string())?;
+        let host = &rest[..close];
+        let suffix = &rest[close + 1..];
+        if host.is_empty() || !host.chars().all(|ch| ch.is_ascii_hexdigit() || matches!(ch, ':' | '.')) {
+            return Err("invalid bracketed proxy host".to_string());
+        }
+        if suffix.is_empty() {
+            validate_proxy_port(None)?;
+        } else {
+            validate_proxy_port(Some(
+                suffix
+                    .strip_prefix(':')
+                    .ok_or_else(|| "invalid proxy port".to_string())?,
+            ))?;
+        }
+    } else {
+        if authority.matches(':').count() > 1 {
+            return Err("IPv6 proxy hosts must use brackets".to_string());
+        }
+        let (host, port) = authority
+            .rsplit_once(':')
+            .map(|(host, port)| (host, Some(port)))
+            .unwrap_or((authority, None));
+        if host.is_empty()
+            || !host.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-'))
+        {
+            return Err("invalid proxy host".to_string());
+        }
+        validate_proxy_port(port)?;
+    }
+
+    Ok(is_socks)
 }
 
 fn proxy_set() -> Result<(), String> {
     let value = stdin_line()?;
     let value = value.trim();
-    if value.is_empty() || value.contains('\n') || value.contains('\r') || value.contains('"') {
-        return Err("invalid proxy URL".to_string());
-    }
-    if !(value.starts_with("http://") || value.starts_with("https://") || value.starts_with("socks5://")) {
-        return Err("proxy must start with http://, https:// or socks5://".to_string());
-    }
+    let is_socks = validate_proxy_url(value)?;
+
     let root = config_root();
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
     fs::write(root.join("proxy.env"), format!("{value}\n")).map_err(|error| error.to_string())?;
 
     let env_dir = home().join(".config/environment.d");
     fs::create_dir_all(&env_dir).map_err(|error| error.to_string())?;
-    let content = if value.starts_with("socks5://") {
+    let content = if is_socks {
         format!("ALL_PROXY=\"{value}\"\nall_proxy=\"{value}\"\n")
     } else {
         format!(
@@ -380,6 +665,11 @@ fn proxy_set() -> Result<(), String> {
         )
     };
     fs::write(env_dir.join("90-vesper-proxy.conf"), content).map_err(|error| error.to_string())?;
+    let _ = Command::new("systemctl")
+        .args(["--user", "daemon-reload"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     Ok(())
 }
 
@@ -394,6 +684,11 @@ fn proxy_clear() -> Result<(), String> {
             Err(error) => return Err(error.to_string()),
         }
     }
+    let _ = Command::new("systemctl")
+        .args(["--user", "daemon-reload"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
     Ok(())
 }
 
@@ -403,6 +698,27 @@ fn today() -> String {
 
 fn wellbeing_dir() -> PathBuf {
     state_root().join("wellbeing")
+}
+
+fn wellbeing_enabled_path() -> PathBuf {
+    config_root().join("wellbeing.enabled")
+}
+
+fn wellbeing_enabled() -> bool {
+    match fs::read_to_string(wellbeing_enabled_path()) {
+        Ok(value) => matches!(value.trim(), "1" | "on" | "true"),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+        Err(_) => false,
+    }
+}
+
+fn wellbeing_set(enabled: bool) -> Result<(), String> {
+    let path = wellbeing_enabled_path();
+    let parent = path.parent().ok_or_else(|| "invalid wellbeing state path".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let tmp = parent.join(format!(".wellbeing.{}.tmp", std::process::id()));
+    fs::write(&tmp, if enabled { "1\n" } else { "0\n" }).map_err(|error| error.to_string())?;
+    fs::rename(tmp, path).map_err(|error| error.to_string())
 }
 
 fn sanitise_app(value: &str) -> String {
@@ -456,6 +772,25 @@ fn active_app() -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
+fn shell_bool(target: &str, method: &str) -> Option<bool> {
+    let value = output("caelestia-shell", &["ipc", "call", target, method]).ok()?;
+    match value.trim().trim_matches('"') {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+fn wellbeing_sampling_allowed() -> bool {
+    // Fail closed. If the shell is unavailable or its state cannot be queried,
+    // wellbeing pauses instead of accidentally attributing locked/idle time to
+    // the last focused application.
+    matches!(
+        (shell_bool("lock", "isLocked"), shell_bool("idle", "isIdle")),
+        (Some(false), Some(false))
+    )
+}
+
 fn load_wellbeing(path: &Path) -> BTreeMap<String, u64> {
     let mut map = BTreeMap::new();
     for line in fs::read_to_string(path).unwrap_or_default().lines() {
@@ -471,6 +806,8 @@ fn load_wellbeing(path: &Path) -> BTreeMap<String, u64> {
 fn write_wellbeing(path: &Path, values: &BTreeMap<String, u64>) -> Result<(), String> {
     let parent = path.parent().ok_or_else(|| "invalid wellbeing path".to_string())?;
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::set_permissions(parent, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
     let tmp = parent.join(format!(".{}.tmp", std::process::id()));
     let mut data = String::new();
     for (name, seconds) in values {
@@ -480,12 +817,16 @@ fn write_wellbeing(path: &Path, values: &BTreeMap<String, u64>) -> Result<(), St
         data.push('\n');
     }
     fs::write(&tmp, data).map_err(|error| error.to_string())?;
+    fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))
+        .map_err(|error| error.to_string())?;
     fs::rename(tmp, path).map_err(|error| error.to_string())
 }
 
 fn acquire_wellbeing_lock() -> Result<LockGuard, String> {
     let dir = wellbeing_dir();
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))
+        .map_err(|error| error.to_string())?;
     let lock = dir.join("daemon.lock");
 
     for _ in 0..2 {
@@ -530,8 +871,10 @@ fn wellbeing_daemon() -> Result<(), String> {
             path = wellbeing_dir().join(format!("{day}.tsv"));
             values = load_wellbeing(&path);
         }
-        if let Some(app) = active_app() {
-            *values.entry(app).or_insert(0) += tick.as_secs();
+        if wellbeing_enabled() && wellbeing_sampling_allowed() {
+            if let Some(app) = active_app() {
+                *values.entry(app).or_insert(0) += tick.as_secs();
+            }
         }
         if last_flush.elapsed() >= Duration::from_secs(30) {
             write_wellbeing(&path, &values)?;
@@ -586,6 +929,18 @@ fn flatpak_id(id: &str) -> &str {
     id.strip_suffix(".desktop").unwrap_or(id)
 }
 
+fn flatpak_permission_has(permissions: &str, key: &str, item: &str) -> bool {
+    permissions.lines().any(|line| {
+        let Some(values) = line.trim().strip_prefix(&format!("{key}=")) else {
+            return false;
+        };
+        values
+            .split(';')
+            .map(str::trim)
+            .any(|value| value == item || value.starts_with(&format!("{item}:")))
+    })
+}
+
 fn app_status(id: &str) {
     let flatpak_id = flatpak_id(id);
     let is_flatpak = success("flatpak", &["info", flatpak_id]);
@@ -594,11 +949,16 @@ fn app_status(id: &str) {
     } else {
         String::new()
     };
+    let network_allowed = is_flatpak && flatpak_permission_has(&permissions, "shared", "network");
+    let home_allowed = is_flatpak && flatpak_permission_has(&permissions, "filesystems", "home");
     println!(
-        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"todaySeconds\":{}}}",
+        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"networkAllowed\":{},\"homeAllowed\":{},\"permissionsManageable\":{},\"todaySeconds\":{}}}",
         if is_flatpak { "flatpak" } else { "native" },
         json_escape(flatpak_id),
         json_escape(&permissions),
+        if network_allowed { "true" } else { "false" },
+        if home_allowed { "true" } else { "false" },
+        if is_flatpak { "true" } else { "false" },
         wellbeing_seconds_for(id)
     );
 }
@@ -683,12 +1043,16 @@ fn usage() -> ! {
         "vesper-control\n\
          commands:\n\
            ai-status\n\
+           credential list\n\
            credential status|set|clear <provider>\n\
-           credential exec <provider> <command> [args...]\n\
+           credential set <provider> <alias>\n\
+           credential exec <provider-or-alias> [--] <command> [args...]\n\
            network status\n\
            network airplane on|off\n\
+           network dpi on|off\n\
            network wifi-qr\n\
            proxy status|set|clear\n\
+           wellbeing status|on|off\n\
            wellbeing-daemon\n\
            wellbeing-summary\n\
            app-status <desktop-id>\n\
@@ -704,25 +1068,44 @@ fn main() {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.as_slice() {
         [command] if command == "ai-status" => ai_status(),
+        [group, action] if group == "credential" && action == "list" => credential_alias_list(),
         [group, action, id] if group == "credential" && action == "status" => {
-            if provider(id).is_none() {
-                print_error(&format!("unknown provider: {id}"));
+            if provider(id).is_some() {
+                println!("{}", if credential_configured(id) { "configured" } else { "missing" });
+            } else {
+                let provider_id = credential_alias_provider(id).unwrap_or_else(|error| print_error(&error));
+                println!("{}", if credential_alias_configured(id, &provider_id) { "configured" } else { "missing" });
             }
-            println!("{}", if credential_configured(id) { "configured" } else { "missing" });
         }
         [group, action, id] if group == "credential" && action == "set" => {
             credential_set(id).unwrap_or_else(|error| print_error(&error));
         }
+        [group, action, provider_id, alias] if group == "credential" && action == "set" => {
+            credential_alias_set(provider_id, alias).unwrap_or_else(|error| print_error(&error));
+        }
         [group, action, id] if group == "credential" && action == "clear" => {
-            credential_clear(id).unwrap_or_else(|error| print_error(&error));
+            if provider(id).is_some() {
+                credential_clear(id).unwrap_or_else(|error| print_error(&error));
+            } else {
+                credential_alias_clear(id).unwrap_or_else(|error| print_error(&error));
+            }
         }
         [group, action, id, command @ ..] if group == "credential" && action == "exec" => {
-            credential_exec(id, command);
+            if provider(id).is_some() {
+                credential_exec(id, command);
+            } else {
+                credential_alias_exec(id, command);
+            }
         }
         [group, action] if group == "network" && action == "status" => network_status(),
         [group, action, value] if group == "network" && action == "airplane" => match value.as_str() {
             "on" => airplane(true).unwrap_or_else(|error| print_error(&error)),
             "off" => airplane(false).unwrap_or_else(|error| print_error(&error)),
+            _ => usage(),
+        },
+        [group, action, value] if group == "network" && action == "dpi" => match value.as_str() {
+            "on" => dpi_set(true).unwrap_or_else(|error| print_error(&error)),
+            "off" => dpi_set(false).unwrap_or_else(|error| print_error(&error)),
             _ => usage(),
         },
         [group, action] if group == "network" && action == "wifi-qr" => {
@@ -737,6 +1120,12 @@ fn main() {
         }
         [group, action] if group == "proxy" && action == "clear" => {
             proxy_clear().unwrap_or_else(|error| print_error(&error));
+        }
+        [group, action] if group == "wellbeing" && action == "status" => {
+            println!("{}", if wellbeing_enabled() { "on" } else { "off" });
+        }
+        [group, action] if group == "wellbeing" && (action == "on" || action == "off") => {
+            wellbeing_set(action == "on").unwrap_or_else(|error| print_error(&error));
         }
         [command] if command == "wellbeing-daemon" => {
             wellbeing_daemon().unwrap_or_else(|error| print_error(&error));

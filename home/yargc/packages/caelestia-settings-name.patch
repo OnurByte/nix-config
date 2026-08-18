@@ -1,0 +1,65 @@
+diff --git a/modules/Shortcuts.qml b/modules/Shortcuts.qml
+--- a/modules/Shortcuts.qml
++++ b/modules/Shortcuts.qml
+@@ -13,6 +13,6 @@ Scope {
+     // qmllint enable unresolved-type
+     CustomShortcut {
+         name: "nexus"
+-        description: "Open nexus"
++        description: "Open Settings"
+         onPressed: WindowFactory.create()
+     }
+@@ -124,6 +124,20 @@ Scope {
+         target: "nexus"
+     }
+ 
++    // Public Vesper name. Keep the upstream nexus target above for backwards
++    // compatibility with existing Caelestia keybinds and scripts.
++    IpcHandler {
++        function open(): void {
++            WindowFactory.create();
++        }
++
++        function openPage(page: string): void {
++            WindowFactory.create(null, { initialPageLabel: page });
++        }
++
++        target: "settings"
++    }
++
+     IpcHandler {
+         function info(title: string, message: string, icon: string): void {
+             Toaster.toast(title, message, icon, Toast.Info);
+diff --git a/modules/nexus/WindowFactory.qml b/modules/nexus/WindowFactory.qml
+--- a/modules/nexus/WindowFactory.qml
++++ b/modules/nexus/WindowFactory.qml
+@@ -24,6 +24,20 @@ Singleton {
+         FloatingWindow {
+             id: win
+ 
++            property string initialPageLabel: ""
++
++            Component.onCompleted: {
++                if (!initialPageLabel)
++                    return;
++                for (let i = 0; i < PageRegistry.pages.length; ++i) {
++                    if (PageRegistry.pages[i].label === initialPageLabel) {
++                        nexus.nState.currentPageIdx = i;
++                        return;
++                    }
++                }
++                console.warn("Unknown Settings page", initialPageLabel);
++            }
++
+             color: Colours.tPalette.m3surface
+             surfaceFormat.opaque: false
+ 
+@@ -38,7 +52,7 @@ Singleton {
+             contentItem.Config.screen: screen.name
+             contentItem.Tokens.screen: screen.name
+ 
+-            title: qsTr("Nexus — %1").arg(PageRegistry.pages[nexus.nState.currentPageIdx].label)
++            title: qsTr("Settings — %1").arg(PageRegistry.pages[nexus.nState.currentPageIdx].label)
+ 
+             Nexus {
+                 id: nexus
