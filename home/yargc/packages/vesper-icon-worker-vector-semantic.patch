@@ -1,0 +1,85 @@
+--- a/vesper-icon-worker.rs
++++ b/vesper-icon-worker.rs
+@@ -783,6 +783,82 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompo
+     Ok(())
+ }
+ 
++fn vector_semantic_ready(claim: &Claim) -> bool {
++    claim.source_kind == "svg"
++        && claim.app_ids.iter().all(|app_id| {
++            let canonical = canonical_dir(app_id, &claim.key).join("canonical.svg");
++            canonical.is_file() && !source_is_unsafe_svg(&canonical)
++        })
++}
++
++fn build_vector_semantic_vicon(claim: &Claim, decomposition: &Decomposition) -> Result<(), String> {
++    for app_id in &claim.app_ids {
++        let dir = canonical_dir(app_id, &claim.key);
++        let canonical = dir.join("canonical.svg");
++        let svg = fs::read_to_string(&canonical)
++            .map_err(|error| format!("cannot read preserved vector geometry: {error}"))?;
++        if source_is_unsafe_svg(&canonical) {
++            return Err("preserved vector failed SVG safety validation".to_string());
++        }
++
++        let stage = dir.join(format!(".icon.vicon.{}.semantic.tmp", std::process::id()));
++        if stage.exists() {
++            fs::remove_dir_all(&stage).map_err(|error| error.to_string())?;
++        }
++        let layers = stage.join("groups/01-primary/layers");
++        fs::create_dir_all(&layers).map_err(|error| error.to_string())?;
++        fs::create_dir_all(stage.join("appearances")).map_err(|error| error.to_string())?;
++        fs::write(layers.join("01.svg"), svg).map_err(|error| error.to_string())?;
++        fs::write(
++            stage.join("groups/01-primary/group.json"),
++            "{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"depth\":1}\n",
++        )
++        .map_err(|error| error.to_string())?;
++        fs::write(stage.join("appearances/default.json"), appearance_json("default"))
++            .map_err(|error| error.to_string())?;
++        fs::write(stage.join("appearances/dark.json"), appearance_json("dark"))
++            .map_err(|error| error.to_string())?;
++        fs::write(stage.join("appearances/mono.json"), appearance_json("mono"))
++            .map_err(|error| error.to_string())?;
++
++        let apps = claim
++            .app_ids
++            .iter()
++            .map(|id| format!("\"{}\"", json_escape(id)))
++            .collect::<Vec<_>>()
++            .join(",");
++        let manifest = format!(
++            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-local-vector\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
++            VICON_SCHEMA_VERSION,
++            json_escape(&claim.key),
++            apps,
++            json_escape(&decomposition.provider),
++            json_escape(&decomposition.model),
++            PROMPT_REVISION,
++            json_escape(&decomposition.silhouette),
++            json_escape(&decomposition.background),
++            decomposition.confidence,
++            json_escape(&decomposition.notes),
++        );
++        fs::write(stage.join("manifest.json"), manifest).map_err(|error| error.to_string())?;
++        validate_vicon(&stage)?;
++        install_vicon_dir(&stage, &dir.join("icon.vicon"))?;
++    }
++    Ok(())
++}
++
+ fn local_silhouette(svg: &str) -> &'static str {
+     let lower = svg.to_ascii_lowercase();
+     let circles = lower.matches("<circle").count() + lower.matches("<ellipse").count();
+@@ -884,7 +960,11 @@ fn process_once() -> Result<bool, String> {
+     let result = (|| {
+         let normalized = normalize_source(&claim, &work)?;
+         let decomposition = provider_request(&claim, &normalized, &work)?;
+-        build_raster_vicon(&claim, &normalized, &decomposition)?;
++        if vector_semantic_ready(&claim) {
++            build_vector_semantic_vicon(&claim, &decomposition)?;
++        } else {
++            build_raster_vicon(&claim, &normalized, &decomposition)?;
++        }
+         Ok::<(), String>(())
+     })();
