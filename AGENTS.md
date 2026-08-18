@@ -63,8 +63,9 @@ Do not restore removed components merely because an older document names them.
 - Vesper owns provider configuration, API-key credentials, usage analytics, skills, MCP inventory, live-agent state, desktop integration and the user-facing orchestration interface.
 - Agent orchestration must stay backend-neutral at the Vesper boundary. Optional backends such as CCCC may implement that interface but must not become the product model or a core dependency.
 - Do not introduce another mandatory orchestration/control plane around Vesper.
-- TurnLens, ccusage and CodexBar have different jobs; keep them distinct and follow `docs/AI-ANALYTICS.md` for analytics semantics.
-- The Agent Cockpit may observe live processes and Git state, but persistent session snapshots belong under `~/.local/state/vesper/agents/` rather than hidden ad-hoc files elsewhere.
+- AgentsView is the primary durable AI session/activity archive. CodexBar owns live provider limits, ccusage is the accounting cross-check and TurnLens is the supported per-turn microscope; follow `docs/AI-ANALYTICS.md` for analytics semantics.
+- The Agent Cockpit may observe live processes and Git state and may keep bounded process snapshots under `~/.local/state/vesper/agents/`, but those snapshots must not become a competing analytics archive.
+- CCCC application integration must use its supported SDK/IPC surface. Do not parse its append-only ledger or human-readable CLI output as the Vesper application API.
 - `~/.agents/skills` is the canonical active skill tree. Agent-specific skill paths should link back to it instead of becoming separately maintained copies.
 - Hermes research may propose reusable skills under `~/.local/share/vesper/skill-drafts/`. Drafts stay inactive until reviewed and promoted.
 - Hermes' own cron/scheduled automation layer owns recurring Hermes research. Do not duplicate the same jobs with GitHub Actions, systemd timers or a second cron layer.
