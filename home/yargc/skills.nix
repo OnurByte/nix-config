@@ -34,12 +34,6 @@ let
     ".config/opencode/skills"
   ];
 
-  # Qwen Code requires skill metadata in SKILL.md. Expose only reviewed skills
-  # that satisfy that contract instead of linking the whole mixed-format tree.
-  qwenSkillNames = [
-    "agent-orchestration"
-  ];
-
   # Hermes keeps its own bundled/agent-created skill tree. Expose only Vesper's
   # local workflow skills plus Anthropic's eval-oriented skill-creator there,
   # while retaining Hermes' native bundled skills.
@@ -69,13 +63,6 @@ let
     )
   );
 
-  qwenLinks = builtins.listToAttrs (
-    map (skill: {
-      name = ".qwen/skills/${skill}";
-      value.source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/${canonicalRoot}/${skill}";
-    }) qwenSkillNames
-  );
-
   hermesLinks = builtins.listToAttrs (
     map (skill: {
       name = ".hermes/skills/vesper/${skill}";
@@ -84,7 +71,7 @@ let
   );
 in
 {
-  home.file = canonicalLinks // agentLinks // qwenLinks // hermesLinks // {
+  home.file = canonicalLinks // agentLinks // hermesLinks // {
     # Cron sessions are isolated and do not receive built-in Hermes memory by
     # default, so lane state must remain durable outside the agent session.
     ".local/state/vesper/research/.keep".text = "";
