@@ -25,6 +25,21 @@ fn sync_queue() -> Result<(), String> {
     }
 }
 
+fn sync_vicons() -> Result<(), String> {
+    let status = Command::new("vesper-icon-worker")
+        .arg("sync-vicons")
+        .status()
+        .map_err(|error| format!("failed to run vesper-icon-worker: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "vesper-icon-worker sync-vicons exited with {}",
+            status.code().unwrap_or(-1)
+        ))
+    }
+}
+
 fn retry_queue_app(id: &str) {
     let _ = Command::new("vesper-icon-queue")
         .args(["retry-app", id])
@@ -34,6 +49,12 @@ fn retry_queue_app(id: &str) {
 fn stop(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+fn stop_all(children: &mut [&mut Child]) {
+    for child in children {
+        stop(child);
+    }
 }
 
 fn daemon() -> Result<(), String> {
@@ -48,13 +69,20 @@ fn daemon() -> Result<(), String> {
             return Err(format!("failed to start icon queue: {error}"));
         }
     };
+    let mut worker = match Command::new("vesper-icon-worker").arg("daemon").spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            stop_all(&mut [&mut engine, &mut queue]);
+            return Err(format!("failed to start icon worker: {error}"));
+        }
+    };
 
     loop {
         if let Some(status) = engine
             .try_wait()
             .map_err(|error| format!("failed to poll icon engine: {error}"))?
         {
-            stop(&mut queue);
+            stop_all(&mut [&mut queue, &mut worker]);
             return Err(format!(
                 "icon engine exited with {}",
                 status.code().unwrap_or(-1)
@@ -64,14 +92,32 @@ fn daemon() -> Result<(), String> {
             .try_wait()
             .map_err(|error| format!("failed to poll icon queue: {error}"))?
         {
-            stop(&mut engine);
+            stop_all(&mut [&mut engine, &mut worker]);
             return Err(format!(
                 "icon queue exited with {}",
                 status.code().unwrap_or(-1)
             ));
         }
+        if let Some(status) = worker
+            .try_wait()
+            .map_err(|error| format!("failed to poll icon worker: {error}"))?
+        {
+            stop_all(&mut [&mut engine, &mut queue]);
+            return Err(format!(
+                "icon worker exited with {}",
+                status.code().unwrap_or(-1)
+            ));
+        }
         thread::sleep(Duration::from_secs(1));
     }
+}
+
+fn passthrough(command: &str, args: &[String]) -> ! {
+    let status = run(command, args).unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(1);
+    });
+    std::process::exit(status.code().unwrap_or(if status.success() { 0 } else { 1 }));
 }
 
 fn main() {
@@ -86,12 +132,33 @@ fn main() {
     }
 
     if matches!(args.as_slice(), [command] if command == "queue-status") {
-        let status = run("vesper-icon-queue", &["status".to_string()])
-            .unwrap_or_else(|error| {
-                eprintln!("{error}");
-                std::process::exit(1);
-            });
-        std::process::exit(status.code().unwrap_or(1));
+        passthrough("vesper-icon-queue", &["status".to_string()]);
+    }
+    if matches!(args.as_slice(), [command] if command == "queue-pause") {
+        passthrough("vesper-icon-queue", &["pause".to_string()]);
+    }
+    if matches!(args.as_slice(), [command] if command == "queue-resume") {
+        passthrough("vesper-icon-queue", &["resume".to_string()]);
+    }
+    if let [command, id] = args.as_slice() {
+        if command == "queue-app-status" {
+            passthrough(
+                "vesper-icon-queue",
+                &["app-status".to_string(), id.to_string()],
+            );
+        }
+        if command == "export-app" {
+            passthrough(
+                "vesper-icon-worker",
+                &["export-app".to_string(), id.to_string()],
+            );
+        }
+        if command == "export-all" {
+            passthrough(
+                "vesper-icon-worker",
+                &["export-all".to_string(), id.to_string()],
+            );
+        }
     }
 
     let status = run("vesper-icon-engine-core", &args).unwrap_or_else(|error| {
@@ -104,11 +171,28 @@ fn main() {
 
     if matches!(args.as_slice(), [command, id] if command == "app-retry") {
         retry_queue_app(id);
-    } else if matches!(
+    }
+
+    if matches!(
         args.first().map(String::as_str),
-        Some("reconcile" | "enable" | "disable" | "provider" | "app-exclude" | "rebuild-canonical" | "ensure-theme")
+        Some(
+            "reconcile"
+                | "enable"
+                | "disable"
+                | "provider"
+                | "app-exclude"
+                | "app-retry"
+                | "rebuild-canonical"
+                | "ensure-theme"
+                | "mode"
+                | "follow-palette"
+                | "sync-theme"
+        )
     ) {
         if let Err(error) = sync_queue() {
+            eprintln!("warning: {error}");
+        }
+        if let Err(error) = sync_vicons() {
             eprintln!("warning: {error}");
         }
     }
