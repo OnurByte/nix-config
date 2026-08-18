@@ -205,3 +205,16 @@
          }
      }
  }
+--- a/utils/Icons.qml
++++ b/utils/Icons.qml
+@@ -101,6 +101,10 @@ Singleton {
+     }
+ 
+     function getAppIcon(name: string, fallback: string): string {
++        const exact = Quickshell.iconPath(name);
++        if (exact)
++            return exact;
++
+         const icon = DesktopEntries.heuristicLookup(name)?.icon;
+         if (fallback !== "undefined")
+             return Quickshell.iconPath(icon, fallback);
