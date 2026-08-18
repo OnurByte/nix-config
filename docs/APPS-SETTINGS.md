@@ -208,6 +208,16 @@ Current behavior: `vesper-control wellbeing-daemon` samples the active Hyprland 
 
 No wellbeing usage data is uploaded by this feature.
 
+Known accuracy issue: the current collector can keep charging the last foreground application while the desktop is idle or locked because foreground-window presence alone is not proof of active use.
+
+The remediation contract is:
+
+- obtain idle/lock truth from the shell/session owner rather than inferring it from the last active window
+- do not increment application usage while the session is idle or locked
+- do not backfill missed samples as if continuous attention were proven
+- keep foreground sampling explicitly approximate even after idle/lock gating
+- prefer cached/event-driven session state over adding another fast subprocess poll
+
 Target wellbeing can grow into a local Digital Wellbeing surface with:
 
 - daily and weekly graphs
@@ -217,7 +227,7 @@ Target wellbeing can grow into a local Digital Wellbeing surface with:
 - app timers
 - break reminders
 
-The existing foreground collector can remain a source where its granularity is sufficient.
+The existing foreground collector can remain a source where its granularity is sufficient after the idle/lock accounting bug is fixed.
 
 Do not claim exact human attention time from foreground-window sampling alone.
 Do not upload usage history merely to build charts, reminders or category summaries.
