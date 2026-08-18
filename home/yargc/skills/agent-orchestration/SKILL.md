@@ -42,7 +42,9 @@ Route by task difficulty rather than vendor name.
 - do not downgrade work that controls secrets, destructive operations, security boundaries, data migrations or architecture with unresolved ambiguity
 - do not spend the most expensive model on deterministic grunt work when a cheaper worker plus verification is enough
 
-Codex, Qwen-family models, GLM, DeepSeek, Claude, Gemini and other compatible models may be supervisors or workers. Never hard-code one vendor as the hierarchy itself.
+Qwen-family, GLM, DeepSeek, Claude, Gemini, OpenAI and other compatible models may be supervisors, workers or reviewers when the active runtime/provider exposes them. Never hard-code one vendor as the hierarchy itself.
+
+A model is not a runtime. Do not install or configure a separate model-vendor CLI merely because that model is used as a worker. Prefer selecting the model through the already chosen orchestration runtime such as Codex, Claude Code or OpenCode.
 
 If the runtime exposes model grades or per-agent model selectors, use them. If it does not, preserve the hierarchy through role separation, scoped contexts and independent review instead of pretending model routing occurred.
 
@@ -113,20 +115,6 @@ The supervisor owns the final answer. Do not concatenate worker messages and cal
 - cancel or ignore stale workers when another result makes their task obsolete
 - do not spawn a worker solely to confirm an answer already verified by deterministic tests
 
-## runtime adapter: Qwen Code
-
-Qwen Code has native subagents and should use them instead of emulating a swarm with shell scripts.
-
-- use named subagents for focused specialists with fresh context
-- use fork subagents for parallel work that genuinely needs parent conversation context
-- use `model` selectors or configured model grades to put high-capability and low-cost models in different roles
-- use `isolation: worktree` for independent writing agents
-- do not use fork subagents for concurrent edits that require worktree isolation because forks share the parent working directory
-- keep recursive delegation bounded; fork children cannot create further forks
-- use cross-provider model selectors only when that provider is already intentionally configured for the runtime
-
-The supervisor may itself be a Qwen-family, GLM, DeepSeek or another configured model. The hierarchy is based on capability and task shape, not nationality or vendor.
-
 ## runtime adapter: Codex
 
 Use Codex's native multi-agent/parallel task and worktree primitives when the current Codex surface exposes them.
@@ -140,7 +128,7 @@ Use Codex's native multi-agent/parallel task and worktree primitives when the cu
 
 ## other runtimes
 
-Map the same contract onto equivalent primitives:
+Map the same contract onto equivalent primitives exposed by Claude Code, OpenCode or another already selected runtime:
 
 ```text
 spawn/delegate -> bounded worker
@@ -152,10 +140,12 @@ review agent -> independent verification
 
 If a runtime lacks one of these primitives, degrade safely. In particular, missing write isolation means parallel workers should remain read-only.
 
+Do not add another runtime solely to reach a model that the current runtime/provider can already expose.
+
 ## Vesper boundary
 
 Follow `AGENTS.md` and the authoritative subsystem document for every repository change.
 
-This skill is procedural memory. It does not make CCCC, Qwen Code, Codex or any other orchestration backend a mandatory Vesper dependency, and it does not change the backend-neutral Agent Teams product boundary in `docs/AI.md`.
+This skill is procedural memory. It does not make CCCC, Codex, Claude Code, OpenCode or any other orchestration backend a mandatory Vesper dependency, and it does not change the backend-neutral Agent Teams product boundary in `docs/AI.md`.
 
 For Vesper changes, the supervisor must keep one source of truth, avoid duplicated control planes, respect capability/secret boundaries and run the repository verification required by the files actually changed.
