@@ -4,8 +4,11 @@
   flatpak,
   gnupatch,
   hyprland,
+  inotify-tools,
   lib,
   libsecret,
+  librsvg,
+  libxml2,
   makeWrapper,
   networkmanager,
   qrencode,
@@ -15,7 +18,7 @@
 }:
 stdenv.mkDerivation {
   pname = "vesper-control";
-  version = "0.1.0";
+  version = "0.2.0";
 
   dontUnpack = true;
 
@@ -28,25 +31,36 @@ stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
     cp ${./vesper-control.rs} vesper-control.rs
+    cp ${./vesper-icons.rs} vesper-icons.rs
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
     rustc --edition=2021 -C opt-level=2 vesper-control.rs -o vesper-control
+    rustc --edition=2021 -C opt-level=2 vesper-icons.rs -o vesper-icon-engine
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
     install -Dm755 vesper-control $out/bin/vesper-control
+    install -Dm755 vesper-icon-engine $out/bin/vesper-icon-engine
+
+    runtimePath=${lib.makeBinPath [
+      bluez
+      coreutils
+      flatpak
+      hyprland
+      inotify-tools
+      libsecret
+      librsvg
+      libxml2
+      networkmanager
+      qrencode
+      systemd
+    ]}
+
     wrapProgram $out/bin/vesper-control \
-      --prefix PATH : ${lib.makeBinPath [
-        bluez
-        coreutils
-        flatpak
-        hyprland
-        libsecret
-        networkmanager
-        qrencode
-        systemd
-      ]}
+      --prefix PATH : "$out/bin:$runtimePath"
+    wrapProgram $out/bin/vesper-icon-engine \
+      --prefix PATH : "$runtimePath"
     runHook postInstall
   '';
 
