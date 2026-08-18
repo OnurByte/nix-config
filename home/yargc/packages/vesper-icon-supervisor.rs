@@ -217,6 +217,7 @@ fn main() {
                 | "rebuild-canonical"
                 | "ensure-theme"
                 | "mode"
+                | "material"
                 | "follow-palette"
                 | "sync-theme"
         )
