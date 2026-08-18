@@ -54,6 +54,49 @@ Vesper Hub stays glanceable. It must not become a second AI settings application
 
 The AI section owns the detailed control plane.
 
+### compact quota pressure widget
+
+Vesper should expose a tiny bar-level quota-pressure surface for the providers that matter right now. This is a presentation layer over the existing AI Hub/CodexBar pipeline, not a new quota backend.
+
+Target compact form may look like:
+
+```text
+Codex 63% · Claude 28%
+```
+
+The percentage shown in the compact surface represents the normalized `usedPercent` for the selected quota window. The tooltip or expanded Hub must make the semantic explicit and show reset/freshness details when available.
+
+Rules:
+
+- read only the normalized Vesper AI Hub snapshot; do not add provider-specific parsing in the bar
+- keep CodexBar authoritative for supported live provider/account quota facts
+- order providers by quota pressure so the most constrained reliable provider is surfaced first
+- keep the compact surface bounded; normally show at most the one or two most useful provider summaries rather than every configured provider
+- use the existing health/pressure semantics from `AI-ANALYTICS.md`; do not invent a second warning threshold system for the bar
+- clicking the widget opens the existing Vesper Hub rather than a parallel settings popup
+- manual refresh should reuse the existing AI Hub refresh path
+- if data is stale, preserve the last valid values and visibly mark the widget stale/dimmed
+- if no trustworthy quota value exists, show an unknown/unavailable state rather than `0%`
+- provider failure and quota pressure remain separate facts; a critical provider must not cause another provider's quota label to inherit that failure
+- do not add another analytics database, daemon, subscription scraper or provider credential store for this widget
+
+The bar is therefore a glanceable entry point into the existing control plane:
+
+```text
+CodexBar / provider sources
+          │
+          ▼
+   Vesper AI Hub
+   normalized snapshot
+          │
+     ┌────┴────┐
+     ▼         ▼
+quota widget  Vesper Hub
+  glance       detail
+```
+
+This follows the same product principle as the rest of Vesper: authoritative sources own facts, Vesper owns normalization and semantics, and lightweight surfaces only render that normalized state.
+
 ## credentials
 
 The credential manager is API-key only. It does not implement OAuth.
