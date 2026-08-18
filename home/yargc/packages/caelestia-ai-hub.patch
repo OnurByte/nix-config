@@ -205,3 +205,57 @@
          }
      }
  }
+--- a/utils/Icons.qml
++++ b/utils/Icons.qml
+@@ -2,10 +2,43 @@ pragma Singleton
+ 
+ import QtQuick
+ import Quickshell
++import Quickshell.Io
+ import Quickshell.Services.Notifications
+ import Caelestia.Config
+ 
+ Singleton {
+     id: root
++
++    property var vesperIdentity: ({ aliases: ({}) })
++    readonly property string vesperIdentityPath: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}/vesper/adaptive-icons/identity.json`
++
++    FileView {
++        id: vesperIdentityFile
++
++        path: root.vesperIdentityPath
++        printErrors: false
++        watchChanges: true
++        onFileChanged: reload()
++        onLoaded: {
++            try {
++                root.vesperIdentity = JSON.parse(text());
++            } catch (e) {
++                root.vesperIdentity = ({ aliases: ({}) });
++            }
++        }
++    }
++
++    function vesperAppIcon(name: string): string {
++        if (!name)
++            return "";
++        const aliases = root.vesperIdentity?.aliases ?? ({});
++        const mapping = aliases[name] ?? aliases[name.toLowerCase()];
++        if (!mapping?.themeIcon)
++            return "";
++        return Quickshell.iconPath(mapping.themeIcon, true);
++    }
+ 
+     readonly property var weatherIcons: ({
+@@ -93,6 +126,10 @@ Singleton {
+     }
+ 
+     function getAppIcon(name: string, fallback: string): string {
++        const adaptive = root.vesperAppIcon(name);
++        if (adaptive)
++            return adaptive;
++
+         const icon = DesktopEntries.heuristicLookup(name)?.icon;
+         if (fallback !== "undefined")
+             return Quickshell.iconPath(icon, fallback);
