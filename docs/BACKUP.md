@@ -62,6 +62,21 @@ sudo chmod 0600 /etc/vesper/restic.env
 sudo chown root:root /etc/vesper/restic.env
 ```
 
+## health reporting contract
+
+`/etc/vesper/restic.env` is intentionally unreadable by the normal `yargc` session. A user-level health command must therefore **not** use successful read access as proof that Restic is configured.
+
+Current known issue: `vesper-doctor` checks the file with the caller's read permission. With the required `0600 root:root` mode this can produce a false `Restic is not configured yet` result and Hermes can inherit that false unhealthy state.
+
+The remediation must preserve the secret boundary:
+
+- do not relax `/etc/vesper/restic.env` permissions merely to satisfy diagnostics
+- configuration health may check file existence/metadata or another service-owned readiness signal that does not expose file contents
+- repository reachability and credential validity belong to privileged backup/check execution, not an unprivileged secret read
+- Hermes should only report Restic unhealthy when the underlying backup health signal is actually unhealthy
+
+This item is tracked in the active remediation ledger in `README.md` and remains open until the diagnostic implementation is fixed and verified.
+
 ## initialize once
 
 After the destination exists:
