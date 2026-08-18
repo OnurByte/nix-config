@@ -6,6 +6,8 @@ This document owns Vesper-specific installed-application settings behavior and t
 
 Vesper extends Caelestia's native Apps surface instead of adding a second settings application. Vesper Store is a separate native Qt 6 / QML application for discovery and installation.
 
+`SETTINGS.md` owns where Apps, App Inspector and Wellbeing appear in the wider Settings information architecture.
+
 ## current state
 
 Implemented Vesper-specific pieces include:
@@ -19,7 +21,7 @@ Implemented Vesper-specific pieces include:
 
 Caelestia may provide base installed-app list/detail behavior independently of these Vesper extensions. Inspect the current QML and backend before assuming every target field or transaction below is already wired end to end.
 
-The full ownership-aware remove/size/source transaction contract described later in this document is target behavior and depends on the shared Vesper Store core becoming complete.
+The full ownership-aware remove/size/source transaction contract and App Inspector fields described later in this document are target behavior and depend on their corresponding backends becoming complete.
 
 ## ownership boundary
 
@@ -37,7 +39,8 @@ Settings -> Apps
   -> launch
   -> installed source/ownership state
   -> remove when the real owner supports it
-  -> permissions
+  -> real enforceable permissions
+  -> app/runtime inspection
   -> wellbeing
   -> adaptive icon controls
 ```
@@ -77,6 +80,30 @@ Selecting a row should open the application detail view inside Settings.
 
 Do not infer installed state from Store catalogue membership alone.
 
+## App Inspector
+
+The target application detail should evolve into an **App Inspector** rather than a page full of generic permission toggles.
+
+When reliable sources exist, useful inspectable state includes:
+
+- executable and package/source owner
+- canonical desktop entry
+- installed version and size
+- native/Flatpak/sandbox ownership
+- Wayland/XWayland state
+- current processes
+- CPU and memory use
+- GPU activity
+- current network connections
+- autostart state
+- file associations
+- wellbeing usage
+- adaptive-icon state
+
+Unknown data stays unknown. Do not fabricate process, GPU, network or package ownership from application names alone.
+
+The inspector can combine data from several local sources, but the backend owns attribution and normalization. QML should not scrape `/proc`, shell output or package-manager text directly.
+
 ## application detail
 
 Target contract: the detail view is the canonical installed-app management surface.
@@ -95,6 +122,7 @@ The main information may include:
 - installed version;
 - source and ownership;
 - native or Flatpak sandbox state;
+- App Inspector runtime state;
 - wellbeing usage;
 - per-app adaptive icon state and actions.
 
@@ -151,13 +179,24 @@ When adaptive icons are active, the detail surface should preview the actual act
 
 Keep per-app actions such as regenerate, retry, revert, export or exclude with the installed application. Global appearance/material selection remains in Appearance and global remote-generation controls remain in AI.
 
-## permissions
+## permissions and sandboxing
 
 Current Vesper backend behavior supports real user Flatpak overrides for the permissions it exposes, including network and home-directory access.
 
 Native Nix applications are shown as native/unsandboxed. Vesper must not present Flatpak-style toggles as if they can restrict an ordinary native process.
 
 Vesper Store does not own or duplicate the permission editor.
+
+A future **Vesper sandbox launch profile** may add real isolation for selected native applications through an enforceable backend such as bubblewrap or systemd sandboxing.
+
+Only after a real sandbox profile exists may Apps expose native restriction toggles such as network or home access for that launch path.
+
+Rules:
+
+- a permission toggle must correspond to a real enforcement mechanism
+- native/unsandboxed must remain explicit when no sandbox is active
+- do not imply that observing a process or network connection means Vesper can restrict it
+- sandbox launch profiles must be reversible and must not silently rewrite the underlying application package
 
 ## wellbeing
 
@@ -168,6 +207,22 @@ Current behavior: `vesper-control wellbeing-daemon` samples the active Hyprland 
 ```
 
 No wellbeing usage data is uploaded by this feature.
+
+Target wellbeing can grow into a local Digital Wellbeing surface with:
+
+- daily and weekly graphs
+- application categories
+- category distribution such as coding/browser/social
+- focus mode
+- app timers
+- break reminders
+
+The existing foreground collector can remain a source where its granularity is sufficient.
+
+Do not claim exact human attention time from foreground-window sampling alone.
+Do not upload usage history merely to build charts, reminders or category summaries.
+
+Focus/timer controls must have a real enforcement or notification path before they are shown as active restrictions.
 
 ## adaptive icons
 
@@ -184,5 +239,8 @@ When implementing any target behavior from this document:
 1. inspect the current Caelestia Apps surface first;
 2. extend rather than duplicate existing installed-app UI;
 3. keep Store transaction logic in the shared Rust Store core, not QML;
-4. keep source ownership explicit;
-5. update this document's `current state` section when the feature actually lands.
+4. keep App Inspector normalization and process attribution in a Vesper backend, not QML shell parsing;
+5. keep source ownership explicit;
+6. never expose a permission/restriction toggle without enforcement;
+7. keep wellbeing local by default;
+8. update this document's `current state` section when the feature actually lands.

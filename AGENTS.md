@@ -36,6 +36,11 @@ Do not restore removed components merely because an older document names them.
 ## desktop and UX contract
 
 - Caelestia is the only shell/bar and owns network, Bluetooth, audio, notifications, idle/lock, clipboard, capture, launcher and wallpaper UI.
+- Vesper Settings extends Caelestia Nexus. `docs/SETTINGS.md` owns the Settings information architecture and cross-page UX contract; do not create a second general settings application.
+- Settings should expose real Vesper-owned system capabilities instead of accumulating decorative toggles. NixOS state, recovery, privacy, AI, automation and system health are the distinguishing control-plane areas.
+- Do not turn Vesper Settings into a generic KDE-style systemd/package/config browser. Curate the capabilities Vesper actually owns and can enforce.
+- For settings that can be both runtime and declarative, preserve the runtime/declarative distinction from `docs/SETTINGS.md`; QML must not silently rewrite arbitrary Nix text.
+- Do not show a permission, sandbox, hardware or security toggle unless a backend can enforce it. Unsupported or unenforced capabilities stay explicit.
 - Keep the two `wl-paste -> cliphist store` watchers; they are Caelestia's clipboard backend.
 - Do not reintroduce `nm-applet`, Blueman UI, Pavucontrol, Waybar, hypridle or hyprlock while Caelestia owns those surfaces.
 - Hyprland config is Lua. Keep `home/yargc/hyprland.nix` as wiring and compositor logic under `home/yargc/hypr/*.lua`.
@@ -66,6 +71,7 @@ Do not restore removed components merely because an older document names them.
 - AgentsView is the primary durable AI session/activity archive. CodexBar owns live provider limits, ccusage is the accounting cross-check and TurnLens is the supported per-turn microscope; follow `docs/AI-ANALYTICS.md` for analytics semantics.
 - The Agent Cockpit may observe live processes and Git state and may keep bounded process snapshots under `~/.local/state/vesper/agents/`, but those snapshots must not become a competing analytics archive.
 - CCCC application integration must use its supported SDK/IPC surface. Do not parse its append-only ledger or human-readable CLI output as the Vesper application API.
+- Agent capability permissions must represent real enforcement. Do not present inventory-only MCP/skill/secret/shell/root/network state as an enforceable security policy until a backend actually gates the capability.
 - `~/.agents/skills` is the canonical active skill tree. Agent-specific skill paths should link back to it instead of becoming separately maintained copies.
 - Hermes research may propose reusable skills under `~/.local/share/vesper/skill-drafts/`. Drafts stay inactive until reviewed and promoted.
 - Hermes' own cron/scheduled automation layer owns recurring Hermes research. Do not duplicate the same jobs with GitHub Actions, systemd timers or a second cron layer.
@@ -92,6 +98,8 @@ Do not put decrypted values in Nix source, Git, shell history, process arguments
 - Do not add gaming packages unless explicitly requested.
 - Do not re-add a night-light daemon unless explicitly requested.
 - Vesper Store architecture is owned by `docs/MARKETPLACE.md`; installed application management belongs to Settings -> Apps.
+- Native Nix applications must not receive fake Flatpak-style permission toggles. Real native restrictions require an actual sandbox launch profile first.
+- Wellbeing data stays local by default and must not be presented as exact human attention time when it comes from foreground-window sampling.
 - Adaptive icon architecture is owned only by `docs/ADAPTIVE-ICONS.md`.
 
 ## reliability contract
