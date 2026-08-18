@@ -13,7 +13,9 @@ PageBase {
 
     property var control: ({ credentials: [], skills: { count: 0, items: [] }, mcp: { count: 0, items: [] }, hermesRegistry: false })
     property var hub: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
+    property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0, aiTransport: "pending" })
     property string loadError: ""
+    property string iconMessage: ""
 
     readonly property var credentials: control.credentials || []
     readonly property var skills: control.skills || ({ count: 0, items: [] })
@@ -22,11 +24,26 @@ PageBase {
 
     title: qsTr("AI")
 
+    function providerName(id) {
+        const match = root.credentials.find(item => item.id === id);
+        return match ? match.name : id;
+    }
+
     function refresh() {
         if (!controlStatus.running)
             controlStatus.running = true;
         if (!hubStatus.running)
             hubStatus.running = true;
+        if (!iconStatus.running)
+            iconStatus.running = true;
+    }
+
+    function runIcon(args) {
+        if (iconChange.running)
+            return;
+        root.iconMessage = "";
+        iconChange.command = ["@vesperControl@", "icon"].concat(args);
+        iconChange.running = true;
     }
 
     Component.onCompleted: refresh()
@@ -64,6 +81,29 @@ PageBase {
                     // The settings inventory remains useful even if the usage backend is stale.
                 }
             }
+        }
+    }
+
+    Process {
+        id: iconStatus
+        command: ["@vesperControl@", "icon", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.icons = JSON.parse(text);
+                } catch (e) {
+                    root.iconMessage = qsTr("Could not read adaptive icon status");
+                }
+            }
+        }
+    }
+
+    Process {
+        id: iconChange
+        stderr: StdioCollector { id: iconError }
+        onExited: (code, status) => {
+            root.iconMessage = code === 0 ? "" : iconError.text.trim();
+            root.refresh();
         }
     }
 
@@ -121,6 +161,78 @@ PageBase {
         }
 
         SectionHeader {
+            text: qsTr("Adaptive icons")
+        }
+
+        ToggleRow {
+            text: qsTr("Automatic adaptive icons")
+            subtext: qsTr("clean local SVGs are canonicalized automatically; raster AI conversion is not active yet")
+            checked: root.icons.enabled || false
+            disabled: iconChange.running
+            onToggled: root.runIcon([checked ? "enable" : "disable"])
+        }
+
+        InfoRow {
+            icon: "smart_toy"
+            label: qsTr("Conversion provider")
+            subtext: root.icons.providerConfigured ? qsTr("existing Secret Service credential available") : qsTr("API key is not configured")
+            value: root.providerName(root.icons.provider || "openai")
+        }
+
+        InfoRow {
+            icon: "apps"
+            label: qsTr("Discovered apps")
+            subtext: qsTr("resolved from effective XDG desktop entries")
+            value: String(root.icons.discovered || 0)
+        }
+
+        InfoRow {
+            icon: "verified"
+            label: qsTr("Canonical icons")
+            subtext: qsTr("locally validated vector assets")
+            value: String(root.icons.canonical || 0)
+        }
+
+        InfoRow {
+            icon: "hourglass_top"
+            label: qsTr("Pending conversion")
+            subtext: root.icons.aiTransport === "pending" ? qsTr("raster/provider transport is the next engine stage") : qsTr("waiting for semantic conversion")
+            value: String(root.icons.pending || 0)
+        }
+
+        InfoRow {
+            icon: "error"
+            label: qsTr("Failed")
+            subtext: qsTr("original packaged icons remain as fallback")
+            value: String(root.icons.failed || 0)
+        }
+
+        InfoRow {
+            icon: "palette"
+            label: qsTr("Active Vesper icons")
+            subtext: qsTr("compiled into the generated freedesktop theme")
+            value: String(root.icons.active || 0)
+        }
+
+        RowButton {
+            icon: "sync"
+            text: qsTr("Reconcile icon inventory")
+            subtext: qsTr("rescan desktop entries, validate sources and rebuild the local theme")
+            trailingIcon: "refresh"
+            disabled: iconChange.running
+            onClicked: root.runIcon(["reconcile"])
+        }
+
+        RowButton {
+            icon: "restart_alt"
+            text: qsTr("Rebuild canonical assets")
+            subtext: qsTr("discard the local canonical cache and validate installed sources again")
+            trailingIcon: "refresh"
+            disabled: iconChange.running
+            onClicked: root.runIcon(["rebuild-canonical"])
+        }
+
+        SectionHeader {
             text: qsTr("Credentials")
         }
 
@@ -165,8 +277,8 @@ PageBase {
         StyledText {
             Layout.fillWidth: true
             Layout.topMargin: Tokens.spacing.medium
-            visible: root.loadError
-            text: root.loadError
+            visible: root.loadError || root.iconMessage
+            text: root.loadError || root.iconMessage
             color: Colours.palette.m3error
             font: Tokens.font.body.small
             wrapMode: Text.WordWrap
