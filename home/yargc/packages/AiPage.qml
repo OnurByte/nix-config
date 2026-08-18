@@ -14,8 +14,8 @@ PageBase {
 
     property var control: ({ credentials: [], skills: { count: 0, items: [] }, mcp: { count: 0, items: [] }, hermesRegistry: false })
     property var hub: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
-    property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0 })
-    property var iconQueue: ({ total: 0, pending: 0, ready: 0, running: 0, retryWait: 0, blockedNoProvider: 0, blockedNoConsent: 0, failed: 0, succeeded: 0, superseded: 0, paused: false, transport: "active" })
+    property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, remoteConsent: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0 })
+    property var iconQueue: ({ total: 0, pending: 0, ready: 0, running: 0, retryWait: 0, blockedNoProvider: 0, blockedNoConsent: 0, consentGranted: false, failed: 0, succeeded: 0, superseded: 0, paused: false, transport: "active" })
     property string loadError: ""
     property string iconMessage: ""
 
@@ -230,6 +230,14 @@ PageBase {
             onToggled: root.runIcon([checked ? "enable" : "disable"])
         }
 
+        ToggleRow {
+            text: qsTr("Allow remote icon analysis")
+            subtext: qsTr("send only normalized application icon artwork to the selected provider when semantic conversion is required")
+            checked: root.icons.remoteConsent || false
+            disabled: iconChange.running
+            onToggled: root.runIcon(["remote-consent", checked ? "on" : "off"])
+        }
+
         SelectRow {
             label: qsTr("Conversion provider")
             subtext: root.icons.providerConfigured ? qsTr("existing Secret Service credential is ready") : qsTr("selected provider needs an API key")
@@ -263,11 +271,13 @@ PageBase {
         InfoRow {
             icon: "hourglass_top"
             label: qsTr("Conversion queue")
-            subtext: root.iconQueue.blockedNoProvider > 0
-                ? qsTr("%1 source jobs are waiting for the selected provider").arg(root.iconQueue.blockedNoProvider)
-                : root.iconQueue.paused
-                    ? qsTr("queue is paused")
-                    : qsTr("SQLite-backed source-hash queue")
+            subtext: root.iconQueue.blockedNoConsent > 0
+                ? qsTr("%1 source jobs are waiting for remote-analysis consent").arg(root.iconQueue.blockedNoConsent)
+                : root.iconQueue.blockedNoProvider > 0
+                    ? qsTr("%1 source jobs are waiting for the selected provider").arg(root.iconQueue.blockedNoProvider)
+                    : root.iconQueue.paused
+                        ? qsTr("queue is paused")
+                        : qsTr("SQLite-backed source-hash queue")
             value: qsTr("%1 pending").arg(root.iconQueue.pending || root.icons.pending || 0)
         }
 
