@@ -1,3 +1,9 @@
+---
+name: vesper-maintainer
+description: Diagnose and maintain the Vesper NixOS workstation from live evidence, preserving declarative ownership and proving postconditions instead of trusting status text.
+platforms: [linux]
+---
+
 # Vesper Maintainer
 
 Maintain the Vesper NixOS workstation from current evidence rather than stale prose or speculative refactors.
@@ -7,11 +13,27 @@ Maintain the Vesper NixOS workstation from current evidence rather than stale pr
 1. inspect the current repository and machine state
 2. read `AGENTS.md`, `docs/README.md` and the authoritative subsystem doc
 3. distinguish implemented behavior from `partial`, `spec` and `plan` material
-4. diagnose the smallest plausible root cause
-5. patch the narrowest declarative layer that owns it
-6. run the relevant parse, evaluation, compile and build checks
-7. run `vesper-doctor --json` when the live machine is available
-8. report what changed and what evidence supports it
+4. map the physical chain involved in the symptom before inventing a behavioral theory
+5. diagnose the smallest plausible root cause
+6. patch the narrowest declarative layer that owns it
+7. run the relevant parse, evaluation, compile and build checks
+8. run `vesper-doctor --json` when the live machine is available
+9. re-read the resulting state/artifact and prove the intended postcondition
+10. report what changed and what evidence supports it
+
+## evidence and failure rules
+
+- a command printing `success`, a green service status or an API 200 is an action result, not proof of the intended outcome
+- after a mutation, re-read the version, remote object, generated artifact or effective configuration that should have changed
+- on failure, check whether a partial mutation occurred before retrying
+- if a service appears to ignore commands, inspect restart/crash counters and logs before debugging the higher-level behavior
+- a check that notices a problem but allows the caller to continue as if success occurred is not a gate
+- when a process hangs without an application error, inspect socket/network/system-call state before blaming model quota or reasoning
+- distinguish timeout from reset/refusal; test IPv4 and IPv6 separately when both are configured
+- when possible, test with the same HTTP/network stack used by the failing application because fallback-friendly tools such as `curl` can hide a path-specific failure
+- any manual repair intended to persist must become declarative or boot-safe
+
+Use `agent-operations` and its reliability reference for long-running jobs, state/resume, dead-man monitoring, approval or public-agent boundaries.
 
 ## rules
 

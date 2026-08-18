@@ -32,7 +32,21 @@ Load only what the task needs:
 - `references/web-tor.md` — clearnet/onion research
 - `references/research-evolution.md` — procedure/eval evolution
 
+For operational questions such as durable scheduled state, missing/stale runs, skill promotion or model QA, use the shared `agent-operations` skill instead of duplicating those rules here.
+
 Do not dump every reference into every run.
+
+## research intent
+
+Classify the run before discovery:
+
+```text
+audit        verify/refute a bounded claim or implementation
+exploration  search broadly for useful things outside the current framing
+blended      preserve specific verification goals while retaining an open discovery budget
+```
+
+In exploration, supplied hypotheses and known sources are a floor, not a fence. In audit, distinguish verified evidence, hypotheses, contradictions and unknowns. In blended mode, label which findings came from the constrained verification half and which came from open exploration.
 
 ## daily lanes
 
@@ -50,6 +64,22 @@ The scheduled frontier uses four scouts:
 4. web/onion
 
 Their normal combined target is about `600` canonical candidate inspections and `48` deeper reads. These are targets, not numbers to fabricate.
+
+## deterministic intake first
+
+Do not spend LLM context on operations that can be performed deterministically.
+
+Prefer RSS/Atom, API metadata, repository/issue/PR metadata and simple HTTP/script normalization for broad intake before semantic judgment. The model should receive compact canonical candidate records rather than hundreds of full pages when a cheap first-pass representation is sufficient.
+
+Preserve these distinctions in intake state:
+
+```text
+missing != empty != zero != stale != blocked
+```
+
+A failed/empty source must not silently become `0 findings` and thereby look healthy. Record the access failure separately.
+
+When historical comparison matters, prefer immutable timestamped snapshots or durable run reports over overwriting the only copy of yesterday's raw state.
 
 ## discovery contract
 
@@ -79,6 +109,8 @@ Penalize:
 - price/trading noise
 - generic model chatter
 - mirrors presented as independent sources
+
+Every meaningful exclusion/filter class should be observable. If a candidate was removed because it was duplicate, stale, unsupported or out of scope, preserve aggregate reason counts when practical. A filter that silently erases candidates cannot be calibrated later.
 
 ## Reddit
 
@@ -123,7 +155,24 @@ For a strong candidate:
 5. keep contradictory evidence and caveats
 6. lower confidence instead of inventing verification
 
+A downstream synthesis should see structured evidence and uncertainty, not just persuasive prose. A mechanical/scout stage may score and compress; it must not silently make the final editorial decision for the judgment stage.
+
+If an upstream handoff contains no evidence-bearing findings, downstream synthesis reports that rather than manufacturing a narrative.
+
 Final synthesis should work from distilled evidence, not an unbounded raw-search dump.
+
+## competitor / ecosystem research
+
+When the task is competitive/ecosystem analysis rather than a single technical claim, separate:
+
+```text
+discovery
+-> observable/public metrics with collection dates
+-> qualitative technical/creative matrix
+-> synthesis of clusters, gaps, own weaknesses and actions
+```
+
+Unknown private metrics stay unknown. Refresh fast-changing metrics more often than qualitative positioning and compare with the previous snapshot; the diff is part of the evidence.
 
 ## coverage
 
@@ -139,6 +188,8 @@ Every scout/report should expose actual coverage when measurable:
 
 If access failures prevent the target, report the shortfall. Never manufacture coverage counts.
 
+Coverage is evidence about the search process, not a quality score. A large count does not compensate for weak verification.
+
 ## durable state
 
 Preserve compact state for:
@@ -151,6 +202,10 @@ Preserve compact state for:
 - recent coverage and failures
 
 Raw discovery output is disposable unless it changes a future decision.
+
+Use stable identities for durable records. URLs should be canonicalized where mirrors/tracking parameters represent the same underlying item. Do not use a mutable title as the durable identity of a research object.
+
+When a historical observation later proves anomalous or false, mark/correct its status rather than deleting the history in a way that makes later decisions inexplicable.
 
 ## adaptive source registry
 
@@ -185,13 +240,17 @@ The registry is guidance, not an allowlist. Exploration remains mandatory even w
 
 Runtime evidence may improve source choices, queries and heuristics, but reusable instruction changes require a slower loop:
 
-`trajectory evidence -> draft -> representative eval -> compare -> review -> promote/reject -> monitor`
+`trajectory evidence -> repeated evidence -> draft -> representative eval -> compare -> review -> promote/reject -> monitor`
 
 Stage proposed procedures under `$VESPER_SKILL_DRAFT_DIR`. Never rewrite the active Nix-owned skill automatically because one run suggested a clever rule.
 
+One odd run is an observation, not a new universal instruction. Self-improvement happens after the research task and has bounded maintenance budgets.
+
 Representative evals live under `evals/`.
 
-Judge procedure changes by useful verified findings, unsupported rate, duplicate rate, source diversity, coverage honesty, access-failure reporting and token/time cost when measurable.
+Judge procedure changes by useful verified findings, unsupported rate, duplicate rate, source diversity, coverage honesty, access-failure reporting and token/time cost when measurable. Include false-positive traps/known-good cases where an eval could otherwise reward a model for inventing problems.
+
+Promotion must follow the stale-approval/pre-image rules in `agent-operations`: if the canonical target or reviewed draft changed after review, re-review instead of replaying the old approval.
 
 ## reporting
 
@@ -205,7 +264,7 @@ For each strong finding make clear:
 - uncertainty or access limitations
 - primary source URL when available
 
-If nothing meaningful was found, say so rather than filling quotas.
+If nothing meaningful was found, say so rather than filling quotas. Silence/no finding is an output decision; scheduler freshness and run health are monitored separately.
 
 ## free-AI boundary
 

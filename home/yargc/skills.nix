@@ -20,6 +20,7 @@ let
     pptx = "${anthropicSkills.outPath}/skills/pptx";
 
     agent-orchestration = ./skills/agent-orchestration;
+    agent-operations = ./skills/agent-operations;
     external-review-handoff = ./skills/external-review-handoff;
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
@@ -39,6 +40,7 @@ let
   # local workflow skills plus Anthropic's eval-oriented skill-creator there,
   # while retaining Hermes' native bundled skills.
   hermesSkillNames = [
+    "agent-operations"
     "hermes-research-radar"
     "vesper-obsidian-second-brain"
     "vesper-maintainer"

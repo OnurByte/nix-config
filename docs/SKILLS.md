@@ -28,6 +28,7 @@ Upstream skills:
 Vesper-local skills:
 
 - `agent-orchestration`
+- `agent-operations`
 - `external-review-handoff`
 - `vesper-maintainer`
 - `vesper-adaptive-icons`
@@ -66,6 +67,7 @@ Local skill source files live under `home/yargc/skills/` in this repository.
 Use one skill for one procedural boundary.
 
 - `agent-orchestration` — supervisor/worker/reviewer decomposition, policy-driven model routing, isolated parallelism, evidence gates and final fan-in
+- `agent-operations` — durable execution, postcondition evidence, health/dead-man monitoring, approval/credential boundaries, deterministic pipelines, bounded QA and skill lifecycle governance
 - `external-review-handoff` — secret-safe static code snapshots for deep external review plus mandatory verification against the live repository before implementation
 - `vesper-maintainer` — repository/workstation maintenance rules
 - `vesper-adaptive-icons` — adaptive icon pipeline operations governed by `docs/ADAPTIVE-ICONS.md`
@@ -73,6 +75,36 @@ Use one skill for one procedural boundary.
 - `vesper-obsidian-second-brain` — durable knowledge consolidation and skill-promotion workflow
 
 Do not duplicate repository-wide rules from `AGENTS.md` into every skill. A local skill should add workflow-specific instructions and defer to `AGENTS.md` for global guardrails.
+
+## operations contract
+
+`agent-operations` is the failure-derived operational layer shared by Codex, Claude Code, OpenCode and the Vesper Hermes subset.
+
+It deliberately does **not** become another runtime or control plane. It is procedural memory for contracts that should survive model/vendor changes:
+
+```text
+runtime state != semantic memory != durable context != procedural skill
+controller timeout != task result
+action success != postcondition proof
+internal health != external liveness
+untrusted text != authority
+silence != approval
+unknown != zero
+deterministic work != model work
+```
+
+Long-lived jobs use atomic durable state and idempotent resume. Externally visible side effects use intent/idempotency state and remote re-read before retrying an ambiguous operation. Always-on systems need an independent missing-heartbeat path in addition to internal component checks.
+
+The skill keeps focused references instead of putting every operations rule into every agent context:
+
+```text
+references/reliability.md
+references/governance.md
+references/pipelines.md
+references/lifecycle-evals.md
+```
+
+Load only the reference needed by the task.
 
 ## orchestration routing
 
@@ -93,6 +125,8 @@ Routing is decided before a worker is spawned. When the runtime exposes provider
 Delegated work uses explicit ownership, `must-not-touch` boundaries, acceptance checks and bounded permissions. A worker reporting success is only a claim; the supervisor independently runs or reproduces the acceptance evidence before integration.
 
 Concurrency is based on actual provider and machine headroom rather than a copied fleet size. Many-process fleets must account for duplicated MCP/tool-server memory and cold-start pressure; in-process fan-out is preferred when it provides equivalent isolation at lower overhead.
+
+If a lane may outlive its controller, stop treating it as short-lived delegation and apply the durable-job contract from `agent-operations`.
 
 ## external deep review
 
@@ -126,6 +160,8 @@ blended      tight verification objectives plus open exploration objectives
 
 Hard invariants and evidence quality stay fixed in every mode. Exploration may challenge the initial framing; audit must confirm, refute or narrow it against current evidence rather than echoing the seed hypotheses.
 
+Research intake prefers deterministic collection/normalization before semantic judgment, keeps missing/empty/zero distinct, records exclusion reasons and stops downstream synthesis when an evidence handoff is actually empty.
+
 ## Hermes daily research lanes
 
 `hermes-research-radar` defines separate English-named lanes rather than one generic daily digest:
@@ -142,7 +178,7 @@ free-ai-radar
 
 Each lane keeps independent state, scoring and output so a mainstream agenda item does not dilute hidden-gem discovery and vice versa.
 
-## Hermes drafts
+## Hermes drafts and skill lifecycle
 
 Hermes may discover a reusable method while running scheduled research.
 That does not make the method an active skill immediately.
@@ -157,25 +193,48 @@ Promotion is deliberate:
 
 ```text
 observation
+  -> repeated evidence
   -> candidate heuristic
   -> repeated trials
-  -> active skill candidate
+  -> draft
+  -> representative eval
   -> review
-  -> home/yargc/skills/<name>/SKILL.md
+  -> promote/reject/keep testing
   -> nh os switch
+  -> monitor
 ```
 
-This keeps self-improvement possible without letting one noisy run mutate the active skill tree.
+Self-improvement happens after the main task and is bounded. One surprising run does not rewrite active behavior. New reusable skills and changes to human/Nix-owned canonical skills require review.
+
+Approval is bound to what was reviewed: retain the draft hash and canonical target pre-image. Immediately before applying a promotion, re-read both. If either changed after review, the approval is stale and the change must be reviewed again instead of replayed over intervening edits.
+
+When several lifecycle governors/checks participate, decision composition is conservative: `deny > defer > allow`. A configured required governor that is unavailable/malformed defers rather than failing open.
+
+## QA and route evals
+
+Reusable model QA is bounded:
+
+```text
+deterministic checks first
+round 1 -> full independent review
+round 2 -> only required blocking changes from round 1
+then -> pass or escalate; no endless polish loop
+```
+
+`warning` does not block. `error` requires revision. `reject` stops the pipeline. Verdict is derived from findings rather than written optimistically by the reviewer.
+
+Model/route comparisons use identical fixtures, blind labels where practical, raw untouched outputs and known-good false-positive traps. Evaluate fabricated defects/unsupported claims together with true positives, latency and measurable cost/quota pressure. One run is a sample, not a universal ranking.
 
 ## second brain
 
 Hermes built-in memory is the compact hot memory for facts that should remain in future sessions.
-Obsidian is the larger long-term knowledge graph.
+Obsidian is the larger long-term knowledge graph/durable context.
+Runtime state is job/session continuity.
 Skills are procedural memory.
 
 The Vesper second-brain workflow promotes only durable findings, useful relationships, important corrections, open questions and high-value source knowledge into Obsidian instead of dumping the entire scrape corpus into the vault.
 
-A later reflection/consolidation pass may connect the day's research, update durable notes, save only compact critical facts to Hermes memory and stage reusable procedures as skill drafts.
+A later reflection/consolidation pass may connect the day's research, update durable notes, save only compact critical facts to Hermes memory and stage reusable procedures as skill drafts. Open items are preserved until evidence actually closes them rather than disappearing because the newest summary omitted them.
 
 ## use them
 
@@ -186,6 +245,7 @@ use frontend-design for this page
 use webapp-testing to test the local app
 use mcp-builder to design this MCP server
 use agent-orchestration for this multi-part coding task
+use agent-operations for this persistent agent/job or reliability workflow
 use external-review-handoff to prepare this subsystem for a deep external audit
 use vesper-maintainer to diagnose and repair this workstation issue
 use vesper-adaptive-icons for adaptive icon pipeline work
@@ -204,4 +264,4 @@ After changing either:
 nh os switch
 ```
 
-Keep the active set useful and reviewed. New Hermes discoveries belong in `skill-drafts` until they have repeated evidence behind them.
+Keep the active set useful and reviewed. New Hermes discoveries belong in `skill-drafts` until they have repeated evidence, eval and a non-stale review behind them.

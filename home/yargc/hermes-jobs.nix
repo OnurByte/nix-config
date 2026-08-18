@@ -4,6 +4,7 @@
     mode = "dispatch";
     task = "unknown-frontier-github";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "GitHub unknown-frontier scout";
   };
 
@@ -12,6 +13,7 @@
     mode = "dispatch";
     task = "unknown-frontier-reddit";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "Reddit unknown-frontier scout";
   };
 
@@ -20,7 +22,8 @@
     mode = "dispatch";
     task = "unknown-frontier-x";
     deliver = "local";
-    description = "X unknown-frontier scout";
+    freshnessMinutes = 2160;
+    description = "X with direct/mirror fallback frontier scout";
   };
 
   unknown-frontier-web = {
@@ -28,6 +31,7 @@
     mode = "dispatch";
     task = "unknown-frontier-web";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "protected clearnet and Tor onion frontier scout";
   };
 
@@ -36,6 +40,7 @@
     mode = "dispatch";
     task = "free-ai-radar";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "linux.do-first legitimate free AI and cost-saving radar";
   };
 
@@ -44,6 +49,7 @@
     mode = "dispatch";
     task = "unknown-frontier-synthesis";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "bounded fan-in of fresh GitHub Reddit X and web/onion scout state";
   };
 
@@ -52,6 +58,7 @@
     mode = "dispatch";
     task = "agenda";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "compact current agenda before Morning Check";
   };
 
@@ -60,6 +67,7 @@
     mode = "dispatch";
     task = "morning-check";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "daily Telegram brief built from local project data and persistent Hermes findings";
   };
 
@@ -68,15 +76,16 @@
     mode = "dispatch";
     task = "upstream-edge-radar";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "early warning for Vesper upstream changes";
   };
 
   vesper-health-watch = {
-    schedule = "7 */3 * * *";
+    schedule = "7,22,37,52 * * * *";
     mode = "watchdog";
     task = "vesper-health-watch";
     deliver = "telegram";
-    description = "zero-token workstation health alert that stays silent when healthy";
+    description = "zero-token workstation health, Hermes freshness and external dead-man heartbeat";
   };
 
   cron-skill-integrity-watch = {
@@ -92,6 +101,7 @@
     mode = "dispatch";
     task = "second-brain-dream";
     deliver = "local";
+    freshnessMinutes = 2160;
     description = "nightly durable research consolidation into the Obsidian second brain";
   };
 
@@ -100,6 +110,7 @@
     mode = "dispatch";
     task = "user-pain-miner";
     deliver = "local";
+    freshnessMinutes = 11520;
     description = "weekly recurring-problem and project-opportunity miner";
   };
 
@@ -108,6 +119,7 @@
     mode = "dispatch";
     task = "project-archaeologist";
     deliver = "local";
+    freshnessMinutes = 11520;
     description = "weekly local repository archaeology for forgotten unfinished work";
   };
 
@@ -116,6 +128,7 @@
     mode = "dispatch";
     task = "skill-evolution-review";
     deliver = "local";
+    freshnessMinutes = 11520;
     description = "weekly evidence-based review of skill drafts and research heuristics";
   };
 
@@ -124,6 +137,7 @@
     mode = "dispatch";
     task = "ai-usage-economist";
     deliver = "local";
+    freshnessMinutes = 11520;
     description = "weekly local agent usage and model-cost workflow review";
   };
 }

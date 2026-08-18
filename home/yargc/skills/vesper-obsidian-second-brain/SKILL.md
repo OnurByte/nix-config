@@ -8,7 +8,16 @@ platforms: [linux]
 
 Use Obsidian as the durable knowledge layer behind Hermes research.
 
-Hermes built-in memory is the small hot cache for facts that should be present in future sessions. Session search is episodic recall. Obsidian is the long-term second brain. Skills are procedural memory.
+Do not collapse every persistence mechanism into `memory`:
+
+```text
+runtime state    -> jobs, retries, logs, temporary artifacts and resume state
+semantic memory  -> compact associative recall when the runtime provides it
+durable context  -> decisions, rationale, projects and evidence in human-readable notes
+skills           -> reviewed procedural memory loaded for a class of work
+```
+
+Hermes built-in memory is the small hot cache for facts that should be present in future sessions. Session search is episodic recall. Obsidian is the long-term second brain/durable context. Skills are procedural memory. Runtime state stays outside the vault unless a result deserves promotion.
 
 ## vault resolution
 
@@ -78,7 +87,7 @@ Before creating a note, search the vault for the same URL, repository, title, co
 
 When new evidence extends an existing note, update it instead of creating another copy. Add a dated `Updates` section when the history matters.
 
-When a claim becomes false or obsolete, keep the historical context but mark its current status clearly.
+When a claim becomes false or obsolete, keep the historical context but mark its current status clearly. Dirty/anomalous historical observations should be marked rather than silently deleted when the history explains later decisions.
 
 ## memory boundary
 
@@ -94,6 +103,24 @@ Use built-in Hermes memory for compact durable facts such as:
 Use Obsidian for details, evidence, long explanations, research trails and knowledge graphs.
 
 When saving a memory fact that has a richer Obsidian note, keep the memory concise and point conceptually to the second-brain topic rather than copying the entire note.
+
+## continuity bridge
+
+Continuity is a lifecycle, not a request to `remember`.
+
+At the beginning of a meaningful new session, prefer compact continuity inputs: the last meaningful state, currently active threads and unresolved objectives. Do not keep one giant conversation alive merely to preserve history.
+
+At the end of meaningful work, leave enough durable state to answer:
+
+- what changed
+- what was decided and why
+- what remains open
+- what evidence/artifacts were produced
+- which item should be resumed next
+
+If a session ends without a clean handoff, a later scheduled consolidation may recover it. Use an overlap wider than the scheduler interval when collecting recent sessions so timing jitter creates deduplicatable overlap rather than gaps. Preserve previously-open items that the newest window does not explicitly close.
+
+Provenance matters when several agents/runtimes write context. Keep enough source metadata to distinguish operator statements from agent-produced synthesis.
 
 ## dream / reflection cycle
 
@@ -121,15 +148,31 @@ A dream note should not be a transcript summary. It should capture higher-level 
 
 If there is no meaningful synthesis, do not create filler.
 
-## skill learning
+## skill learning and governance
 
-When repeated research behavior becomes a reusable procedure, do not immediately rewrite active skills.
+Do not immediately rewrite active skills because one run produced a clever rule.
 
 Use:
 
-`observation -> candidate heuristic -> repeated trials -> skill draft -> review -> promotion`
+`observation -> repeated evidence -> candidate heuristic -> repeated trials -> skill draft -> representative eval -> review -> promotion/rejection -> monitoring`
 
-Write proposed procedures to `$VESPER_SKILL_DRAFT_DIR`. Active shared skills remain under `~/.agents/skills` and should be promoted only after evidence and review.
+One occurrence normally becomes an observation. Repeated operator feedback or repeated failure is a stronger reason to propose a reusable rule.
+
+Self-improvement is maintenance and must remain bounded:
+
+- do it after the main task, never instead of finishing the task
+- cap patches/proposals per review cycle
+- new reusable skills require explicit review
+- unattended agents do not silently rewrite human/Nix-owned canonical skills
+- repeated patches to the same skill are evidence to narrow or redesign it
+
+Write proposed procedures to `$VESPER_SKILL_DRAFT_DIR`. Active shared skills remain under `~/.agents/skills` and are Home Manager/Nix owned.
+
+When a reviewed draft is promoted, bind approval to the exact state that was reviewed. Record or compare the draft hash and the live target pre-image. Immediately before applying, re-read the target; if the canonical target or draft changed after review, the approval is stale and a new review is required. Never replay an old approval over intervening edits.
+
+If several lifecycle checks/governors participate, use conservative composition: `deny > defer > allow`. If governance is configured as required but unavailable or malformed, defer instead of failing open.
+
+Use `agent-operations` / `references/lifecycle-evals.md` for the full operational contract.
 
 ## output quality
 

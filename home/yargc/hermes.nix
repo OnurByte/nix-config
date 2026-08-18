@@ -27,7 +27,26 @@ let
     pkgs.writeShellScript "vesper-hermes-${name}" ''
       set -euo pipefail
       ${researchEnv}
-      exec ${hermesCore}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
+      ${hermesCore}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
+
+      ${lib.optionalString (name == "vesper-health-watch") ''
+        # Optional external dead-man signal. The URL is mutable secret/config
+        # state, never Nix/Git state and never a curl command-line argument.
+        deadman_file="''${VESPER_DEADMAN_URL_FILE:-${home}/.config/vesper/hermes-deadman.url}"
+        if [ -r "$deadman_file" ]; then
+          IFS= read -r deadman_url < "$deadman_file" || true
+          case "$deadman_url" in
+            http://*|https://*)
+              if ! printf 'url = "%s"\nfail\nsilent\nshow-error\nmax-time = 15\n' "$deadman_url" \
+                | ${pkgs.curl}/bin/curl --config - >/dev/null; then
+                echo '[Hermes dead-man] external heartbeat ping failed'
+              fi
+              ;;
+            "") ;;
+            *) echo '[Hermes dead-man] URL file exists but does not contain an http(s) URL' ;;
+          esac
+        fi
+      ''}
     ''
   ) jobs;
 

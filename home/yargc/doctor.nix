@@ -146,6 +146,60 @@ let
         record warn failed_units "failed systemd units: $failed"
       fi
 
+      hermes_registry="''${VESPER_HERMES_JOB_REGISTRY:-$HOME/.config/vesper/hermes-jobs.json}"
+      hermes_state="''${VESPER_RESEARCH_STATE_DIR:-$HOME/.local/state/vesper/research}"
+      if [ -r "$hermes_registry" ]; then
+        freshness_problems=0
+        while IFS=$'\t' read -r job_name task freshness_minutes; do
+          [ -n "$job_name" ] || continue
+          latest="$hermes_state/runs/$task/latest.json"
+          key="hermes_run_''${job_name//[^A-Za-z0-9_]/_}"
+
+          if [ ! -r "$latest" ]; then
+            record warn "$key" "Hermes $job_name has no durable run record yet"
+            freshness_problems=$((freshness_problems + 1))
+            continue
+          fi
+
+          run_status_value="$(jq -r '.status // "unknown"' "$latest" 2>/dev/null || printf 'invalid')"
+          if [ "$run_status_value" != "ok" ]; then
+            run_error="$(jq -r '.error // "no error detail"' "$latest" 2>/dev/null || printf 'invalid run record')"
+            record warn "$key" "Hermes $job_name latest run status=$run_status_value: $run_error"
+            freshness_problems=$((freshness_problems + 1))
+            continue
+          fi
+
+          mtime="$(stat -c %Y "$latest" 2>/dev/null || printf '0')"
+          now="$(date +%s)"
+          if [ "$mtime" -le 0 ] 2>/dev/null; then
+            record warn "$key" "Hermes $job_name run record timestamp is unreadable"
+            freshness_problems=$((freshness_problems + 1))
+            continue
+          fi
+
+          age_minutes=$(( (now - mtime) / 60 ))
+          if [ "$age_minutes" -gt "$freshness_minutes" ]; then
+            record warn "$key" "Hermes $job_name is stale: last successful run is $age_minutes min old (limit $freshness_minutes)"
+            freshness_problems=$((freshness_problems + 1))
+          fi
+        done < <(
+          jq -r '
+            to_entries[]
+            | select((.value.enabled // true) == true)
+            | select((.value.mode // "dispatch") == "dispatch")
+            | select((.value.freshnessMinutes // 0) > 0)
+            | [.key, (.value.task // .key), ((.value.freshnessMinutes // 0) | tostring)]
+            | @tsv
+          ' "$hermes_registry" 2>/dev/null || true
+        )
+
+        if [ "$freshness_problems" -eq 0 ]; then
+          record ok hermes_run_freshness "Hermes scheduled run records are within declared freshness windows"
+        fi
+      else
+        record warn hermes_registry "Hermes job registry is unavailable: $hermes_registry"
+      fi
+
       if [ -r /sys/power/mem_sleep ]; then
         record info suspend "suspend modes: $(cat /sys/power/mem_sleep)"
       fi
