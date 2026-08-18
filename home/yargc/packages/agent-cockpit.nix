@@ -105,7 +105,6 @@ Claude|(^|/)claude([[:space:]]|$)
 OpenCode|(^|/)opencode([[:space:]]|$)
 Hermes|(^|/)hermes([[:space:]]|$)
 Grok|(^|/)grok([[:space:]]|$)
-bb|(^|/)bb-app([[:space:]]|$)
 AGENTS
 
       local count state tooltip
