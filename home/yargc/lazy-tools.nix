@@ -25,7 +25,9 @@ in
     hermesDesktop
     agents.hermes-hud
 
-    # Broad historical accounting plus per-turn Codex/Claude measurement.
+    # AgentsView owns the durable local session/activity archive. ccusage is an
+    # accounting cross-check and TurnLens stays the per-turn Codex/Claude lens.
+    agents.agentsview
     agents.ccusage
     inputs.self.packages.${pkgs.system}.turnlens
 

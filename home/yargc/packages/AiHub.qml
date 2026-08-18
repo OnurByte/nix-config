@@ -10,7 +10,7 @@ Item {
     id: root
 
     property var payload: ({
-        summary: { providerCount: 0, criticalCount: 0, warningCount: 0, maxUsedPercent: -1, maxProvider: "", class: "stale" },
+        summary: { providerCount: 0, criticalCount: 0, warningCount: 0, unknownCount: 0, overallHealth: "unknown", mostConstrainedQuota: null, maxUsedPercent: -1, maxProvider: "", class: "stale" },
         providers: [],
         agents: { count: 0, agents: [] },
         hermes: { unread: 0, high: 0, latestTitle: "" },
@@ -24,11 +24,14 @@ Item {
     readonly property var hermes: payload.hermes || ({})
     readonly property var privacy: payload.privacy || ({})
     readonly property var providers: payload.providers || []
-    readonly property color stateColour: summary.class === "critical"
+    readonly property string overallHealth: summary.overallHealth || summary.class || "unknown"
+    readonly property color stateColour: overallHealth === "critical"
         ? Colours.palette.m3error
-        : summary.class === "warning"
+        : overallHealth === "warning"
             ? Colours.palette.m3tertiary
-            : Colours.palette.m3primary
+            : overallHealth === "unknown" || overallHealth === "stale"
+                ? Colours.palette.m3outline
+                : Colours.palette.m3primary
     readonly property color privacyColour: privacy.class === "alert"
         ? Colours.palette.m3error
         : privacy.class === "attention"
@@ -66,6 +69,27 @@ Item {
             return value;
         const pad = n => String(n).padStart(2, "0");
         return `${pad(d.getDate())}.${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function quotaSummary() {
+        const quota = root.summary.mostConstrainedQuota || null;
+        if (quota && quota.usedPercent !== null && quota.usedPercent !== undefined)
+            return `${quota.providerName || "Provider"} ${Math.round(quota.usedPercent)}% used`;
+        if ((root.summary.maxUsedPercent ?? -1) >= 0)
+            return `${root.summary.maxProvider || "Provider"} ${Math.round(root.summary.maxUsedPercent)}% used`;
+        return `${root.summary.providerCount || 0} enabled providers`;
+    }
+
+    function providerHeaderDetail() {
+        const quota = root.quotaSummary();
+        if (root.overallHealth === "critical")
+            return `${root.summary.criticalCount || 0} critical · quota ${quota}`;
+        if (root.overallHealth === "warning")
+            return `${root.summary.warningCount || 0} warning · quota ${quota}`;
+        if (root.overallHealth === "unknown")
+            return `${root.summary.unknownCount || 0} unknown · quota ${quota}`;
+        const constrained = root.summary.mostConstrainedQuota || null;
+        return constrained ? `${constrained.providerName || "Provider"} is most constrained · ${Math.round(constrained.usedPercent || 0)}% used` : quota;
     }
 
     function privacyDetail() {
@@ -132,9 +156,7 @@ Item {
                 text: {
                     if (root.payload.stale)
                         return root.loadError ? `stale · ${root.loadError}` : "stale snapshot";
-                    if ((root.summary.maxUsedPercent ?? -1) >= 0)
-                        return `${root.summary.maxProvider || "Provider"} is most constrained · ${Math.round(root.summary.maxUsedPercent)}% used`;
-                    return `${root.summary.providerCount || 0} enabled providers`;
+                    return root.providerHeaderDetail();
                 }
                 elide: Text.ElideRight
                 color: root.payload.stale ? Colours.palette.m3error : Colours.palette.m3onSurfaceVariant
@@ -181,7 +203,7 @@ Item {
             iconName: "toll"
             title: qsTr("Providers")
             value: `${root.summary.providerCount || 0}`
-            detail: `${root.summary.criticalCount || 0} critical · ${root.summary.warningCount || 0} warning`
+            detail: `${root.summary.criticalCount || 0} critical · ${root.summary.warningCount || 0} warning · ${root.summary.unknownCount || 0} unknown`
             accent: root.stateColour
         }
 
@@ -402,11 +424,14 @@ Item {
         id: card
         required property var providerData
 
+        readonly property var accountItems: providerData.accounts || []
         readonly property color accent: providerData.health === "critical"
             ? Colours.palette.m3error
             : providerData.health === "warning"
                 ? Colours.palette.m3tertiary
-                : Colours.palette.m3primary
+                : providerData.health === "unknown"
+                    ? Colours.palette.m3outline
+                    : Colours.palette.m3primary
 
         implicitHeight: cardContent.implicitHeight + Tokens.padding.large * 2
         radius: Tokens.rounding.large
@@ -427,7 +452,7 @@ Item {
                 spacing: Tokens.spacing.medium
 
                 MaterialIcon {
-                    text: card.providerData.health === "critical" ? "error" : "neurology"
+                    text: card.providerData.health === "critical" ? "error" : card.providerData.health === "unknown" ? "help" : "neurology"
                     color: card.accent
                     fill: card.providerData.health === "critical" ? 1 : 0
                     fontStyle: Tokens.font.icon.medium
@@ -454,6 +479,8 @@ Item {
                                 parts.push(card.providerData.source);
                             if (card.providerData.account)
                                 parts.push(card.providerData.account);
+                            if (card.accountItems.length > 1)
+                                parts.push(`${card.accountItems.length} accounts`);
                             return parts.join(" · ") || (card.providerData.statusLabel || card.providerData.status || "provider");
                         }
                         elide: Text.ElideRight
@@ -470,14 +497,73 @@ Item {
                 }
             }
 
+            StyledText {
+                Layout.fillWidth: true
+                visible: !!card.providerData.updatedAt
+                text: {
+                    const updated = root.formatReset(card.providerData.updatedAt);
+                    const ttl = Number(card.providerData.staleAfterSeconds || root.payload.staleAfterSeconds || 0);
+                    return ttl > 0 ? `updated ${updated} · stale after ${ttl}s` : `updated ${updated}`;
+                }
+                elide: Text.ElideRight
+                color: Colours.palette.m3outline
+                font: Tokens.font.body.small
+            }
+
             Repeater {
-                model: card.providerData.windows || []
+                model: card.accountItems.length > 1 ? [] : (card.providerData.windows || [])
 
                 delegate: UsageRow {
                     required property var modelData
                     Layout.fillWidth: true
                     windowData: modelData
                     accent: card.accent
+                }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: card.accountItems.length > 1
+                spacing: Tokens.spacing.small
+
+                StyledText {
+                    Layout.fillWidth: true
+                    text: qsTr("Accounts")
+                    color: Colours.palette.m3onSurfaceVariant
+                    font: Tokens.font.body.small
+                }
+
+                Repeater {
+                    model: card.accountItems
+
+                    delegate: ColumnLayout {
+                        id: accountColumn
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: Tokens.spacing.extraSmall
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: {
+                                const account = accountColumn.modelData || {};
+                                return account.label || account.account || account.id || qsTr("Account");
+                            }
+                            elide: Text.ElideRight
+                            color: Colours.palette.m3onSurface
+                            font: Tokens.font.title.small
+                        }
+
+                        Repeater {
+                            model: accountColumn.modelData.windows || []
+
+                            delegate: UsageRow {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                windowData: modelData
+                                accent: card.accent
+                            }
+                        }
+                    }
                 }
             }
 

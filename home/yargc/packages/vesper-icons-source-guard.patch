@@ -1,6 +1,7 @@
 --- a/vesper-icons.rs
 +++ b/vesper-icons.rs
-@@ -105,6 +105,25 @@ fn theme_link() -> PathBuf {
+@@ -105,7 +105,26 @@ fn theme_link() -> PathBuf {
+ fn theme_link() -> PathBuf {
      data_home().join("icons").join(THEME_NAME)
  }
  
@@ -26,17 +27,16 @@
  fn config_path() -> PathBuf {
      config_root().join("adaptive-icons.conf")
  }
-@@ -477,6 +496,9 @@ fn index_icon_tree(
+@@ -477,4 +477,7 @@ fn index_icon_tree(
      if depth > 12 {
-         return;
-     }
-+    if is_vesper_owned_source(current) {
 +        return;
 +    }
-     let Ok(entries) = fs::read_dir(current) else {
++    if is_vesper_owned_source(current) {
          return;
+     }
+     let Ok(entries) = fs::read_dir(current) else {
+@@ -482,6 +485,9 @@ fn index_icon_tree(
      };
-@@ -484,6 +506,9 @@ fn index_icon_tree(
      for entry in entries.flatten() {
          let path = entry.path();
 +        if is_vesper_owned_source(&path) {
@@ -45,7 +45,9 @@
          if path.is_dir() {
              index_icon_tree(root, &path, root_rank, depth + 1, index);
              continue;
-@@ -535,7 +560,7 @@ fn resolve_icon(
+@@ -531,9 +531,9 @@ fn resolve_icon(
+ fn resolve_icon(
+     icon: &str,
      index: &BTreeMap<String, Vec<IconCandidate>>,
  ) -> Option<PathBuf> {
      let path = PathBuf::from(icon);

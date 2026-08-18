@@ -77,17 +77,31 @@ pub fn run_status(program: &str, args: &[&str], input: Option<&str>) -> Result<i
 }
 
 pub fn output_allow_failure(program: &str, args: &[&str]) -> String {
-    Command::new(program)
-        .args(args)
-        .output()
-        .map(|o| {
-            let mut text = String::from_utf8_lossy(&o.stdout).to_string();
-            if !o.stderr.is_empty() {
-                text.push_str(&String::from_utf8_lossy(&o.stderr));
+    match Command::new(program).args(args).output() {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let mut text = stdout.to_string();
+            if !stderr.is_empty() {
+                if !text.is_empty() && !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                text.push_str(&stderr);
             }
-            text
-        })
-        .unwrap_or_default()
+            if output.status.success() {
+                text
+            } else {
+                let code = output.status.code().map_or_else(|| "signal".to_string(), |value| value.to_string());
+                let detail = text.trim();
+                if detail.is_empty() {
+                    format!("[{program} exited {code}]")
+                } else {
+                    format!("[{program} exited {code}]\n{detail}")
+                }
+            }
+        }
+        Err(error) => format!("[{program} unavailable: {error}]"),
+    }
 }
 
 pub fn jq(input: &str, filter: &str) -> Result<String, String> {
