@@ -4,13 +4,13 @@ Status: **implementation plan / spec**
 
 This document is the canonical implementation plan for Vesper's high-frequency desktop ergonomics on top of the existing Caelestia + Hyprland desktop.
 
-It consolidates the interaction ideas selected from Omarchy and related desktop research into one Vesper-native plan. Omarchy is an interaction reference only. Vesper must reuse its existing shell, Settings, input, audio, notification, sharing, AI and compositor infrastructure instead of creating parallel subsystems.
+It consolidates selected interaction ideas from Omarchy and related desktop research into one Vesper-native plan. Omarchy is an interaction reference only. Vesper must reuse its existing shell, Settings, input, audio, notification, sharing, AI, compositor and Nix/systemd infrastructure instead of creating parallel subsystems.
 
 Current implementation must always be inspected before claiming any target below is complete.
 
 ## goals
 
-The plan should make Vesper feel faster and more coherent in everyday use without turning it into a pile of one-off scripts.
+The plan should make Vesper feel faster, safer and more coherent in everyday use without turning it into a pile of one-off scripts.
 
 Primary goals:
 
@@ -22,7 +22,9 @@ Primary goals:
 - every visible state must remain truthful when a backend is unavailable or stale;
 - keyboard-first workflows should not remove mouse/touchpad workflows;
 - runtime conveniences must not silently mutate declarative Nix configuration;
-- new UI must follow Vesper visual standards rather than copying Omarchy styling.
+- new UI must follow Vesper visual standards rather than copying Omarchy styling;
+- application and agent failures should degrade locally instead of destabilizing the whole desktop session;
+- shell reloads should not erase durable runtime truth merely because a view process restarted.
 
 ## explicit non-goals
 
@@ -31,6 +33,7 @@ The following are intentionally excluded from this plan:
 - Night Light integration;
 - sensitive-content filtering for clipboard history;
 - Dictation;
+- Tailscale integration as part of this ergonomics plan;
 - a second notification daemon;
 - a second clipboard database;
 - a second AI quota/backend stack;
@@ -62,7 +65,8 @@ Rules:
 - prefer source-to-surface continuity and restrained movement over arbitrary fade-only transitions;
 - transient surfaces must look related to the control that invoked them;
 - indicators are views over authoritative state, not miniature independent state machines;
-- QML renders normalized state and invokes bounded actions; it should not become the authoritative parser for system state.
+- QML renders normalized state and invokes bounded actions; it should not become the authoritative parser for system state;
+- hardware-dependent rows must disappear or show truthful unsupported state rather than exposing fake controls.
 
 ## architecture and ownership
 
@@ -85,6 +89,9 @@ Caelestia / Quickshell
 Vesper Settings / Nexus extensions
   -> Default Agent
   -> Display arrangement/configuration
+  -> Text Size control
+  -> per-monitor brightness capability presentation
+  -> lid/clamshell policy presentation
   -> Input / Assistant-key discoverability
   -> Shortcuts / conflict detection
 
@@ -94,6 +101,16 @@ Vesper backends
   -> CWD attribution
   -> app identity / launch-or-focus decisions where needed
   -> display preview/revert transaction
+  -> DDC/CI capability and brightness routing
+  -> clamshell state coordination
+  -> app scope/process attribution
+  -> bounded crash metadata collection
+
+systemd user/session
+  -> application scopes/slices where appropriate
+  -> process/cgroup ownership
+  -> user-level timers/inhibitors where already canonical
+  -> OOM isolation only when real systemd-oomd policy can enforce it
 
 PipeWire / WirePlumber
   -> audio device truth and default sink changes
@@ -103,6 +120,7 @@ LocalSend / OnionShare
 
 AI Hub / Agent Cockpit
   -> agent/provider/process status
+  -> agent crash status/diagnosis entry point
 
 Hermes
   -> recurring automation only, not quick reminders
@@ -178,7 +196,7 @@ The physical Copilot key means the dedicated assistant key present on newer lapt
 All triggers resolve to the same semantic action:
 
 ```text
-Toggle Agent Console
+agent.console.toggle
 ```
 
 Input handling should prefer the semantic assistant-key event exposed by the Linux input stack, such as `KEY_ASSISTANT` when available.
@@ -213,7 +231,7 @@ Conceptual flow:
 ```text
 Copilot key / Super + `
           ↓
-Toggle Agent Console
+agent.console.toggle
           ↓
 special:agent-console
           ↓
@@ -228,7 +246,7 @@ Optional shell enhancement:
 
 - a tiny Agent Cockpit status/header may be shown if it remains lightweight;
 - it must not turn the console into a second AI dashboard;
-- detailed quota/process views stay in Vesper Hub / Agent Cockpit.
+- detailed quota/process views stay in AI / Agent Cockpit.
 
 Acceptance criteria:
 
@@ -269,26 +287,11 @@ Possible later convenience actions may include Copy Path, Copy File URI or QR ge
 
 Do not implement another transfer backend merely to power this menu.
 
-Acceptance criteria:
-
-- both installed transports appear through one Share UX;
-- absence of one transport does not fake availability;
-- capture/file actions pass the intended file rather than launching an unrelated empty app;
-- privacy wording stays transport-specific.
-
 ---
 
 # 4. Stay Awake
 
 Provide a temporary **Stay Awake** / caffeine action for inhibiting idle suspend/blanking.
-
-Useful cases:
-
-- downloads/transfers;
-- builds;
-- long-running agents;
-- presentations;
-- screen recording.
 
 Requirements:
 
@@ -299,15 +302,13 @@ Requirements:
 - disabling immediately releases the inhibitor;
 - normal power/idle policy remains authoritative.
 
-This is a runtime action, not a persistent Settings toggle.
+Useful for transfers, builds, long-running agents, presentations and recording.
 
 ---
 
 # 5. Audio Output Cycle
 
 Add a fast action to cycle currently usable PipeWire output devices.
-
-Example:
 
 ```text
 Speakers -> Headphones -> HDMI -> Bluetooth -> Speakers
@@ -320,8 +321,6 @@ Requirements:
 - reuse the same backend used by normal audio controls;
 - show the selected output through the normal Vesper OSD/notification language;
 - preserve the full audio picker for direct non-linear selection.
-
-A good hardware-media binding candidate is a modified mute/media key only after the shortcut audit confirms it does not conflict with current Vesper behavior.
 
 ---
 
@@ -355,8 +354,6 @@ Requirements:
 
 Provide a small reminder/timer flow without turning it into a calendar or Hermes job.
 
-Example:
-
 ```text
 Super + Ctrl + R
 15m
@@ -381,8 +378,6 @@ Hermes remains the only recurring research/automation scheduler.
 
 Vesper's capture picker should be fully usable without a mouse.
 
-Target interaction while the picker is active:
-
 ```text
 Tab / Shift+Tab        cycle candidate windows
 Arrow keys             move selection spatially
@@ -399,34 +394,13 @@ Requirements:
 - mouse selection remains available;
 - extend the existing Caelestia capture path rather than build a second screenshot tool.
 
-## shell/popup geometry
-
-Quickshell/plugin panels may be implemented as monitor-sized transparent layer surfaces containing a smaller visible card.
-
-When the shell can expose a trustworthy registered card geometry:
-
-```text
-capture target = visible card geometry
-not = entire transparent layer surface
-```
-
-This applies to screenshot and screen-record selection where technically supported.
-
-Acceptance criteria:
-
-- keyboard and pointer paths select the same rectangles;
-- moving through windows is deterministic;
-- empty monitors are still targetable;
-- visible plugin cards can be captured without a giant transparent bounding box;
-- cancellation leaves no stale selection/input layer behind.
+When a Quickshell/plugin panel is a visible card inside a monitor-sized transparent layer surface, prefer the trustworthy registered visible-card geometry instead of capturing the whole transparent layer.
 
 ---
 
 # 9. Capture Hub
 
 Keep screenshot, region capture, screen recording, OCR and color picking under one coherent capture namespace.
-
-Target actions:
 
 ```text
 Screenshot
@@ -452,8 +426,6 @@ Requirements:
 
 When a terminal workflow has a trustworthy current directory, new terminal/file-manager actions should preserve it.
 
-Example:
-
 ```text
 active terminal cwd: ~/Code/vesper
 New Terminal         -> ~/Code/vesper
@@ -466,28 +438,7 @@ Requirements:
 - never infer it from terminal title text or a project label;
 - if attribution fails, fall back to the normal default directory;
 - terminal and file-manager launch share the same CWD resolver;
-- avoid a second terminal profile just for this feature.
-
-Suggested ownership:
-
-```text
-focused window
-   ↓
-stable terminal/app identity
-   ↓
-PID/process attribution
-   ↓
-resolved CWD
-   ↓
-terminal --dir / file-manager path
-```
-
-Acceptance criteria:
-
-- active supported terminal opens a new terminal in the same directory;
-- Files can open the same directory;
-- non-terminal focus falls back safely;
-- stale/dead PID cannot result in a fabricated path.
+- stale/dead PID cannot produce a fabricated path.
 
 ---
 
@@ -506,8 +457,6 @@ Target interaction:
 - workspace-to-monitor assignment and saved profiles remain compatible with the same canonical monitor model.
 
 ## safe apply / automatic revert
-
-Display changes require a confirmation transaction:
 
 ```text
 proposed layout
@@ -530,17 +479,140 @@ Requirements:
 - persistent changes use the runtime-to-declarative bridge when structured Vesper config support exists;
 - the visual editor must not become a second monitor database.
 
+---
+
+# 12. Unified Text Scaling
+
+Add one user-facing **Text Size** control that adjusts the readable UI scale consistently across Vesper-owned shell surfaces and supported desktop toolkits without conflating it with monitor pixel scale.
+
+Target placement:
+
+```text
+Settings
+└── Display
+    └── Text Size
+```
+
+Conceptual UX:
+
+```text
+Text Size
+[──────●──────] 100%
+
+Applies to supported:
+Shell · GTK · Qt · Terminal
+```
+
+Contract:
+
+- expose one normalized semantic value, preferably percentage/steps rather than leaking toolkit-specific units;
+- adapt that value to Caelestia/Quickshell typography, GTK text scaling, Qt text/application scaling where safely supported, and configured terminal font size;
+- keep font family selection separate from text size;
+- keep monitor scale/resolution separate from text size;
+- preview changes live where the current Settings architecture supports safe live preview;
+- persistent changes must use the structured Vesper configuration path;
+- do not edit arbitrary GTK/Qt/terminal config text directly from QML;
+- if one target cannot be updated safely, report partial support instead of pretending all targets changed.
+
 Acceptance criteria:
 
-- rearranging two or more monitors works by drag;
-- orientation changes are reflected in the preview;
-- refusing or ignoring confirmation restores the exact prior runtime layout;
-- a missing/disconnected monitor is handled truthfully;
-- persistence never happens before explicit acceptance.
+- changing Text Size visibly affects the shell and supported apps after the expected live reload/restart boundary;
+- 100% maps to Vesper's canonical defaults;
+- resetting returns every managed target to the canonical baseline;
+- display scale remains unchanged;
+- unsupported apps/toolkits do not cause the setting to fail globally.
 
 ---
 
-# 12. Context-aware Universal Actions
+# 13. External Monitor Brightness via DDC/CI
+
+External monitor brightness should behave like a first-class desktop brightness control when the monitor exposes a real DDC/CI path.
+
+Target behavior for hardware brightness keys and shell controls:
+
+```text
+active/focused display
+    ├─ internal panel -> kernel/native backlight path
+    ├─ external + DDC/CI -> DDC/CI brightness
+    └─ unsupported external -> truthful unsupported/no-op policy
+```
+
+Settings placement:
+
+```text
+Settings
+└── Display
+    └── <monitor>
+        └── Brightness      # only when enforceable
+```
+
+Requirements:
+
+- discover DDC/CI capability per physical external display;
+- map monitor identity to the correct DDC/CI device robustly;
+- never expose a writable slider merely because a monitor is external;
+- brightness keys should operate on the focused/active monitor according to one documented policy;
+- use the same Vesper brightness OSD for internal and external changes;
+- cache capability/identity sensibly but invalidate on monitor hotplug/change;
+- bound DDC/CI calls with timeouts so a broken monitor bus cannot freeze the shell;
+- do not poll DDC/CI at high frequency merely to animate UI;
+- if DDC/CI disappears mid-session, keep the last known state clearly stale/unsupported rather than hammering the bus.
+
+Acceptance criteria:
+
+- supported external monitor brightness changes from the normal brightness flow;
+- internal laptop panel keeps using its canonical backlight backend;
+- unplugging/replugging a monitor re-resolves capability;
+- unsupported displays expose no fake slider;
+- one hung DDC/CI device cannot stall Settings or the shell indefinitely.
+
+---
+
+# 14. Laptop Clamshell Mode
+
+Vesper should treat laptop-with-external-monitor use as a first-class mode instead of relying on incidental lid behavior.
+
+Policy ownership is split intentionally:
+
+```text
+Settings -> Power & Performance
+  -> lid-close policy
+
+Settings -> Display
+  -> built-in display state
+  -> external display arrangement/profile
+```
+
+Target lid-close policy:
+
+```text
+When lid closes
+├── external display present -> keep session active, disable built-in panel when policy says so
+└── no usable external display -> follow normal suspend/lock policy
+```
+
+Requirements:
+
+- identify the built-in panel through real connector/hardware semantics, not only one hard-coded connector name;
+- distinguish physically present usable external outputs from stale compositor entries;
+- lid close/open must be idempotent;
+- preserve/recover the intended built-in panel scale and layout when reopening the lid;
+- avoid duplicate workspace migration on repeated lid events;
+- keep mirror/extend semantics compatible with the same canonical Display model;
+- do not leave the user with every display disabled;
+- docking/undocking during clamshell mode must produce a safe, diagnosable fallback;
+- normal suspend policy remains authoritative when no usable external display exists.
+
+Acceptance criteria:
+
+- closing the lid with a valid external display does not unnecessarily suspend when configured for clamshell use;
+- reopening restores the built-in panel's intended scale/layout;
+- removing the external display while closed cannot leave a hidden unusable session indefinitely;
+- repeated lid events do not progressively corrupt monitor/workspace state.
+
+---
+
+# 15. Context-aware Universal Actions
 
 Vesper may expose semantic Copy/Paste/Cut actions that adapt to the focused application.
 
@@ -564,34 +636,24 @@ Requirements:
 - do not steal current Vesper bindings without shortcut conflict analysis;
 - semantic actions live in the same structured shortcut registry as other actions.
 
-Implementation gate:
-
-- audit current Caelestia/Vesper bindings first;
-- specifically preserve existing behavior currently assigned to `Super+C` unless intentionally migrated through the canonical shortcut system.
-
 ---
 
-# 13. Compositor Screen Zoom
+# 16. Compositor Screen Zoom
 
 Provide compositor-level zoom for inspecting small UI/accessibility use.
 
-Target behavior:
+Requirements:
 
 - zoom around cursor/focus using Hyprland-native capabilities;
 - repeated action increments zoom in controlled steps;
 - separate action resets immediately to 100%;
 - active zoom may expose an OSD/indicator;
 - reduced-motion mode uses minimal transition;
-- never confuse zoom with `Settings -> Display` scale.
-
-Settings ownership:
-
-- shortcuts are configurable under `Settings -> Shortcuts`;
-- zoom amount is runtime state, not a persistent display-scale setting by default.
+- never confuse zoom with `Settings -> Display` scale or Text Size.
 
 ---
 
-# 14. Bar Scroll + OSD
+# 17. Bar Scroll + OSD
 
 Volume and brightness bar controls should normalize high-resolution wheel/touchpad input into predictable steps.
 
@@ -603,18 +665,11 @@ Requirements:
 - trigger OSD only when a real step is applied;
 - mouse wheel and touchpad should feel consistent;
 - reuse the existing volume/brightness backend and OSD;
-- precise adjustment paths remain available.
-
-Acceptance criteria:
-
-- one mouse-wheel notch equals one logical step;
-- a touchpad gesture does not produce dozens of tiny changes;
-- OSD updates only for committed steps;
-- no separate audio/brightness state exists in the bar widget.
+- external-monitor brightness must route through the same brightness action layer when DDC/CI is supported.
 
 ---
 
-# 15. Launch-or-Focus
+# 18. Launch-or-Focus
 
 Dedicated app actions may focus an existing application instead of spawning duplicates when that matches app semantics.
 
@@ -627,15 +682,144 @@ Rules:
 - reuse existing correct launch-or-focus behavior rather than duplicate it;
 - do not create another application identity registry.
 
-Implementation should begin with apps that clearly benefit from focus-first semantics rather than applying it globally.
+---
+
+# 19. systemd Application Scopes and OOM Isolation
+
+Vesper should isolate launched desktop applications into trustworthy process/cgroup ownership where the current session architecture permits it.
+
+Goal:
+
+```text
+launcher / desktop entry
+        ↓
+canonical app identity
+        ↓
+user systemd app scope/slice
+        ↓
+application process tree
+```
+
+Why:
+
+- a runaway browser/Electron/native app should be attributable as one application tree;
+- App Inspector can obtain better process ownership and resource aggregation;
+- a single application should not take the whole graphical session down merely because it shares an undifferentiated compositor cgroup;
+- real systemd-oomd policy can act on isolated cgroups when configured correctly.
+
+Requirements:
+
+- inspect the existing UWSM/systemd launch topology before adding another scope layer;
+- reuse an existing correct `app-*.scope`/slice model if the session already provides one;
+- preserve desktop-entry identity in scope naming/metadata where possible without trusting arbitrary user-controlled titles;
+- children spawned by the app should remain attributable to the same application tree unless they intentionally detach into another managed unit;
+- App Inspector should consume the same canonical scope/process attribution rather than maintaining a second PID guesser;
+- do not claim OOM isolation merely because a scope exists: systemd-oomd/ManagedOOM policy must actually be configured and tested;
+- never assign aggressive memory limits globally without an explicit policy design;
+- compositor, shell and critical session services must remain outside ordinary application kill domains;
+- launch failures must fall back safely according to the existing launcher contract rather than silently dropping applications.
+
+Acceptance criteria:
+
+- supported launched apps have stable attributable cgroup ownership;
+- App Inspector can aggregate processes/resources from the same source;
+- killing/restarting one app scope does not kill the Vesper shell/session;
+- OOM behavior is described as active only when the real policy is enabled and verified;
+- multi-window apps remain one logical application where identity says they should.
 
 ---
 
-# 16. Workspace Layout Snapshots
+# 20. Agent Crash Capture and Diagnosis
+
+Unexpected coding-agent exits should become a first-class Agent Cockpit diagnostic event without turning Vesper into an invasive process recorder.
+
+Target UX:
+
+```text
+Agent crashed
+Codex · vesper · exit 1
+
+[View diagnosis] [Restart]
+```
+
+Canonical owner:
+
+```text
+Agent Cockpit / AI
+```
+
+Capture only bounded, relevant local metadata such as:
+
+- agent/runtime identity and version when known;
+- exit status / signal;
+- start time, crash time and elapsed duration;
+- cwd/repository/branch when already attributable;
+- PID/cgroup/scope identity;
+- whether the kernel/systemd recorded an OOM or memory-pressure kill when attributable;
+- a bounded tail of stderr/log output from the Vesper-owned launch path when available;
+- last known Agent Cockpit state required to explain the failure.
+
+Privacy and security rules:
+
+- never dump the full process environment;
+- never capture API keys, credential files, shell history or arbitrary home-directory contents;
+- redact known secret-bearing fields before persistence/presentation;
+- keep local crash evidence local by default;
+- `Diagnose with AI` must show what context will leave the machine before any remote model call;
+- do not upload raw logs automatically;
+- bound retained crash history by count/size/time;
+- crash capture must not keep an agent alive or interfere with its exit semantics.
+
+Actions may include:
+
+```text
+Restart
+Open Agent Cockpit
+Open bounded logs
+Diagnose with AI
+Dismiss
+```
+
+Acceptance criteria:
+
+- normal exits are distinguishable from unexpected crashes;
+- exit code/signal is truthful;
+- OOM attribution is shown only with real evidence;
+- secrets/environment are absent from stored crash records;
+- restarting uses the canonical agent launch path and does not bypass Default Agent/provider policy.
+
+---
+
+# 21. SSH Session Recovery and Terminal Hygiene
+
+Vesper should make interactive SSH failure leave the local terminal in a clean state, especially after remote tmux/TUI/editor sessions.
+
+This is a thin wrapper/integration around the user's normal SSH client, not a replacement SSH implementation.
+
+Requirements:
+
+- preserve the user's SSH config, host aliases, ProxyJump and authentication behavior;
+- enable sensible client keepalive behavior only through documented/user-controlled configuration;
+- after an abnormal disconnect, restore local terminal modes such as alternate screen, cursor visibility, mouse tracking and sane tty state when they were left dirty;
+- cleanup must run on success, failure and signal interruption where possible;
+- optional automatic reconnect may exist only for established interactive sessions, with bounded retry/backoff and a clear way to stop;
+- never loop forever without visible state;
+- do not auto-retry authentication failures or host-key failures as if they were transient network drops;
+- tmux/herdr/editor reconnection logic remains application/session-specific and should not be guessed from window titles;
+- ordinary `ssh` should remain available without Vesper recovery behavior when the user explicitly wants raw semantics.
+
+Acceptance criteria:
+
+- dropping a remote full-screen TUI does not leave mouse tracking/alternate-screen state stuck locally;
+- host-key/authentication failures return immediately rather than reconnecting forever;
+- transient network loss can offer or perform bounded reconnect according to policy;
+- reconnect never changes the selected SSH host/config semantics.
+
+---
+
+# 22. Workspace Layout Snapshots
 
 Allow saving/restoring useful workspace arrangements.
-
-Examples:
 
 ```text
 Coding
@@ -661,7 +845,7 @@ Requirements:
 
 ---
 
-# 17. Unified Command Palette
+# 23. Unified Command Palette
 
 Vesper should converge app launch, system actions and Settings navigation into one searchable command surface.
 
@@ -684,6 +868,8 @@ Save Workspace Layout
 Restore Workspace Layout
 Privacy
 Arrange Displays
+Text Size
+Brightness
 Zoom
 ```
 
@@ -698,7 +884,7 @@ Rules:
 
 ---
 
-# 18. Keep-mapped Hidden Shell Surfaces
+# 24. Keep-mapped Hidden Shell Surfaces
 
 For expensive Quickshell layer surfaces that are frequently hidden/revealed, Vesper may keep the surface mapped and park it outside the visible region when measurement proves map/unmap rebuild is the performance problem.
 
@@ -714,11 +900,46 @@ Requirements:
 - use only after measuring a meaningful improvement;
 - state ownership remains with the original component.
 
-Good candidates may include frequently toggled persistent shell surfaces such as the top bar, but implementation must be benchmark-driven.
+---
+
+# 25. Shell Restart Continuity
+
+A Caelestia/Quickshell reload should restart presentation, not silently erase durable runtime truth owned elsewhere.
+
+Continuity candidates:
+
+```text
+notifications/history
+Quick Reminders
+Stay Awake inhibitor state
+recording state
+DND state when owned durably
+Agent Console applications/workspace
+agent process/crash state
+active share/transfer state when the owning app exposes it
+```
+
+Contract:
+
+- durable runtime state must be owned by the subsystem that can survive/reconstruct after shell restart;
+- QML must not be the only copy of reminder, notification-history, recording or inhibitor truth when continuity is promised;
+- on shell startup/reload, views rehydrate from authoritative state and mark unknown/stale states honestly;
+- dismissed notifications must not return as new;
+- running recordings/transfers/agents must not be killed merely because their indicator UI restarted;
+- a shell crash during a Display confirmation transaction must not convert a temporary preview into persistent config;
+- continuity must not resurrect runtime actions that the owner already ended;
+- do not persist every transient animation/popup just for visual continuity.
+
+Acceptance criteria:
+
+- restarting the shell preserves/reconstructs the states explicitly covered by this contract;
+- no duplicate reminders/notifications are emitted solely because the shell restarted;
+- indicators return to the real state after restart;
+- critical owners remain independent of view lifecycle.
 
 ---
 
-# 19. Shell State Indicators
+# 26. Shell State Indicators
 
 Show compact indicators only for temporary user-controlled states that are easy to forget.
 
@@ -730,8 +951,10 @@ Recording
 DND
 active reminders
 screen zoom
+clamshell state when useful
 Tor/privacy state when already provided by Privacy HUD
-active-agent count / quota pressure when already provided by AI Hub
+active-agent count / quota pressure when already provided by AI
+agent crash attention state when one exists
 ```
 
 Rules:
@@ -744,7 +967,7 @@ Rules:
 
 ---
 
-# 20. Event-driven Local State
+# 27. Event-driven Local State
 
 Reduce avoidable short-interval subprocess polling for local desktop state.
 
@@ -752,13 +975,14 @@ Prefer events, DBus/signals, sockets, compositor callbacks or long-lived subscri
 
 - audio default-sink/device changes;
 - network connectivity;
-- monitor layout/focus;
+- monitor layout/focus and lid state;
 - power/session idle state;
 - notification state;
 - recording state;
-- agent process state when Agent Cockpit exposes it.
+- app scope/process lifecycle;
+- live agent process/crash state when Agent Cockpit exposes it.
 
-Bounded polling remains acceptable for inherently remote/periodic state such as provider quota refreshes.
+Bounded polling remains acceptable for inherently remote/periodic state such as provider quota refreshes or hardware interfaces that expose no usable event mechanism.
 
 The rule is not "no polling". The rule is: do not repeatedly spawn expensive local probes when the owner can push a trustworthy change.
 
@@ -773,15 +997,24 @@ Target information placement:
 ```text
 Settings
 ├── Apps
-│   └── Default Apps
-│       └── Default Agent
+│   ├── Default Apps
+│   │   └── Default Agent
+│   └── App Inspector
+│       └── process/scope/resource ownership when implemented
 │
 ├── Display
 │   ├── Arrange Displays
+│   ├── Text Size
+│   ├── per-monitor Brightness when supported
+│   ├── built-in display state / clamshell status
 │   ├── resolution / refresh / scale / orientation
 │   ├── mirror / extend
 │   ├── workspace assignment
 │   └── saved monitor profiles
+│
+├── Power & Performance
+│   ├── normal idle/suspend policy
+│   └── lid-close / clamshell policy
 │
 ├── Input
 │   └── Assistant / Copilot key
@@ -790,8 +1023,6 @@ Settings
 │
 ├── Shortcuts
 │   ├── Toggle Agent Console
-│   │   ├── physical Assistant/Copilot key when present
-│   │   └── Super + `
 │   ├── Move window to Agent Console
 │   ├── Share
 │   ├── Reminder
@@ -800,8 +1031,9 @@ Settings
 │   ├── notification actions
 │   └── universal semantic actions when implemented
 │
-└── Power & Performance
-    └── normal idle/suspend policy remains authoritative
+└── AI
+    └── Agents / Agent Cockpit
+        └── crash history / diagnosis entry point
 ```
 
 Settings rules:
@@ -811,16 +1043,18 @@ Settings rules:
 - its default semantic action is `Toggle Agent Console`;
 - changing key behavior later must use the canonical shortcut registry/conflict checker;
 - Display Arrange is part of Display, not a separate application;
+- Text Size is independent from monitor scale and font-family selection;
+- DDC/CI brightness rows exist only for monitors with verified writable capability;
+- lid-close policy lives under Power & Performance while monitor state remains visible in Display;
 - display confirmation/revert is a Settings transaction, not a hidden fire-and-forget script;
-- CWD-aware launch is an ergonomic behavior, not a toggle by default;
-- bar-scroll normalization is implementation behavior, not a Settings toggle by default;
-- Launch-or-Focus is app-action behavior, not a global toggle until a real policy need appears;
-- Capture keyboard navigation belongs to Capture help/shortcut discovery, not a standalone page;
+- CWD-aware launch, bar-scroll normalization, Launch-or-Focus and shell continuity are interaction/runtime behavior, not toggles by default;
 - compositor zoom belongs in Shortcuts, not persistent Display scale;
 - Stay Awake is temporary runtime state, not a replacement for power policy;
+- app scopes are runtime architecture; expose observability in App Inspector instead of a fake per-app isolation switch before enforcement exists;
+- agent crash capture is local by default and remote AI diagnosis is explicit;
 - LocalSend/OnionShare retain their existing app/service configuration ownership.
 
-`APPS-SETTINGS.md` remains authoritative for the Default Apps/installed-app surface. `SETTINGS.md` remains authoritative for the wider Settings information architecture.
+`APPS-SETTINGS.md` remains authoritative for the Default Apps/App Inspector surface. `SETTINGS.md` remains authoritative for the wider Settings information architecture. `AI.md` remains authoritative for provider/model/capability policy.
 
 ---
 
@@ -840,8 +1074,6 @@ Super + Ctrl + R                   Quick Reminder
 
 Other actions such as Stay Awake, Audio Output Cycle, notification controls, zoom and universal Copy/Paste must be assigned only after checking current Vesper/Caelestia bindings.
 
-Do not change an existing binding solely to mimic Omarchy.
-
 The shortcut registry should expose semantic action IDs so hardware keys, user chords, command-palette actions and Settings all point at the same action.
 
 Example conceptual IDs:
@@ -849,6 +1081,7 @@ Example conceptual IDs:
 ```text
 agent.console.toggle
 agent.console.move-current-window
+agent.crash.open-latest
 share.open
 reminder.create
 stay-awake.toggle
@@ -858,6 +1091,7 @@ capture.ocr
 capture.color-picker
 display.zoom.in
 display.zoom.reset
+display.brightness.adjust
 notification.dismiss-latest
 notification.dismiss-all
 notification.invoke-latest
@@ -874,21 +1108,25 @@ notification.dnd.toggle
 Before adding features:
 
 1. inventory current Caelestia/Vesper shell actions and hotkeys;
-2. inventory current app identity/launch behavior;
+2. inventory current app identity/launch/UWSM/systemd scope behavior;
 3. inventory capture backend and popup geometry ownership;
 4. inventory notification history/actions/DND support;
 5. inventory PipeWire audio APIs already exposed to QML/backend;
 6. inventory Settings row/navigation primitives;
-7. identify the canonical structured shortcut/action registry or create one if missing;
-8. identify which local-state pollers can be replaced with existing events;
-9. document conflicts instead of silently replacing working behavior.
+7. inventory display/backlight/DDC/CI/lid event capabilities;
+8. inventory shell-owned vs externally-owned runtime state for restart continuity;
+9. identify the canonical structured shortcut/action registry or create one if missing;
+10. identify which local-state pollers can be replaced with existing events;
+11. document conflicts instead of silently replacing working behavior.
 
 Exit criteria:
 
 - each feature has an owner and no duplicate backend is planned;
 - final shortcut candidates are conflict-checked;
 - Settings navigation targets are known;
-- existing functionality that already satisfies a target is marked reuse, not rebuilt.
+- existing functionality that already satisfies a target is marked reuse, not rebuilt;
+- app scope/OOM design is based on the real current session topology;
+- hardware-dependent controls have explicit unsupported behavior.
 
 ## Phase 1 — agent-console foundation
 
@@ -904,16 +1142,6 @@ Implement together:
 8. multi-window tiling;
 9. Vesper-native presentation/accessibility behavior.
 
-Verify on:
-
-- normal keyboard without Assistant key;
-- hardware exposing semantic assistant key when available;
-- compatibility Copilot-key event path when available;
-- 1x scale;
-- fractional scale;
-- HiDPI;
-- one and multiple monitors.
-
 ## Phase 2 — everyday utility actions
 
 Implement:
@@ -925,8 +1153,6 @@ Implement:
 5. Quick Reminders;
 6. matching temporary shell indicators.
 
-Goal: useful daily ergonomics without changing major shell architecture.
-
 ## Phase 3 — capture and launch ergonomics
 
 Implement:
@@ -937,21 +1163,34 @@ Implement:
 4. Capture result Share actions;
 5. CWD-aware terminal launch;
 6. CWD-aware file-manager launch;
-7. Launch-or-Focus audit and first safe app actions.
+7. Launch-or-Focus audit and first safe app actions;
+8. SSH terminal-cleanup/recovery wrapper.
 
-## Phase 4 — display and input polish
+## Phase 4 — display and laptop polish
 
 Implement:
 
 1. Display Arrange native editor;
-2. safe temporary apply;
-3. confirmation countdown and exact revert;
-4. persistent runtime-to-declarative handoff when supported;
-5. compositor screen zoom;
-6. zoom indicator/OSD;
-7. bar scroll delta normalization and OSD consistency.
+2. safe temporary apply + exact revert;
+3. Unified Text Scaling;
+4. DDC/CI external-monitor brightness routing;
+5. clamshell/lid policy and safe monitor recovery;
+6. compositor screen zoom;
+7. bar scroll delta normalization and OSD consistency;
+8. persistence handoff only through structured runtime-to-declarative paths.
 
-## Phase 5 — command and workflow convergence
+## Phase 5 — process and agent resilience
+
+Implement:
+
+1. verify/reuse or introduce canonical per-app systemd scopes;
+2. connect scope/process attribution to App Inspector;
+3. define/test real systemd-oomd policy before claiming OOM isolation;
+4. add bounded Agent Crash Capture;
+5. expose local crash history/status in Agent Cockpit;
+6. add explicit `Diagnose with AI` handoff with context review/redaction.
+
+## Phase 6 — command and workflow convergence
 
 Implement:
 
@@ -961,15 +1200,17 @@ Implement:
 4. workspace layout snapshots;
 5. context-aware universal actions after binding/app identity audit.
 
-## Phase 6 — performance and event cleanup
+## Phase 7 — continuity, performance and event cleanup
 
 After user-facing behavior is stable:
 
-1. profile Quickshell show/hide/map/unmap costs;
-2. apply keep-mapped parking only where measurement supports it;
-3. replace avoidable local subprocess polling with owner events/signals;
-4. verify multi-monitor and capture behavior after optimization;
-5. remove superseded helper scripts/dead code only after proving no callers remain.
+1. move promised durable runtime truth out of view-only QML state;
+2. verify shell-restart rehydration and no duplicate events;
+3. profile Quickshell show/hide/map/unmap costs;
+4. apply keep-mapped parking only where measurement supports it;
+5. replace avoidable local subprocess polling with owner events/signals;
+6. verify multi-monitor/capture/clamshell behavior after optimization;
+7. remove superseded helper scripts/dead code only after proving no callers remain.
 
 ---
 
@@ -981,8 +1222,7 @@ Every implementation PR should test the behavior it introduces rather than only 
 
 Test:
 
-- shortcut conflicts;
-- action-ID routing;
+- shortcut conflicts and action-ID routing;
 - physical Assistant key absent/present states;
 - no accidental F23 hijacking;
 - special-workspace toggle idempotency;
@@ -993,40 +1233,40 @@ Test:
 
 Test:
 
-- 1.0 scale;
-- common fractional scale;
-- 2.0 scale;
+- 1.0, common fractional and 2.0 scale;
 - reserved top bar area;
 - focus moving between differently scaled monitors;
 - monitor connect/disconnect;
 - Display Arrange auto-revert;
-- no unsafe persistence before confirmation.
+- Text Size without changing monitor scale;
+- DDC/CI supported/unsupported/hung devices;
+- internal-panel backlight path;
+- lid close/open with and without external displays;
+- docking/undocking while clamshell policy is active.
 
 ## capture
 
 Test:
 
 - mouse selection;
-- Tab navigation;
-- arrow navigation;
+- Tab/arrow navigation;
 - Enter/Ctrl+Enter;
 - empty secondary monitor;
 - shell/plugin visible-card capture;
 - cancellation cleanup;
-- screenshot and recording target parity where both are supported.
+- screenshot/record target parity where supported.
 
-## audio/OSD
+## audio/brightness/OSD
 
 Test:
 
-- mouse wheel;
-- high-resolution touchpad scroll;
+- mouse wheel and high-resolution touchpad scroll;
 - disconnected sink skipped;
-- output cycle ordering remains stable enough to understand;
-- OSD reflects the actual selected sink/value;
+- actual selected sink/value reflected in OSD;
+- external brightness and internal brightness use one semantic feedback path;
 - no duplicate backend state.
 
-## reminders/notifications
+## reminders/notifications/continuity
 
 Test:
 
@@ -1036,37 +1276,45 @@ Test:
 - dismiss latest/all;
 - actionable notification validity;
 - bounded history;
-- replay does not manufacture new app events.
+- replay does not manufacture new app events;
+- shell restart does not duplicate reminders/notifications;
+- recording/Stay Awake/agent state rehydrates truthfully when continuity is promised.
 
-## launch behavior
+## launch/process resilience
 
 Test:
 
 - supported terminal CWD;
-- unknown terminal fallback;
-- dead/stale PID fallback;
+- unknown terminal and dead/stale PID fallback;
 - file manager opens same resolved directory;
-- Launch-or-Focus does not collapse apps that legitimately need multiple windows.
+- Launch-or-Focus does not collapse apps that need multiple windows;
+- app scope ownership is stable;
+- killing one app scope leaves shell/session alive;
+- OOM claim is disabled unless real policy is configured;
+- SSH disconnect cleans local terminal state;
+- auth/host-key SSH failures do not auto-reconnect forever.
+
+## agent crash diagnosis
+
+Test:
+
+- clean/normal exit vs crash distinction;
+- exit code and signal attribution;
+- bounded log tail;
+- real OOM evidence path;
+- no environment/API-key leakage;
+- crash-history retention bound;
+- AI diagnosis requires explicit context review/handoff.
 
 ## UI/accessibility
 
-Test new surfaces with:
-
-- bright wallpaper/background;
-- dark wallpaper/background;
-- high-frequency/mixed background;
-- reduced motion;
-- reduced transparency where applicable;
-- increased contrast;
-- keyboard-only operation for the flows that claim it.
+Test new surfaces with bright/dark/high-frequency backgrounds, reduced motion, reduced transparency where applicable, increased contrast, and keyboard-only operation for flows that claim it.
 
 ---
 
 # failure and fallback rules
 
 Use truthful degradation throughout the plan.
-
-Examples:
 
 ```text
 Default Agent missing
@@ -1084,6 +1332,21 @@ CWD cannot be attributed
 Display confirmation times out
   -> exact prior layout restored
 
+DDC/CI unsupported or timed out
+  -> no fake brightness write; surface becomes unsupported/stale
+
+External display disappears during clamshell
+  -> safe display/power fallback; never intentionally leave user with no usable output
+
+App scope unavailable
+  -> use verified existing launch path; do not claim isolation
+
+OOM evidence unavailable
+  -> crash cause remains unknown
+
+SSH authentication/host-key failure
+  -> stop; do not treat as transient reconnect
+
 OnionShare not installed
   -> unavailable/hidden according to normal action policy
 
@@ -1092,6 +1355,9 @@ notification action expired
 
 plugin capture geometry unavailable
   -> use the safe existing capture target; never invent coordinates
+
+shell state owner unavailable after reload
+  -> show unknown/stale, do not recreate a guessed runtime action
 ```
 
 Unknown must remain unknown. Failure in an enhancement must not silently trigger an unrelated action.
@@ -1108,17 +1374,23 @@ Runtime-only examples:
 - Stay Awake;
 - current compositor zoom;
 - current audio output;
+- current external brightness value unless the hardware/backend already owns persistence;
 - notification DND runtime state according to its existing owner;
-- temporary display preview before confirmation.
+- temporary display preview before confirmation;
+- active clamshell runtime state derived from lid/output state.
 
 Persistent examples when supported:
 
 - Default Agent;
 - shortcut customization;
+- Text Size;
+- lid-close/clamshell policy;
 - accepted monitor layout/profile through the structured Vesper configuration path;
 - saved workspace layout snapshots.
 
-No QML surface should silently write arbitrary Nix/Lua text. Persistent system changes use the guarded Vesper runtime-to-declarative contract.
+Durable local operational records may include bounded notification/reminder state and bounded agent crash records, but they are not declarative Nix configuration.
+
+No QML surface should silently write arbitrary Nix/Lua/toolkit config text. Persistent system changes use the guarded Vesper runtime-to-declarative contract.
 
 ---
 
@@ -1135,8 +1407,6 @@ When a feature lands:
 
 ## final implementation order
 
-The preferred order is:
-
 ```text
 0  Audit / action registry / ownership
 1  Default Agent
@@ -1151,16 +1421,24 @@ The preferred order is:
 10 Capture visible plugin/card geometry
 11 Color Picker / Capture Hub cleanup
 12 CWD-aware terminal + Files launch
-13 Display Arrange + automatic revert
-14 Compositor screen zoom
-15 Bar scroll normalization + OSD
-16 Launch-or-Focus
-17 Unified command palette/action registry convergence
-18 Workspace layout snapshots
-19 Context-aware universal actions
-20 Shell state indicator polish
-21 Event-driven cleanup
-22 Keep-mapped shell-surface optimizations where benchmarked
+13 SSH session cleanup/recovery
+14 Display Arrange + automatic revert
+15 Unified Text Scaling
+16 External-monitor DDC/CI brightness
+17 Clamshell/lid handling
+18 Compositor screen zoom
+19 Bar scroll normalization + OSD
+20 Launch-or-Focus
+21 systemd application scopes / App Inspector attribution
+22 verified OOM isolation policy
+23 Agent Crash Capture + Diagnosis
+24 Unified command palette/action registry convergence
+25 Workspace layout snapshots
+26 Context-aware universal actions
+27 Shell restart continuity
+28 Shell state indicator polish
+29 Event-driven cleanup
+30 Keep-mapped shell-surface optimizations where benchmarked
 ```
 
-The ordering is intentionally dependency-aware: establish canonical state/actions first, ship low-risk utility wins next, then larger display/input/workflow changes, and optimize only after behavior is correct.
+The ordering is dependency-aware: establish canonical state/actions first, ship low-risk utility wins next, then display/laptop resilience, process/agent isolation and workflow convergence, and optimize only after behavior is correct.
