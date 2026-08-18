@@ -1,0 +1,65 @@
+name: Adaptive icons smoke check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'home/yargc/packages/Cargo.toml'
+      - 'home/yargc/packages/Cargo.lock'
+      - 'home/yargc/packages/vesper-icon-*.rs'
+      - 'home/yargc/packages/vesper-icons.rs'
+      - 'home/yargc/packages/vesper-icon-*.patch'
+      - 'home/yargc/packages/vesper-icons-*.patch'
+      - 'home/yargc/packages/vesper-control.nix'
+      - 'home/yargc/packages/VesperThemeSettings.qml'
+      - 'home/yargc/packages/AiPage.qml'
+      - 'home/yargc/packages/VesperAppControls.qml'
+      - 'home/yargc/packages/caelestia-ai-hub.patch'
+      - '.github/workflows/adaptive-icons-smoke.yml'
+  pull_request:
+    paths:
+      - 'home/yargc/packages/Cargo.toml'
+      - 'home/yargc/packages/Cargo.lock'
+      - 'home/yargc/packages/vesper-icon-*.rs'
+      - 'home/yargc/packages/vesper-icons.rs'
+      - 'home/yargc/packages/vesper-icon-*.patch'
+      - 'home/yargc/packages/vesper-icons-*.patch'
+      - 'home/yargc/packages/vesper-control.nix'
+      - 'home/yargc/packages/VesperThemeSettings.qml'
+      - 'home/yargc/packages/AiPage.qml'
+      - 'home/yargc/packages/VesperAppControls.qml'
+      - 'home/yargc/packages/caelestia-ai-hub.patch'
+
+permissions:
+  contents: read
+
+jobs:
+  icon-crate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Apply production patches and compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/vesper-icons"
+          cp -R home/yargc/packages "$work"
+          chmod -R u+w "$work"
+          cd "$work"
+
+          nix shell nixpkgs#cargo nixpkgs#rustc nixpkgs#gnupatch -c bash -c '
+            set -euo pipefail
+            patch vesper-icons.rs < vesper-icons-source-guard.patch
+            patch vesper-icons.rs < vesper-icons-material-axis.patch
+            patch vesper-icon-worker.rs < vesper-icon-worker-provider-defaults.patch
+            cargo check --locked
+          '
+
+      - name: Validate Caelestia patch syntax
+        shell: bash
+        run: git apply --numstat home/yargc/packages/caelestia-ai-hub.patch >/dev/null
