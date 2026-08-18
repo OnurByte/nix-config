@@ -74,12 +74,6 @@ VerticalFadeFlickable {
                     label: qsTr("AI"),
                     icon: "smart_toy",
                     description: qsTr("Models, API keys, agents, skills, MCP, Hermes")
-                },
-                {
-                    pageIcon: "extension",
-                    label: qsTr("Plugins"),
-                    icon: "extension",
-                    description: qsTr("Manage shell extensions")
                 }
             ]
         },
