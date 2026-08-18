@@ -1,6 +1,6 @@
 --- a/vesper-icons.rs
 +++ b/vesper-icons.rs
-@@ -25,6 +25,7 @@ struct Config {
+@@ -18,6 +18,7 @@ struct Config {
      mode: String,
      material: String,
      provider: String,
@@ -8,15 +8,15 @@
      follow_palette: bool,
      scheme_mode: String,
      accent: String,
-@@ -37,6 +38,7 @@ impl Default for Config {
-             mode: "original".to_string(),
+@@ -31,6 +32,7 @@ impl Default for Config {
+             mode: "automatic".to_string(),
              material: "standard".to_string(),
              provider: "openai".to_string(),
 +            remote_consent: false,
              follow_palette: true,
              scheme_mode: "dark".to_string(),
              accent: "#7aa2f7".to_string(),
-@@ -210,6 +212,9 @@ fn load_config() -> Config {
+@@ -207,6 +209,9 @@ fn load_config() -> Config {
              "mode" if valid_mode(value) => config.mode = value.to_string(),
              "material" if valid_material(value) => config.material = value.to_string(),
              "provider" if valid_provider(value) => config.provider = value.to_string(),
@@ -26,8 +26,7 @@
              "followPalette" => {
                  config.follow_palette = value == "1" || value.eq_ignore_ascii_case("true")
              }
-@@ -239,11 +244,12 @@ fn save_config(config: &Config) -> Result<(), String> {
- fn save_config(config: &Config) -> Result<(), String> {
+@@ -233,11 +238,12 @@ fn save_config(config: &Config) -> Result<(), String> {
      let body = format!(
 -        "enabled={}\nmode={}\nmaterial={}\nprovider={}\nfollowPalette={}\nschemeMode={}\naccent={}\n",
 +        "enabled={}\nmode={}\nmaterial={}\nprovider={}\nremoteConsent={}\nfollowPalette={}\nschemeMode={}\naccent={}\n",
@@ -39,7 +38,7 @@
          if config.follow_palette { 1 } else { 0 },
          config.scheme_mode,
          config.accent
-@@ -1056,12 +1062,13 @@ fn status_json(items: &[InventoryItem], config: &Config, current: &str) -> String {
+@@ -1060,12 +1066,13 @@ fn status_json(items: &[InventoryItem], config: &Config, current: &str) -> String {
  
      format!(
 -        "{{\"enabled\":{},\"mode\":\"{}\",\"material\":\"{}\",\"gridRevision\":\"{}\",\"provider\":\"{}\",\"providerConfigured\":{},\"followPalette\":{},\"schemeMode\":\"{}\",\"accent\":\"{}\",\"theme\":\"{}\",\"discovered\":{},\"canonical\":{},\"pending\":{},\"failed\":{},\"excluded\":{},\"active\":{},\"current\":\"{}\",\"aiTransport\":\"worker\"}}\n",
@@ -54,7 +53,7 @@
          if config.follow_palette { "true" } else { "false" },
          json_escape(&config.scheme_mode),
          json_escape(&config.accent),
-@@ -1161,6 +1168,14 @@ fn set_provider(provider: &str) -> Result<(), String> {
+@@ -1168,6 +1175,14 @@ fn set_provider(provider: &str) -> Result<(), String> {
      Ok(())
  }
  
@@ -69,15 +68,15 @@
  fn set_follow_palette(enabled: bool) -> Result<(), String> {
      let mut config = load_config();
      config.follow_palette = enabled;
-@@ -1297,6 +1312,7 @@ fn usage() -> ! {
-            mode original|light|dark|tinted|clear\n\
+@@ -1310,6 +1325,7 @@ fn usage() -> ! {
+            mode automatic|default|dark|tinted|clear\n\
             material standard|glass\n\
             provider openai|anthropic|xai|openrouter|google\n\
 +           remote-consent on|off\n\
             follow-palette on|off\n\
             sync-theme light|dark\n\
             app-status <desktop-id>\n\
-@@ -1325,6 +1341,11 @@ fn main() {
+@@ -1338,6 +1354,11 @@ fn main() {
          [command, mode] if command == "mode" => set_mode(mode),
          [command, material] if command == "material" => set_material(material),
          [command, provider] if command == "provider" => set_provider(provider),
