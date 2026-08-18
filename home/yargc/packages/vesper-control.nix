@@ -36,6 +36,7 @@ let
       patch vesper-icons.rs < ${./vesper-icons-appstream-recovery.patch}
       patch vesper-icons.rs < ${./vesper-icons-grid-recipe.patch}
       patch vesper-icons.rs < ${./vesper-icons-state-db.patch}
+      patch vesper-icons.rs < ${./vesper-icons-remote-consent.patch}
       patch vesper-icon-queue.rs < ${./vesper-icon-queue-inventory-db.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-provider-defaults.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-validation.patch}
