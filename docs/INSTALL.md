@@ -4,6 +4,23 @@ Status: **current**
 
 Vesper is a single-machine configuration. Do not make the host generic and do not copy another machine's generated hardware configuration.
 
+## repository checkout contract
+
+The GitHub repository is named `OnurByte/vesper`, but the current Vesper configuration still treats this local path as canonical:
+
+```text
+/home/yargc/nix-config
+```
+
+`programs.nh.flake`, shell aliases and command-memory helpers currently depend on that path. Until those consumers are migrated together, clone the repository explicitly into `~/nix-config` rather than relying on Git's default `~/vesper` directory name:
+
+```bash
+git clone https://github.com/OnurByte/vesper.git ~/nix-config
+cd ~/nix-config
+```
+
+Do not partially rename the checkout path. A future migration to `~/vesper` must update every hard-coded consumer in one coherent change and then update this section.
+
 ## Verified current disk inventory
 
 The following values were captured from the real Vesper machine on 2026-08-16. They are not examples.
