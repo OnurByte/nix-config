@@ -16,6 +16,8 @@ ColumnLayout {
     spacing: Tokens.spacing.extraSmall
 
     property string currentVariant: "tonalspot"
+    property var icons: ({ enabled: false, mode: "original", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
+    property string iconMessage: ""
 
     function setScheme(name: string, flavour: string): void {
         Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-n", name, "-f", flavour]);
@@ -32,6 +34,21 @@ ColumnLayout {
         Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-m", Colours.light ? "light" : "dark"]);
         refreshTimer.restart();
     }
+
+    function refreshIcons(): void {
+        if (!iconStatus.running)
+            iconStatus.running = true;
+    }
+
+    function runIcon(args): void {
+        if (iconChange.running)
+            return;
+        root.iconMessage = "";
+        iconChange.command = ["@vesperControl@", "icon"].concat(args);
+        iconChange.running = true;
+    }
+
+    Component.onCompleted: refreshIcons()
 
     property list<MenuItem> schemeItems: [
         MenuItem {
@@ -150,6 +167,45 @@ ColumnLayout {
         }
     ]
 
+    property list<MenuItem> iconModeItems: [
+        MenuItem {
+            objectName: "original"
+            text: qsTr("Original")
+            icon: "image"
+            onClicked: root.runIcon(["mode", "original"])
+        },
+        MenuItem {
+            objectName: "light"
+            text: qsTr("Light")
+            icon: "light_mode"
+            onClicked: root.runIcon(["mode", "light"])
+        },
+        MenuItem {
+            objectName: "dark"
+            text: qsTr("Dark")
+            icon: "dark_mode"
+            onClicked: root.runIcon(["mode", "dark"])
+        },
+        MenuItem {
+            objectName: "tinted"
+            text: qsTr("Tinted")
+            icon: "palette"
+            onClicked: root.runIcon(["mode", "tinted"])
+        },
+        MenuItem {
+            objectName: "clear"
+            text: qsTr("Clear")
+            icon: "blur_on"
+            onClicked: root.runIcon(["mode", "clear"])
+        },
+        MenuItem {
+            objectName: "glass"
+            text: qsTr("Glass")
+            icon: "auto_awesome"
+            onClicked: root.runIcon(["mode", "glass"])
+        }
+    ]
+
     Process {
         id: getVariant
 
@@ -164,12 +220,45 @@ ColumnLayout {
         }
     }
 
+    Process {
+        id: iconStatus
+        command: ["@vesperControl@", "icon", "status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.icons = JSON.parse(text);
+                } catch (e) {
+                    root.iconMessage = qsTr("Could not read adaptive icon theme status");
+                }
+            }
+        }
+    }
+
+    Process {
+        id: iconChange
+        stderr: StdioCollector { id: iconError }
+        onExited: (code, status) => {
+            root.iconMessage = code === 0 ? "" : iconError.text.trim();
+            root.refreshIcons();
+        }
+    }
+
     Timer {
         id: refreshTimer
 
         interval: 250
         repeat: false
-        onTriggered: getVariant.running = true
+        onTriggered: {
+            getVariant.running = true;
+            root.refreshIcons();
+        }
+    }
+
+    Timer {
+        interval: 30000
+        repeat: true
+        running: root.visible
+        onTriggered: root.refreshIcons()
     }
 
     SectionHeader {
@@ -211,6 +300,59 @@ ColumnLayout {
     }
 
     SectionHeader {
+        text: qsTr("Application icons")
+    }
+
+    SelectRow {
+        label: qsTr("Appearance")
+        subtext: qsTr("recompiles canonical assets locally without another AI request")
+        fallbackIcon: "palette"
+        fallbackText: root.icons.mode || "original"
+        menuItems: root.iconModeItems
+        active: root.iconModeItems.find(item => item.objectName === root.icons.mode) ?? null
+    }
+
+    ToggleRow {
+        text: qsTr("Follow Caelestia palette")
+        subtext: qsTr("Tinted and Glass consume the current generated accent")
+        checked: root.icons.followPalette ?? true
+        disabled: iconChange.running
+        onToggled: root.runIcon(["follow-palette", checked ? "on" : "off"])
+    }
+
+    InfoRow {
+        icon: "apps"
+        label: qsTr("Generated icon theme")
+        subtext: root.icons.enabled ? qsTr("%1 canonical · %2 active").arg(root.icons.canonical || 0).arg(root.icons.active || 0) : qsTr("disabled · inherited Papirus fallback stays active")
+        value: root.icons.theme || "Vesper-Adaptive"
+    }
+
+    InfoRow {
+        icon: "colors"
+        label: qsTr("Compiler palette")
+        subtext: qsTr("scheme mode %1").arg(root.icons.schemeMode || (Colours.light ? "light" : "dark"))
+        value: root.icons.accent || qsTr("pending")
+    }
+
+    RowButton {
+        icon: "sync"
+        text: qsTr("Rebuild application icon theme")
+        subtext: qsTr("rescan sources and atomically replace the generated freedesktop theme")
+        trailingIcon: "refresh"
+        disabled: iconChange.running
+        onClicked: root.runIcon(["reconcile"])
+    }
+
+    StyledText {
+        Layout.fillWidth: true
+        visible: root.iconMessage
+        text: root.iconMessage
+        color: Colours.palette.m3error
+        font: Tokens.font.body.small
+        wrapMode: Text.WordWrap
+    }
+
+    SectionHeader {
         text: qsTr("GTK")
     }
 
@@ -224,8 +366,8 @@ ColumnLayout {
     InfoRow {
         icon: "image"
         label: qsTr("Icon theme")
-        subtext: qsTr("Follows the active light/dark mode")
-        value: Colours.light ? "Papirus-Light" : "Papirus-Dark"
+        subtext: qsTr("Vesper application overrides with Papirus inheritance for everything else")
+        value: root.icons.theme || "Vesper-Adaptive"
     }
 
     RowButton {
