@@ -18,7 +18,6 @@ ColumnLayout {
     property string currentVariant: "tonalspot"
     property var icons: ({ enabled: false, mode: "original", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
     property string iconMessage: ""
-    property bool iconMessageOk: false
 
     function setScheme(name: string, flavour: string): void {
         Quickshell.execDetached(["caelestia", "scheme", "set", "--notify", "-n", name, "-f", flavour]);
@@ -45,7 +44,6 @@ ColumnLayout {
         if (iconChange.running)
             return;
         root.iconMessage = "";
-        root.iconMessageOk = false;
         iconChange.command = ["@vesperControl@", "icon"].concat(args);
         iconChange.running = true;
     }
@@ -231,7 +229,6 @@ ColumnLayout {
                     root.icons = JSON.parse(text);
                 } catch (e) {
                     root.iconMessage = qsTr("Could not read adaptive icon theme status");
-                    root.iconMessageOk = false;
                 }
             }
         }
@@ -239,17 +236,9 @@ ColumnLayout {
 
     Process {
         id: iconChange
-        stdout: StdioCollector { id: iconOutput }
         stderr: StdioCollector { id: iconError }
         onExited: (code, status) => {
-            if (code === 0) {
-                const value = iconOutput.text.trim();
-                root.iconMessage = value.length > 0 ? qsTr("Exported to %1").arg(value) : "";
-                root.iconMessageOk = true;
-            } else {
-                root.iconMessage = iconError.text.trim();
-                root.iconMessageOk = false;
-            }
+            root.iconMessage = code === 0 ? "" : iconError.text.trim();
             root.refreshIcons();
         }
     }
@@ -354,20 +343,11 @@ ColumnLayout {
         onClicked: root.runIcon(["reconcile"])
     }
 
-    RowButton {
-        icon: "archive"
-        text: qsTr("Export all icons")
-        subtext: qsTr("current SVG/PNG, every appearance and canonical .vicon packages · no AI request")
-        trailingIcon: "download"
-        disabled: iconChange.running
-        onClicked: root.runIcon(["export-all", "archive"])
-    }
-
     StyledText {
         Layout.fillWidth: true
         visible: root.iconMessage
         text: root.iconMessage
-        color: root.iconMessageOk ? Colours.palette.m3primary : Colours.palette.m3error
+        color: Colours.palette.m3error
         font: Tokens.font.body.small
         wrapMode: Text.WordWrap
     }
