@@ -31,11 +31,6 @@ let
     ''
   ) jobs;
 
-  compatibilityScript = pkgs.writeShellScript "vesper-hermes-morning-check-compat" ''
-    set -euo pipefail
-    exec ${hermesCore}/bin/vesper-hermes-automations trigger morning-check
-  '';
-
   installJobScripts = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
       name: source: ''
@@ -61,13 +56,9 @@ in
     mkdir -p "${home}/.hermes/scripts"
     ${installJobScripts}
 
-    for target in \
+    rm -f \
       "${home}/.hermes/scripts/morning-check-deliver.sh" \
       "${home}/.hermes/scripts/sabah-check-deliver.sh"
-    do
-      rm -f "$target"
-      ${pkgs.coreutils}/bin/install -Dm755 ${compatibilityScript} "$target"
-    done
   '';
 
   # Hermes remains the only recurring scheduler. Reconcile only Vesper-owned

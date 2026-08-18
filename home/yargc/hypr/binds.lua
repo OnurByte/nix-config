@@ -20,7 +20,6 @@ hl.bind(main .. " + L", hl.dsp.global("caelestia:lock"))
 hl.bind(main .. " + SHIFT + Q", hl.dsp.global("caelestia:session"))
 hl.bind(main .. " + SHIFT + Space", exec("hyprctl switchxkblayout all next"))
 hl.bind(main .. " + slash", exec("vesper-commands"))
-hl.bind(main .. " + SHIFT + slash", exec("ghostty -e vesper-keys"))
 
 hl.bind(main .. " + M", exec("spotify"))
 hl.bind(main .. " + D", exec("vesktop"))

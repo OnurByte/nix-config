@@ -242,7 +242,6 @@ in
     privacyHud
     aiHub
     vesperControl
-    codexbar
     pkgs.adw-gtk3
     pkgs.papirus-icon-theme
     pkgs.qtengine

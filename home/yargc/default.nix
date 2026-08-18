@@ -30,14 +30,7 @@
     homeDirectory = "/home/${username}";
     stateVersion = "26.05";
 
-    # PychoVIM intentionally keeps its own updater and mutable config checkout.
-    # Zed is Nix-managed from the locked stable nixpkgs package.
-    sessionPath = [ "$HOME/.local/bin" ];
-
     sessionVariables = {
-      EDITOR = "pycho";
-      VISUAL = "pycho";
-      GIT_EDITOR = "pycho";
       TERMINAL = "ghostty";
       BROWSER = "zen-beta";
 

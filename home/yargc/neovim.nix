@@ -121,7 +121,6 @@ in
   home.sessionVariables = {
     EDITOR = "pycho";
     VISUAL = "pycho";
-    GIT_EDITOR = "pycho";
   };
 
   home.packages = [

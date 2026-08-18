@@ -22,7 +22,6 @@
     };
 
     shellAliases = {
-      nvim = "pycho";
       zed = "zeditor";
 
       aipanel = "codexbar-popup";
