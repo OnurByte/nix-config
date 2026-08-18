@@ -26,7 +26,7 @@ stdenv.mkDerivation {
   buildPhase = ''
     runHook preBuild
 
-    $CXX -std=c++20 -O2 \
+    $CXX -std=c++20 -O2 -fPIC \
       src/main.cpp \
       -o vesper-store \
       $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6Qml Qt6Quick)
@@ -36,6 +36,18 @@ stdenv.mkDerivation {
       -o vesper-store-core
 
     runHook postBuild
+  '';
+
+  doCheck = true;
+  checkPhase = ''
+    runHook preCheck
+
+    ./vesper-store-core sources \
+      | grep -F '"flathub":{"enabled":false' >/dev/null
+    env -u VESPER_STORE_CATALOG ./vesper-store-core catalog-status \
+      | grep -F '"available":false' >/dev/null
+
+    runHook postCheck
   '';
 
   installPhase = ''
