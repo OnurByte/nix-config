@@ -16,7 +16,7 @@ ColumnLayout {
     spacing: Tokens.spacing.extraSmall
 
     property string currentVariant: "tonalspot"
-    property var icons: ({ enabled: false, mode: "original", material: "standard", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
+    property var icons: ({ enabled: false, mode: "automatic", material: "standard", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "", gridRevision: "" })
     property string iconMessage: ""
 
     function setScheme(name: string, flavour: string): void {
@@ -169,16 +169,16 @@ ColumnLayout {
 
     property list<MenuItem> iconModeItems: [
         MenuItem {
-            objectName: "original"
-            text: qsTr("Original")
-            icon: "image"
-            onClicked: root.runIcon(["mode", "original"])
+            objectName: "automatic"
+            text: qsTr("Automatic")
+            icon: "auto_mode"
+            onClicked: root.runIcon(["mode", "automatic"])
         },
         MenuItem {
-            objectName: "light"
-            text: qsTr("Light")
+            objectName: "default"
+            text: qsTr("Default")
             icon: "light_mode"
-            onClicked: root.runIcon(["mode", "light"])
+            onClicked: root.runIcon(["mode", "default"])
         },
         MenuItem {
             objectName: "dark"
@@ -187,16 +187,16 @@ ColumnLayout {
             onClicked: root.runIcon(["mode", "dark"])
         },
         MenuItem {
-            objectName: "tinted"
-            text: qsTr("Tinted")
-            icon: "palette"
-            onClicked: root.runIcon(["mode", "tinted"])
-        },
-        MenuItem {
             objectName: "clear"
             text: qsTr("Clear")
             icon: "blur_on"
             onClicked: root.runIcon(["mode", "clear"])
+        },
+        MenuItem {
+            objectName: "tinted"
+            text: qsTr("Tinted")
+            icon: "palette"
+            onClicked: root.runIcon(["mode", "tinted"])
         }
     ]
 
@@ -314,9 +314,9 @@ ColumnLayout {
 
     SelectRow {
         label: qsTr("Appearance")
-        subtext: qsTr("recompiles canonical assets locally without another AI request")
+        subtext: qsTr("Automatic follows the current light/dark scheme; changes recompile locally without AI")
         fallbackIcon: "palette"
-        fallbackText: root.icons.mode || "original"
+        fallbackText: root.icons.mode || "automatic"
         menuItems: root.iconModeItems
         active: root.iconModeItems.find(item => item.objectName === root.icons.mode) ?? null
     }
@@ -343,6 +343,13 @@ ColumnLayout {
         label: qsTr("Generated icon theme")
         subtext: root.icons.enabled ? qsTr("%1 canonical · %2 active").arg(root.icons.canonical || 0).arg(root.icons.active || 0) : qsTr("disabled · inherited Papirus fallback stays active")
         value: root.icons.theme || "Vesper-Adaptive"
+    }
+
+    InfoRow {
+        icon: "grid_view"
+        label: qsTr("Icon grid")
+        subtext: qsTr("versioned Vesper optical calibration")
+        value: root.icons.gridRevision || qsTr("pending")
     }
 
     InfoRow {
