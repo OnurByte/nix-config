@@ -78,7 +78,7 @@ ColumnLayout {
                 try {
                     root.iconStatus = JSON.parse(text);
                 } catch (e) {
-                    root.iconStatus = ({ id: root.app?.id || "", canonicalAppId: "", launchDesktopId: "", sourcePath: "", sourceKind: "", sourceResolver: "", fingerprint: "", canonicalState: "unresolved-source", queueState: "", active: false, excluded: false, error: qsTr("not discovered yet"), workKey: "" });
+                    root.iconStatus = ({ id: root.app ? root.app.id : "", canonicalAppId: "", launchDesktopId: "", sourcePath: "", sourceKind: "", sourceResolver: "", fingerprint: "", canonicalState: "unresolved-source", queueState: "", active: false, excluded: false, error: qsTr("not discovered yet"), workKey: "" });
                 }
             }
         }
@@ -173,7 +173,7 @@ ColumnLayout {
     InfoRow {
         icon: "fingerprint"
         label: qsTr("Resolved identity")
-        subtext: root.iconStatus.launchDesktopId || root.app?.id || ""
+        subtext: root.iconStatus.launchDesktopId || (root.app ? root.app.id : "")
         value: root.iconStatus.canonicalAppId || qsTr("unknown")
     }
 
