@@ -23,8 +23,7 @@ Replace the experimental manual icon queue with an automatic system that:
 11. exposes a generated freedesktop icon theme plus richer live rendering in Vesper-owned surfaces;
 12. detects installs, upgrades, removals, identity changes and provider-readiness changes automatically;
 13. persists conversion work across restarts and respects provider rate limits;
-14. never requires AI merely because wallpaper, accent, appearance or renderer recipe changed;
-15. can export every accepted icon in bulk without making new AI requests.
+14. never requires AI merely because wallpaper, accent, appearance or renderer recipe changed.
 
 The feature must fail visually safe. A provider outage, bad package, unresolved source or one broken icon must never leave missing icons or block desktop startup or theme switching.
 
@@ -155,7 +154,7 @@ Rules:
 
 ## self-ingestion guard
 
-Vesper must never use its own generated icon theme, compiled exports, preview cache or `.vicon` renders as the upstream source for a later canonicalization pass.
+Vesper must never use its own generated icon theme, diagnostic exports, preview cache or `.vicon` renders as the upstream source for a later canonicalization pass.
 
 This is a hard invariant.
 
@@ -1081,8 +1080,7 @@ Own rendering/system appearance:
 - material: Standard / Glass;
 - follow Caelestia accent;
 - active renderer/grid revision status;
-- rebuild local icon theme;
-- **Export all icons**.
+- rebuild local icon theme.
 
 Do not expose raw shader numbers in normal UI.
 
@@ -1102,61 +1100,7 @@ Own individual application state:
 
 Normal successful operation requires no manual per-app approval.
 
-## bulk export
-
-The user must be able to export generated icons in bulk via **Export all icons** in Appearance/Theme.
-
-Export is local. It must never trigger a new AI request.
-
-Support at least:
-
-```text
-Current appearance (SVG)
-Current appearance (PNG)
-All appearances
-Canonical .vicon packages
-Complete archive
-```
-
-A complete archive is self-describing, conceptually:
-
-```text
-vesper-icons-export/
-├── manifest.json
-├── canonical/
-│   └── *.vicon/
-├── current/
-│   ├── svg/
-│   └── png/
-└── appearances/
-    ├── default/
-    ├── dark/
-    ├── clear-light/
-    ├── clear-dark/
-    ├── tinted-light/
-    └── tinted-dark/
-```
-
-Use stable sanitized canonical application/desktop ids for filenames. Do not rely on translated display names.
-
-Snapshot accepted inventory, render into staging, record per-app failures, write final manifest and publish atomically where practical. Export must never mutate or corrupt the active cache.
-
-Export metadata may include:
-
-- export schema/timestamp;
-- renderer recipe revision;
-- calibrated grid revision;
-- active appearance/material;
-- application id;
-- source fingerprint;
-- canonical schema/state;
-- available appearances;
-- output filenames;
-- degraded state.
-
-Never export API keys, authorization material, unrelated personal paths or raw private provider data.
-
-Exported files and export staging directories are permanently excluded from source discovery.
+Per-app export is a local diagnostic/portability action only. It must never trigger AI, mutate the active theme/cache, or become a future source input. Vesper intentionally has no bulk-export UI or bulk-export backend command.
 
 ## XDG data layout
 
@@ -1171,11 +1115,11 @@ Use documented XDG roots and clearly separate:
 - compiled active theme generations;
 - failures/retry/blocked metadata;
 - disposable previews/provider caches;
-- export staging and completed exports when user-selected.
+- per-app diagnostic export staging when explicitly requested.
 
 Do not retain duplicate packaged source icons indefinitely when they can be resolved again from installed applications.
 
-Generated, cache, preview and export roots must be explicitly marked Vesper-owned and excluded from upstream source resolution.
+Generated, cache, preview and diagnostic export roots must be explicitly marked Vesper-owned and excluded from upstream source resolution.
 
 ## implementation shape
 
@@ -1237,7 +1181,7 @@ Nix/Home Manager declaratively wires packages, user service, environment and gen
 20. implement neighboring-icon validation board;
 21. implement tray/status exclusion/symbolic path;
 22. replace manual queue UI with AI/Appearance/Apps ownership split and queue progress;
-23. implement bulk export backend and **Export all icons** UI;
+23. keep per-app diagnostic export local-only and permanently source-excluded;
 24. migrate or garbage-collect obsolete queue state and document final XDG paths;
 25. run full Nix/Rust/QML build/eval checks required by `AGENTS.md`.
 
@@ -1293,10 +1237,10 @@ The feature is complete only when all of these are true:
 46. generated theme switching is staged/atomic enough to avoid mixed visual generations;
 47. the user can see automatic conversion progress and pending/blocked/failed states;
 48. normal successful operation requires no manual per-app approval;
-49. the user can bulk-export accepted icons via **Export all icons**;
-50. export can produce current SVG/PNG, all appearances, canonical `.vicon` packages and a complete archive;
-51. export never triggers AI and never mutates the active cache;
-52. exported files can never become future source inputs;
+49. per-app diagnostic export is local-only and never triggers AI;
+50. per-app export never mutates the active cache or generated theme;
+51. exported diagnostic files can never become future source inputs;
+52. there is no bulk-export UI or bulk-export backend command;
 53. disabling adaptive icons returns immediately to the configured fallback/original icon theme;
 54. no first-party Python service or script is introduced for the feature.
 
@@ -1413,7 +1357,7 @@ Renderer recipes must define bounded size classes. Exact thresholds live in the 
 tiny     → status-like / very small app presentation
 small    → launcher/task-switcher scale
 regular  → app grid / normal large icon
-large    → preview/export scale
+large    → preview/diagnostic scale
 ```
 
 As rendered size decreases:
@@ -1434,7 +1378,7 @@ Developer/debug tooling should be able to render the same accepted `.vicon` thro
 
 Use it to catch changes in optical footprint, contrast, specular strength, refraction and small-size behavior before changing the active renderer revision.
 
-Keep normal icon output in sRGB until Vesper has a verified end-to-end wide-gamut/HDR path through Qt, compositor and export consumers. HDR icon export is not a completion requirement for the Linux implementation.
+Keep normal icon output in sRGB until Vesper has a verified end-to-end wide-gamut/HDR path through Qt, compositor and normal consumers. HDR icon output is not a completion requirement for the Linux implementation.
 
 ### deterministic identity matching
 
