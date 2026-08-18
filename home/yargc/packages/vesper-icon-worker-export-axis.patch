@@ -1,0 +1,65 @@
+--- a/vesper-icon-worker.rs
++++ b/vesper-icon-worker.rs
+@@ -1009,7 +1009,7 @@ fn read_accent() -> String {
+     "#7aa2f7".to_string()
+ }
+ 
+-fn render_appearance(canonical: &[u8], mode: &str, accent: &str) -> String {
++fn render_appearance(canonical: &[u8], appearance: &str, material: &str, accent: &str) -> String {
+     let encoded = base64(canonical);
+     let image = format!(
+         "<image x=\"136\" y=\"136\" width=\"752\" height=\"752\" preserveAspectRatio=\"xMidYMid meet\" href=\"data:image/svg+xml;base64,{}\"/>",
+         encoded
+     );
+-    let body = match mode {
++    let body = match appearance {
+         "original" => format!(
+             "<image x=\"0\" y=\"0\" width=\"1024\" height=\"1024\" preserveAspectRatio=\"xMidYMid meet\" href=\"data:image/svg+xml;base64,{}\"/>",
+             encoded
+         ),
+-        "light" => format!(
++        "default" => format!(
+             "<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"#f7f7f8\" stroke=\"#ffffff\" stroke-width=\"10\"/>{image}"
+         ),
+         "dark" => format!(
+@@ -1025,14 +1025,18 @@ fn render_appearance(canonical: &[u8], mode: &str, accent: &str) -> String {
+         "clear" => format!(
+             "<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"#ffffff\" fill-opacity=\"0.10\" stroke=\"#ffffff\" stroke-opacity=\"0.36\" stroke-width=\"8\"/>{image}"
+         ),
+-        "glass" => format!(
+-            "<defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.38\"/><stop offset=\"0.48\" stop-color=\"{accent}\" stop-opacity=\"0.18\"/><stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.16\"/></linearGradient><filter id=\"shadow\"><feDropShadow dx=\"0\" dy=\"18\" stdDeviation=\"24\" flood-opacity=\"0.24\"/></filter></defs><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#g)\" stroke=\"#ffffff\" stroke-opacity=\"0.45\" stroke-width=\"8\" filter=\"url(#shadow)\"/>{image}"
+-        ),
+         _ => image,
+     };
++    let body = if material == "glass" && appearance != "original" {
++        format!(
++            "<defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.20\"/><stop offset=\"0.48\" stop-color=\"{accent}\" stop-opacity=\"0.08\"/><stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.07\"/></linearGradient></defs><g>{body}</g><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#g)\" stroke=\"#ffffff\" stroke-opacity=\"0.30\" stroke-width=\"6\"/>"
++        )
++    } else {
++        body
++    };
+     format!(
+         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\">{body}</svg>\n"
+     )
+@@ -1062,9 +1066,17 @@ fn export_app(id: &str) -> Result<PathBuf, String> {
+     if canonical.is_file() {
+         let bytes = fs::read(&canonical).map_err(|error| error.to_string())?;
+         let accent = read_accent();
+-        for mode in ["original", "light", "dark", "tinted", "clear", "glass"] {
+-            fs::write(root.join(format!("{mode}.svg")), render_appearance(&bytes, mode, &accent))
+-                .map_err(|error| error.to_string())?;
++        fs::write(
++            root.join("original.svg"),
++            render_appearance(&bytes, "original", "standard", &accent),
++        )
++        .map_err(|error| error.to_string())?;
++        for appearance in ["default", "dark", "tinted", "clear"] {
++            for material in ["standard", "glass"] {
++                fs::write(
++                    root.join(format!("{appearance}-{material}.svg")),
++                    render_appearance(&bytes, appearance, material, &accent),
++                )
++                .map_err(|error| error.to_string())?;
++            }
+         }
+     }
