@@ -110,7 +110,8 @@ optional orchestration backends stay replaceable behind that boundary
 Agent Cockpit watches supported coding agents from local process state plus Git
 live snapshots belong under `~/.local/state/vesper/agents/`
 
-CodexBar TurnLens and `ccusage` cover different usage and telemetry roles
+AgentsView owns local session/activity history
+CodexBar handles live limits `ccusage` cross-checks accounting and TurnLens handles supported per-turn diagnostics
 there is no local model service running by default
 
 active agent skills have one canonical home at `~/.agents/skills`
