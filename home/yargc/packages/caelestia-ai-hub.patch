@@ -82,7 +82,7 @@
                  id: weatherComponent
 --- a/modules/nexus/PageRegistry.qml
 +++ b/modules/nexus/PageRegistry.qml
-@@ -52,9 +52,9 @@ QtObject {
+@@ -52,8 +52,8 @@ QtObject {
          },
          {
 -            label: qsTr("Plugins"),
@@ -105,7 +105,7 @@
 +                }
              }
          },
-@@ -88,7 +91,16 @@ QtObject {
+@@ -88,7 +91,15 @@ QtObject {
              PlaceholderComp {}
          },
          Component {
