@@ -58,7 +58,7 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
 
-      - name: Apply production icon patches and compile
+      - name: Apply production icon patches, compile and test
         shell: bash
         run: |
           set -euo pipefail
@@ -76,6 +76,7 @@ jobs:
             patch vesper-icons.rs < vesper-icons-grid-recipe.patch
             patch vesper-icon-worker.rs < vesper-icon-worker-provider-defaults.patch
             cargo check --locked
+            cargo test --locked
           '
 
       - name: Compile routed control
