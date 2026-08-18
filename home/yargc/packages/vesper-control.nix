@@ -42,10 +42,12 @@ let
       patch vesper-icon-queue.rs < ${./vesper-icon-queue-consent.patch}
       patch vesper-icon-queue.rs < ${./vesper-icon-queue-vector-semantic.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-provider-defaults.patch}
+      patch vesper-icon-worker.rs < ${./vesper-icon-worker-inventory-db.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-validation.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-consent.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-vector-semantic.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-export-axis.patch}
+      patch vesper-icon-identity.rs < ${./vesper-icon-identity-inventory-db.patch}
     '';
     doCheck = false;
   };
