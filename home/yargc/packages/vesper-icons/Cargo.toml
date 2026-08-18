@@ -1,0 +1,15 @@
+[package]
+name = "vesper-icon-engine"
+version = "0.3.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "vesper-icon-engine"
+path = "src/main.rs"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
