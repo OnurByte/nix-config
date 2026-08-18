@@ -13,38 +13,120 @@ VerticalFadeFlickable {
 
     required property NexusState nState
 
-    function categoryLabel(category) {
-        switch (category) {
-        case "appearance":
-            return qsTr("Personalization");
-        case "connectivity":
-            return qsTr("Connectivity");
-        case "system":
-            return qsTr("System");
-        case "shell":
-            return qsTr("Desktop");
-        case "about":
-            return qsTr("Information");
-        default:
-            return qsTr("Settings");
+    // Keep navigation hierarchy independent from upstream registry order. Pages
+    // are resolved by their stable registry icon, so visual ordering can follow
+    // how people actually look for settings without breaking page indices.
+    readonly property var sections: [
+        {
+            label: qsTr("Network & Devices"),
+            icon: "hub",
+            pages: [
+                {
+                    pageIcon: "wifi",
+                    label: qsTr("Network"),
+                    icon: "wifi",
+                    description: qsTr("Wi-Fi, ethernet, VPN, proxy")
+                },
+                {
+                    pageIcon: "devices_other",
+                    label: qsTr("Bluetooth"),
+                    icon: "bluetooth",
+                    description: qsTr("Devices, pairing, discoverability")
+                },
+                {
+                    pageIcon: "volume_up",
+                    label: qsTr("Audio"),
+                    icon: "volume_up",
+                    description: qsTr("Output, input, app volumes")
+                }
+            ]
+        },
+        {
+            label: qsTr("Personalization"),
+            icon: "palette",
+            pages: [
+                {
+                    pageIcon: "palette",
+                    label: qsTr("Appearance"),
+                    icon: "palette",
+                    description: qsTr("Wallpaper, colours, icons")
+                },
+                {
+                    pageIcon: "dock_to_bottom",
+                    label: qsTr("Panels"),
+                    icon: "dock_to_bottom",
+                    description: qsTr("Taskbar, dashboard, launcher, sidebar")
+                }
+            ]
+        },
+        {
+            label: qsTr("Apps & AI"),
+            icon: "apps",
+            pages: [
+                {
+                    pageIcon: "apps",
+                    label: qsTr("Apps"),
+                    icon: "apps",
+                    description: qsTr("Defaults, permissions, wellbeing, icons")
+                },
+                {
+                    pageIcon: "smart_toy",
+                    label: qsTr("AI"),
+                    icon: "smart_toy",
+                    description: qsTr("Models, API keys, agents, skills, MCP, Hermes")
+                },
+                {
+                    pageIcon: "extension",
+                    label: qsTr("Plugins"),
+                    icon: "extension",
+                    description: qsTr("Manage shell extensions")
+                }
+            ]
+        },
+        {
+            label: qsTr("System"),
+            icon: "settings",
+            pages: [
+                {
+                    pageIcon: "globe",
+                    label: qsTr("Language & region"),
+                    icon: "globe",
+                    description: qsTr("Language, location, units")
+                },
+                {
+                    pageIcon: "build",
+                    label: qsTr("Services"),
+                    icon: "build",
+                    description: qsTr("Notifications, polling, integrations")
+                },
+                {
+                    pageIcon: "update",
+                    label: qsTr("Updates"),
+                    icon: "update",
+                    description: qsTr("System and component updates")
+                }
+            ]
+        },
+        {
+            label: qsTr("About"),
+            icon: "info",
+            pages: [
+                {
+                    pageIcon: "info",
+                    label: qsTr("About"),
+                    icon: "info",
+                    description: qsTr("System information and credits")
+                }
+            ]
         }
-    }
+    ]
 
-    function categoryIcon(category) {
-        switch (category) {
-        case "appearance":
-            return "palette";
-        case "connectivity":
-            return "hub";
-        case "system":
-            return "settings";
-        case "shell":
-            return "desktop_windows";
-        case "about":
-            return "info";
-        default:
-            return "tune";
+    function pageIndexFor(pageIcon) {
+        for (let i = 0; i < PageRegistry.pages.length; ++i) {
+            if (PageRegistry.pages[i].icon === pageIcon)
+                return i;
         }
+        return -1;
     }
 
     topMargin: Tokens.padding.large
@@ -60,131 +142,149 @@ VerticalFadeFlickable {
 
         anchors.left: parent.left
         anchors.right: parent.right
-        spacing: Tokens.spacing.extraSmall
+        spacing: Tokens.spacing.large
 
         Repeater {
-            id: list
-
-            model: PageRegistry.pages
+            model: root.sections
 
             ColumnLayout {
-                id: entry
+                id: section
 
                 required property var modelData
                 required property int index
 
-                readonly property bool isCurrentPage: index === root.nState.currentPageIdx
-                readonly property bool isCategoryStart: index === 0 || PageRegistry.pages[index - 1].category !== modelData.category
-                readonly property bool isCategoryEnd: index === list.model.length - 1 || PageRegistry.pages[index + 1].category !== modelData.category
-
                 Layout.fillWidth: true
-                Layout.topMargin: index !== 0 && isCategoryStart ? Tokens.spacing.large : 0
                 spacing: Tokens.spacing.extraSmall
 
                 RowLayout {
-                    visible: entry.isCategoryStart
                     Layout.fillWidth: true
                     Layout.leftMargin: Tokens.padding.medium
                     Layout.rightMargin: Tokens.padding.small
                     Layout.bottomMargin: Tokens.spacing.extraSmall
                     spacing: Tokens.spacing.small
 
-                    MaterialIcon {
-                        text: root.categoryIcon(entry.modelData.category)
-                        color: Colours.palette.m3primary
-                        fontStyle: Tokens.font.icon.medium
-                        fill: 0
-                        grade: 25
+                    StyledRect {
+                        implicitWidth: sectionIcon.implicitWidth + Tokens.padding.small * 2
+                        implicitHeight: sectionIcon.implicitHeight + Tokens.padding.small * 2
+                        radius: Tokens.rounding.full
+                        color: Colours.layer(Colours.palette.m3secondaryContainer, 2)
+
+                        MaterialIcon {
+                            id: sectionIcon
+                            anchors.centerIn: parent
+                            text: section.modelData.icon
+                            color: Colours.palette.m3primary
+                            fontStyle: Tokens.font.icon.small
+                            fill: 0
+                            grade: 25
+                        }
                     }
 
                     StyledText {
                         Layout.fillWidth: true
-                        text: root.categoryLabel(entry.modelData.category)
+                        text: section.modelData.label
                         color: Colours.palette.m3onSurfaceVariant
                         font: Tokens.font.label.medium
                         elide: Text.ElideRight
                     }
                 }
 
-                StyledRect {
-                    id: item
+                Repeater {
+                    id: pageList
+                    model: section.modelData.pages
 
-                    Layout.fillWidth: true
-                    implicitHeight: {
-                        const h = layout.implicitHeight + Tokens.padding.large * 2;
-                        return h % 2 === 0 ? h : h + 1;
-                    }
+                    StyledRect {
+                        id: item
 
-                    color: entry.isCurrentPage ? Colours.palette.m3secondaryContainer : Colours.layer(Colours.palette.m3surfaceContainerHigh, 2)
+                        required property var modelData
+                        required property int index
 
-                    topLeftRadius: stateLayer.pressed ? Tokens.rounding.medium : entry.isCurrentPage ? Tokens.rounding.extraLargeIncreased : entry.isCategoryStart ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
-                    topRightRadius: stateLayer.pressed ? Tokens.rounding.medium : entry.isCurrentPage ? Tokens.rounding.extraLargeIncreased : entry.isCategoryStart ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
-                    bottomLeftRadius: stateLayer.pressed ? Tokens.rounding.medium : entry.isCurrentPage ? Tokens.rounding.extraLargeIncreased : entry.isCategoryEnd ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
-                    bottomRightRadius: stateLayer.pressed ? Tokens.rounding.medium : entry.isCurrentPage ? Tokens.rounding.extraLargeIncreased : entry.isCategoryEnd ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
+                        readonly property int pageIndex: root.pageIndexFor(modelData.pageIcon)
+                        readonly property bool isCurrentPage: pageIndex === root.nState.currentPageIdx
+                        readonly property bool isFirst: index === 0
+                        readonly property bool isLast: index === pageList.count - 1
 
-                    RadiusBehavior on topLeftRadius {}
-                    RadiusBehavior on topRightRadius {}
-                    RadiusBehavior on bottomLeftRadius {}
-                    RadiusBehavior on bottomRightRadius {}
+                        visible: pageIndex >= 0
+                        Layout.fillWidth: true
+                        implicitHeight: {
+                            const h = layout.implicitHeight + Tokens.padding.large * 2;
+                            return h % 2 === 0 ? h : h + 1;
+                        }
 
-                    StateLayer {
-                        id: stateLayer
+                        color: isCurrentPage ? Colours.palette.m3secondaryContainer : Colours.layer(Colours.palette.m3surfaceContainerHigh, 2)
 
-                        anchors.fill: parent
-                        topLeftRadius: parent.topLeftRadius
-                        topRightRadius: parent.topRightRadius
-                        bottomLeftRadius: parent.bottomLeftRadius
-                        bottomRightRadius: parent.bottomRightRadius
+                        topLeftRadius: stateLayer.pressed ? Tokens.rounding.medium : isCurrentPage ? Tokens.rounding.extraLargeIncreased : isFirst ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
+                        topRightRadius: stateLayer.pressed ? Tokens.rounding.medium : isCurrentPage ? Tokens.rounding.extraLargeIncreased : isFirst ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
+                        bottomLeftRadius: stateLayer.pressed ? Tokens.rounding.medium : isCurrentPage ? Tokens.rounding.extraLargeIncreased : isLast ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
+                        bottomRightRadius: stateLayer.pressed ? Tokens.rounding.medium : isCurrentPage ? Tokens.rounding.extraLargeIncreased : isLast ? Tokens.rounding.extraLarge : Tokens.rounding.extraSmall
 
-                        onClicked: root.nState.currentPageIdx = entry.index
-                    }
+                        RadiusBehavior on topLeftRadius {}
+                        RadiusBehavior on topRightRadius {}
+                        RadiusBehavior on bottomLeftRadius {}
+                        RadiusBehavior on bottomRightRadius {}
 
-                    RowLayout {
-                        id: layout
+                        StateLayer {
+                            id: stateLayer
 
-                        anchors.fill: parent
-                        anchors.margins: Tokens.padding.large
-                        anchors.leftMargin: Tokens.padding.large + Tokens.padding.medium
-                        spacing: Tokens.spacing.medium
+                            anchors.fill: parent
+                            topLeftRadius: parent.topLeftRadius
+                            topRightRadius: parent.topRightRadius
+                            bottomLeftRadius: parent.bottomLeftRadius
+                            bottomRightRadius: parent.bottomRightRadius
 
-                        StyledRect {
-                            Layout.fillHeight: true
-                            Layout.topMargin: -1
-                            Layout.bottomMargin: -1
-                            implicitWidth: height
-
-                            radius: Tokens.rounding.full
-                            color: entry.isCurrentPage ? Colours.palette.m3primary : Colours.palette.m3secondaryContainer
-
-                            MaterialIcon {
-                                anchors.centerIn: parent
-                                anchors.verticalCenterOffset: 1
-
-                                text: entry.modelData.icon
-                                color: entry.isCurrentPage ? Colours.palette.m3onPrimary : Colours.palette.m3onSecondaryContainer
-                                fontStyle: Tokens.font.icon.builders.medium.weight(Font.Medium).build()
-                                grade: 25
-                                fill: entry.modelData.noFill ? 0 : 1
+                            onClicked: {
+                                if (item.pageIndex >= 0)
+                                    root.nState.currentPageIdx = item.pageIndex;
                             }
                         }
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 0
+                        RowLayout {
+                            id: layout
 
-                            StyledText {
-                                Layout.fillWidth: true
-                                text: entry.modelData.label
-                                font: Tokens.font.body.medium
-                                elide: Text.ElideRight
+                            anchors.fill: parent
+                            anchors.margins: Tokens.padding.large
+                            anchors.leftMargin: Tokens.padding.large + Tokens.padding.medium
+                            spacing: Tokens.spacing.medium
+
+                            StyledRect {
+                                Layout.fillHeight: true
+                                Layout.topMargin: -1
+                                Layout.bottomMargin: -1
+                                implicitWidth: height
+
+                                radius: Tokens.rounding.full
+                                color: item.isCurrentPage ? Colours.palette.m3primary : Colours.palette.m3secondaryContainer
+
+                                MaterialIcon {
+                                    anchors.centerIn: parent
+                                    anchors.verticalCenterOffset: 1
+
+                                    text: item.modelData.icon
+                                    color: item.isCurrentPage ? Colours.palette.m3onPrimary : Colours.palette.m3onSecondaryContainer
+                                    fontStyle: Tokens.font.icon.builders.medium.weight(Font.Medium).build()
+                                    grade: 25
+                                    fill: item.isCurrentPage ? 1 : 0
+                                }
                             }
 
-                            StyledText {
+                            ColumnLayout {
                                 Layout.fillWidth: true
-                                text: entry.modelData.description
-                                color: Colours.palette.m3onSurfaceVariant
-                                font: Tokens.font.label.small
-                                elide: Text.ElideRight
+                                spacing: 0
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: item.modelData.label
+                                    font: Tokens.font.body.medium
+                                    elide: Text.ElideRight
+                                }
+
+                                StyledText {
+                                    Layout.fillWidth: true
+                                    text: item.modelData.description
+                                    color: Colours.palette.m3onSurfaceVariant
+                                    font: Tokens.font.label.small
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                     }
