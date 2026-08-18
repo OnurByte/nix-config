@@ -38,6 +38,8 @@ The engine discovers effective `.desktop` applications, resolves trustworthy pac
 
 Generation/provider controls live under AI. Appearance and material controls stay under Appearance/Theme, while application-specific retry/exclusion/original/diagnostic actions stay under Apps.
 
+Remote semantic conversion requires explicit **Allow remote icon analysis** consent. Consent is off by default. With consent off, local vector handling, accepted canonical packages and fallback rendering continue to work, while jobs that require a provider remain `blocked-no-consent` and the worker does not claim new remote work. Enabling consent allows eligible jobs to resume automatically; a provider key is still required separately.
+
 A configured shared provider key is reused automatically. Palette, wallpaper, appearance and renderer changes are local recompiles and must not consume another AI request for an already valid canonical package.
 
 Per-app diagnostic export is local-only. Vesper intentionally has no bulk icon export UI or bulk export backend command.
