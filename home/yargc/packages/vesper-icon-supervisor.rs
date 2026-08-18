@@ -191,12 +191,6 @@ fn main() {
                 &["export-app".to_string(), value.to_string()],
             );
         }
-        if command == "export-all" {
-            passthrough(
-                "vesper-icon-worker",
-                &["export-all".to_string(), value.to_string()],
-            );
-        }
     }
 
     let status = run("vesper-icon-engine-core", &args).unwrap_or_else(|error| {
