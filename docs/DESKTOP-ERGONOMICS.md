@@ -18,10 +18,11 @@ Current implementation must be inspected before claiming any target behavior bel
 - do not create a second settings application, second notification daemon, second clipboard database, second AI quota backend or second sharing stack;
 - runtime convenience must not silently mutate declarative Nix configuration.
 
-Two ideas are intentionally out of scope for this plan:
+Three ideas are intentionally out of scope for this plan:
 
 - Night Light integration is not part of the Vesper desktop ergonomics target;
-- sensitive-content filtering for clipboard history is not part of this target.
+- sensitive-content filtering for clipboard history is not part of this target;
+- Dictation is not part of the Vesper desktop ergonomics target.
 
 ## Quake Agent Console
 
@@ -302,21 +303,19 @@ Record Screen
 Record Region
 OCR Region
 Color Picker
-Dictation
 ```
 
-Target additions:
+Target addition:
 
-- **Color Picker** copies a selected screen color in useful formats;
-- **Dictation** records/transcribes speech through the selected supported local/provider path and returns text to the clipboard/current input workflow.
+- **Color Picker** copies a selected screen color in useful formats.
 
 Requirements:
 
 - reuse Caelestia capture backends where they already own screenshot/record behavior;
-- recording/dictation must expose visible active-state indicators;
+- recording must expose a visible active-state indicator;
 - stopping a capture must be available from the same global action family;
 - capture results may expose Share -> LocalSend / OnionShare where that is useful;
-- do not add Night Light to the capture or utility family.
+- do not add Night Light or Dictation to the capture or utility family.
 
 ## Shell State Indicators
 
@@ -327,7 +326,6 @@ Useful states include:
 ```text
 Stay Awake
 Recording
-Dictation
 DND
 active reminders
 Tor/privacy state when already provided by Privacy HUD
@@ -339,7 +337,7 @@ Rules:
 - indicators are views over authoritative state, not independent toggles with their own state files;
 - keep them compact and hide inactive low-priority indicators where appropriate;
 - clicking an indicator should open the owning control/status surface when useful;
-- Night Light is intentionally not included;
+- Night Light and Dictation are intentionally not included;
 - do not duplicate Privacy HUD or AI Hub data collectors merely to render an icon.
 
 ## Event-Driven Local State
@@ -353,7 +351,7 @@ Prefer compositor/system events, DBus/signals, sockets or long-lived backend sub
 - monitor layout/focus changes;
 - power/session idle state;
 - notification state;
-- recording/dictation state;
+- recording state;
 - live agent process events when Agent Cockpit can provide them.
 
 Bounded polling remains acceptable for inherently remote or periodic data such as provider quota refreshes.
@@ -388,7 +386,7 @@ Recommended order:
 7. Quick Reminders;
 8. unified command palette registry;
 9. workspace layout snapshots;
-10. Capture Hub additions: Color Picker + Dictation;
+10. Capture Hub addition: Color Picker;
 11. shell state indicators;
 12. event-driven cleanup of local state sources.
 
@@ -406,4 +404,5 @@ When implementing this document:
 8. prefer event-driven local state where the owner exposes it;
 9. do not add Night Light as part of this work;
 10. do not add sensitive clipboard filtering as part of this work;
-11. update this document's status/current-state notes as features become implemented.
+11. do not add Dictation as part of this work;
+12. update this document's status/current-state notes as features become implemented.
