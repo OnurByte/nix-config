@@ -212,6 +212,7 @@ fn main() {
                 | "enable"
                 | "disable"
                 | "provider"
+                | "remote-consent"
                 | "app-exclude"
                 | "app-retry"
                 | "rebuild-canonical"
