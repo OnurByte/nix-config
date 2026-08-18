@@ -1,18 +1,95 @@
 # Vesper docs
 
-- `AI.md` — native AI settings, API-key manager, skills, MCP inventory and optional agent orchestration backends such as CCCC
-- `AI-ANALYTICS.md` — canonical AI telemetry and analytics semantics: CodexBar + ccusage + TurnLens sources, quota/reset history, Vibe Coding Activity heatmap, active-time/agent-hours definitions, model/agent/project statistics and local history rules
-- `APPS-SETTINGS.md` — installed-app controls, wellbeing and Vesper Store integration
-- `ADAPTIVE-ICONS.md` — single source of truth for adaptive icon discovery, GPT semantic decomposition, multi-layer `.vicon`, Apple-style geometry/material rendering, runtime identity, validation and fallback
-- `MARKETPLACE.md` — Vesper Store: separate native Qt 6/QML app, Rust backend, Nixpkgs-first local catalogue, transactions, rollback and optional Flathub source
-- `NETWORK-SETTINGS.md` — airplane mode, Wi-Fi QR, proxy and DPI status
+This file is the documentation index and authority map.
 
-Adaptive icon architecture lives only in `ADAPTIVE-ICONS.md`. Do not split AI, Apple compatibility, auto-fit, layered rendering, fidelity or export rules into additional icon-specific Markdown files.
+Agents must read this before making architecture changes.
 
-Vesper Store architecture lives only in `MARKETPLACE.md`. Do not split catalogue, Nix transaction, Flathub, Qt/QML UI or application-source rules into additional Store-specific Markdown files.
+## status vocabulary
 
-AI control-plane architecture and agent orchestration live in `AI.md`. Do not make CCCC a core dependency; CCCC is an optional replaceable backend and a development-time orchestration tool.
+Use these labels consistently near the top of architecture documents:
 
-AI usage/telemetry measurement semantics live in `AI-ANALYTICS.md`. Do not create parallel quota, token, cost, active-time or vibe-coding definitions elsewhere. `AI.md` owns the product/control-plane boundary; `AI-ANALYTICS.md` owns analytics source normalization and measurement semantics.
+- `current` — documents implemented behavior and current operational truth
+- `partial` — some described behavior exists, some remains target work
+- `spec` — target architecture or feature contract, not proof of implementation
+- `plan` — implementation/design plan that must not be treated as active behavior unless explicitly activated
 
-The existing install, backup, Hermes, MCP, secrets and skills documents remain authoritative for their underlying subsystems.
+When a `partial`, `spec` or `plan` document conflicts with current code, current code wins unless the task explicitly changes the implementation.
+
+## authority rules
+
+Repository-wide guardrails live in `../AGENTS.md`.
+
+Subsystem architecture must have one canonical document. Do not create parallel Markdown files for the same contract when one of the documents below already owns it.
+
+| document | status | authority |
+|---|---|---|
+| `INSTALL.md` | current | verified storage/install topology |
+| `BACKUP.md` | current | Restic backup and restore contract |
+| `SECRETS.md` | current | secret ownership and sops-nix usage |
+| `MCP.md` | current | shared MCP registry and runtime behavior |
+| `SKILLS.md` | current | canonical active skill tree and skill lifecycle |
+| `HERMES.md` | current | Hermes scheduling and recurring research contract |
+| `HERMES-ADHOC-RESEARCH.md` | current | ad-hoc Hermes research workflow |
+| `HERMES-RESEARCH-LINKS.md` | current | Hermes source/link discovery contract |
+| `NETWORK-SETTINGS.md` | current | Vesper network settings behavior |
+| `ADAPTIVE-ICONS.md` | partial | single source of truth for adaptive icon architecture and implementation state |
+| `AI.md` | partial | AI control-plane product boundary, credentials, agents and orchestration |
+| `AI-ANALYTICS.md` | spec | analytics normalization and measurement semantics |
+| `APPS-SETTINGS.md` | partial | installed-app settings contract and Store handoff |
+| `MARKETPLACE.md` | spec | Vesper Store architecture and target transaction model |
+| `TOP-BAR-DOCK.md` | plan | Apple-aligned top-bar and Liquid Glass dock design plan |
+
+## canonical boundaries
+
+### adaptive icons
+
+`ADAPTIVE-ICONS.md` is the only adaptive-icon architecture document.
+
+Do not split AI conversion, Apple compatibility, auto-fit, layered rendering, fidelity, appearance or export rules into additional icon-specific Markdown files.
+
+### Vesper Store
+
+`MARKETPLACE.md` is the only Vesper Store architecture document.
+
+Do not split catalogue, Nix transaction, Flathub, Qt/QML UI or application-source rules into additional Store-specific Markdown files.
+
+The document is a target specification. Current code must be inspected before claiming a Store capability is implemented.
+
+### AI
+
+`AI.md` owns the AI control-plane product boundary.
+
+Do not make any orchestration backend a core product dependency. CCCC is optional and replaceable behind Vesper's backend-neutral Agent Teams/orchestration boundary.
+
+`AI-ANALYTICS.md` owns analytics source normalization and measurement semantics. Do not create parallel quota, token, cost, active-time or vibe-coding definitions elsewhere.
+
+### apps
+
+`APPS-SETTINGS.md` owns installed-application settings behavior.
+`MARKETPLACE.md` owns discovery and installation.
+
+Do not build a second installed-app management surface inside Vesper Store.
+
+### visual shell
+
+`TOP-BAR-DOCK.md` is the visual authority for the planned top-bar and dock redesign.
+
+Its status is `plan`. It corrects older generic glass assumptions, but it does not authorize implementation by itself.
+
+For components outside that plan, follow current Caelestia/Vesper code and the repo-wide UX guardrails in `AGENTS.md`.
+
+## agent documentation rules
+
+Before changing a subsystem:
+
+1. inspect current code
+2. read `../AGENTS.md`
+3. read this index
+4. read the authoritative subsystem document
+5. distinguish current behavior from target behavior
+6. make the smallest coherent change
+7. update the document status or current-state section when implementation materially changes
+
+Do not infer implementation from examples, diagrams, desired UI copy or future-tense requirements.
+Do not resurrect removed features from stale prose.
+Do not duplicate facts across many docs when a link to the canonical contract is enough.
