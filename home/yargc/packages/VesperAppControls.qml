@@ -13,7 +13,7 @@ ColumnLayout {
 
     property var app
     property var status: ({ sandbox: "native", flatpakId: "", permissions: "", todaySeconds: 0 })
-    property var iconStatus: ({ id: "", iconKey: "", sourcePath: "", sourceKind: "", fingerprint: "", canonicalState: "missing", active: false, excluded: false, error: "" })
+    property var iconStatus: ({ id: "", canonicalAppId: "", launchDesktopId: "", sourcePath: "", sourceKind: "", sourceResolver: "", fingerprint: "", canonicalState: "unresolved-source", queueState: "", active: false, excluded: false, error: "", workKey: "" })
     property string message: ""
     property bool messageOk: false
 
@@ -78,7 +78,7 @@ ColumnLayout {
                 try {
                     root.iconStatus = JSON.parse(text);
                 } catch (e) {
-                    root.iconStatus = ({ id: root.app?.id || "", iconKey: root.app?.icon || "", sourcePath: "", sourceKind: "", fingerprint: "", canonicalState: "missing", active: false, excluded: false, error: qsTr("not discovered yet") });
+                    root.iconStatus = ({ id: root.app?.id || "", canonicalAppId: "", launchDesktopId: "", sourcePath: "", sourceKind: "", sourceResolver: "", fingerprint: "", canonicalState: "unresolved-source", queueState: "", active: false, excluded: false, error: qsTr("not discovered yet"), workKey: "" });
                 }
             }
         }
@@ -97,9 +97,11 @@ ColumnLayout {
     Process {
         id: iconAction
         property string successMessage: ""
+        stdout: StdioCollector { id: iconOutput }
         stderr: StdioCollector { id: iconError }
         onExited: (code, status) => {
-            root.message = code === 0 ? successMessage : iconError.text.trim();
+            const output = iconOutput.text.trim();
+            root.message = code === 0 ? (output || successMessage) : iconError.text.trim();
             root.messageOk = code === 0;
             root.refresh();
         }
@@ -169,42 +171,65 @@ ColumnLayout {
     }
 
     InfoRow {
-        icon: "image"
-        label: qsTr("Source icon")
-        subtext: root.iconStatus.sourcePath || root.iconStatus.iconKey || qsTr("source not resolved")
-        value: root.iconStatus.sourceKind || qsTr("unknown")
+        icon: "fingerprint"
+        label: qsTr("Resolved identity")
+        subtext: root.iconStatus.launchDesktopId || root.app?.id || ""
+        value: root.iconStatus.canonicalAppId || qsTr("unknown")
     }
 
     InfoRow {
-        icon: root.iconStatus.canonicalState === "validated" ? "verified" : "hourglass_top"
-        label: qsTr("Canonical asset")
+        icon: "image"
+        label: qsTr("Source icon")
+        subtext: root.iconStatus.sourcePath || qsTr("source not resolved")
+        value: root.iconStatus.sourceResolver || root.iconStatus.sourceKind || qsTr("unknown")
+    }
+
+    InfoRow {
+        icon: root.iconStatus.canonicalState === "canonical-ai" ? "verified" : "layers"
+        label: qsTr("Canonical tier")
         subtext: root.iconStatus.error || qsTr("source fingerprint %1").arg((root.iconStatus.fingerprint || "").slice(0, 12))
-        value: root.iconStatus.canonicalState || qsTr("missing")
-        iconColour: root.iconStatus.canonicalState === "validated" ? Colours.palette.m3primary : Colours.palette.m3tertiary
+        value: root.iconStatus.canonicalState || qsTr("unresolved-source")
+        iconColour: root.iconStatus.canonicalState === "canonical-ai" ? Colours.palette.m3primary : Colours.palette.m3tertiary
+    }
+
+    InfoRow {
+        icon: "schedule"
+        label: qsTr("Conversion job")
+        subtext: root.iconStatus.queueState ? qsTr("persistent work queue state") : qsTr("no conversion job")
+        value: root.iconStatus.queueState || qsTr("none")
     }
 
     InfoRow {
         icon: "palette"
         label: qsTr("Active appearance")
-        subtext: root.iconStatus.active ? qsTr("served by the Vesper adaptive icon theme") : qsTr("using inherited packaged/fallback icon")
+        subtext: root.iconStatus.active ? qsTr("served by the Vesper overlay") : qsTr("using inherited packaged/original icon")
         value: root.iconStatus.active ? qsTr("Vesper") : qsTr("original")
     }
 
     ToggleRow {
-        text: qsTr("Exclude this app")
-        subtext: qsTr("always keep the original packaged icon for this application")
+        text: qsTr("Use original icon")
+        subtext: qsTr("exclude this app from Vesper without modifying its packaged desktop entry")
         checked: root.iconStatus.excluded || false
         disabled: !root.app || iconAction.running
-        onToggled: root.runIcon(["app-exclude", root.app.id, checked ? "on" : "off"], checked ? qsTr("App excluded from adaptation") : qsTr("App returned to adaptive icons"))
+        onToggled: root.runIcon(["app-exclude", root.app.id, checked ? "on" : "off"], checked ? qsTr("Original icon restored") : qsTr("App returned to adaptive icons"))
     }
 
     RowButton {
         icon: "restart_alt"
         text: qsTr("Retry this icon")
-        subtext: qsTr("discard this app's canonical cache and run local reconciliation again")
+        subtext: qsTr("reset this app's failed conversion job and preserve any last-known-good package")
         trailingIcon: "refresh"
         disabled: !root.app || iconAction.running
-        onClicked: root.runIcon(["app-retry", root.app.id], qsTr("Adaptive icon reconciled"))
+        onClicked: root.runIcon(["app-retry", root.app.id], qsTr("Adaptive icon retry queued"))
+    }
+
+    RowButton {
+        icon: "download"
+        text: qsTr("Export current icon")
+        subtext: qsTr("render the accepted canonical package locally; no provider request")
+        trailingIcon: "download"
+        disabled: !root.app || iconAction.running || root.iconStatus.canonicalState !== "canonical-ai"
+        onClicked: root.runIcon(["app-export", root.app.id], qsTr("Icon exported"))
     }
 
     StyledText {
