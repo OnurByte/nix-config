@@ -25,7 +25,6 @@
       zed = "zeditor";
 
       aipanel = "codexbar-popup";
-      aicockpit = "bb-app";
       hermeshud = "hermes-hud";
       aiusage = "codexbar cards";
       ailimits = "codexbar --provider all";
