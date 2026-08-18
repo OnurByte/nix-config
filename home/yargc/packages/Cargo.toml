@@ -1,0 +1,22 @@
+[package]
+name = "vesper-icons"
+version = "1.0.0"
+edition = "2021"
+publish = false
+autobins = false
+
+[[bin]]
+name = "vesper-icon-engine-core"
+path = "vesper-icons.rs"
+
+[[bin]]
+name = "vesper-icon-queue"
+path = "vesper-icon-queue.rs"
+
+[[bin]]
+name = "vesper-icon-worker"
+path = "vesper-icon-worker.rs"
+
+[[bin]]
+name = "vesper-icon-engine"
+path = "vesper-icon-supervisor.rs"
