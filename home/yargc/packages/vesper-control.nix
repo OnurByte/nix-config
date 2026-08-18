@@ -45,6 +45,7 @@ let
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-validation.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-consent.patch}
       patch vesper-icon-worker.rs < ${./vesper-icon-worker-vector-semantic.patch}
+      patch vesper-icon-worker.rs < ${./vesper-icon-worker-export-axis.patch}
     '';
     doCheck = false;
   };
