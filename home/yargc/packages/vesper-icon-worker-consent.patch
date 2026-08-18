@@ -1,0 +1,28 @@
+--- a/vesper-icon-worker.rs
++++ b/vesper-icon-worker.rs
+@@ -671,6 +671,19 @@ fn sync_local_vicons() -> Result<(), String> {
+     Ok(())
+ }
+ 
++fn remote_consent() -> bool {
++    let content = fs::read_to_string(config_root().join("adaptive-icons.conf")).unwrap_or_default();
++    for line in content.lines() {
++        let Some((key, value)) = line.split_once('=') else {
++            continue;
++        };
++        if key.trim() == "remoteConsent" {
++            let value = value.trim();
++            return value == "1" || value.eq_ignore_ascii_case("true");
++        }
++    }
++    false
++}
++
+ fn process_once() -> Result<bool, String> {
+     sync_local_vicons()?;
++    if !remote_consent() {
++        return Ok(false);
++    }
+     let Some(claim) = claim_job()? else {
+         return Ok(false);
+     };
