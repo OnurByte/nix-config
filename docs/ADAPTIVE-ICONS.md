@@ -1,5 +1,7 @@
 # adaptive icons
 
+Status: **partial**
+
 This is the single source of truth for Vesper adaptive application icons.
 
 Do not create additional adaptive-icon design documents. Future architecture, AI, Apple-compatibility, renderer, auto-fit, identity, queue or export changes belong here.
