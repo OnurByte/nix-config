@@ -24,16 +24,44 @@ Three ideas are intentionally out of scope for this plan:
 - sensitive-content filtering for clipboard history is not part of this target;
 - Dictation is not part of the Vesper desktop ergonomics target.
 
+## UI implementation contract
+
+Omarchy and other desktops are interaction references only. They are not visual authorities for Vesper.
+
+All new surfaces in this document must use the active Vesper/Caelestia design system:
+
+- Caelestia/Quickshell-native components and shared Vesper primitives;
+- existing semantic colour, spacing, typography, radius and motion tokens;
+- the active Vesper visual authority for transient shell surfaces;
+- `TOP-BAR-DOCK.md` when the planned top-bar/dock visual contract is active;
+- existing accessibility behavior such as reduced motion, reduced transparency and increased contrast where the owning surface supports it.
+
+Rules:
+
+- do not copy Omarchy colours, radii, spacing, shadows or panel chrome merely because an interaction originated there;
+- do not create a new glass recipe for these features;
+- do not nest decorative glass cards inside a transient glass surface without a semantic reason;
+- use source-to-surface continuity and restrained motion where practical rather than arbitrary fade-only animation;
+- settings rows must look and behave like native Caelestia/Nexus settings rows;
+- shell controls must use the same state/feedback language as existing Vesper shell controls.
+
 ## Quake Agent Console
 
 Vesper should provide a Quake-style drop-down workspace for the default coding agent.
 
-Default bindings:
+Primary triggers:
 
 ```text
-Super + `          toggle Agent Console
-Super + Shift + `  move the current window to Agent Console
+physical Copilot / Assistant key   toggle Agent Console
+Super + `                          toggle Agent Console
+Super + Shift + `                  move the current window to Agent Console
 ```
+
+The physical Copilot key means the dedicated assistant key present on newer laptop keyboards. It does **not** mean GitHub Copilot and it does not select the GitHub Copilot CLI.
+
+Input handling must normalize the real hardware event into the semantic `Toggle Agent Console` action. Prefer a semantic assistant-key event such as Linux `KEY_ASSISTANT` / the corresponding input-stack symbol when exposed. On hardware that instead reports the legacy Copilot chord such as Meta/Shift/F23, recognize it only through the input/keybinding layer after validating the actual device event. Do not globally hijack arbitrary F23 or Meta/Shift/F23 input from unrelated keyboards merely to emulate a Copilot key.
+
+Both the physical Copilot key and `Super + \`` must invoke the same canonical action and state. There must not be a second agent console implementation for the hardware key.
 
 The console should be implemented as a Hyprland special workspace rather than a fake floating terminal overlay.
 
@@ -54,10 +82,12 @@ Target behavior:
 Conceptual flow:
 
 ```text
-Super + `
-   ↓
+Copilot key / Super + `
+          ↓
+Toggle Agent Console
+          ↓
 special:agent-console
-   ↓
+          ↓
 empty?
  ├─ no  -> reveal existing tiled session
  └─ yes -> launch Apps -> Default Apps -> Default Agent
@@ -107,8 +137,8 @@ Rules:
 - `None` is a valid explicit state;
 - selecting Default Agent does not alter provider credentials, model policy or per-agent capability policy;
 - AI provider/model configuration remains under `Settings -> AI`;
-- the generic agent launcher and Quake Agent Console consume this same canonical Default Agent selection;
-- do not keep separate defaults for the launcher, Agent Console and AI settings;
+- the generic agent launcher, physical Copilot key and Quake Agent Console consume this same canonical Default Agent selection;
+- do not keep separate defaults for the launcher, Copilot key, Agent Console and AI settings;
 - if an agent is removed, the stale default must become unavailable/None rather than executing an unrelated fallback;
 - persist the selection through the Vesper settings/config ownership path rather than a hidden mutable dotfile when a declarative setting is available.
 
@@ -317,6 +347,152 @@ Requirements:
 - capture results may expose Share -> LocalSend / OnionShare where that is useful;
 - do not add Night Light or Dictation to the capture or utility family.
 
+## Keyboard-first Smart Capture
+
+Capture selection should be fully usable without a mouse.
+
+When the region/window picker is active, target interactions include:
+
+```text
+Tab / Shift+Tab        cycle candidate windows
+Arrow keys             move selection spatially
+Enter                  capture highlighted target
+Ctrl+Enter             capture focused/current monitor
+Escape                 cancel
+```
+
+Requirements:
+
+- use the actual visible target geometry rather than guessing from application names;
+- the highlighted target and the captured rectangle must be the same geometry source;
+- when a Vesper/Caelestia plugin panel or popout is visually a card inside a larger transparent layer-shell surface, capture the visible registered card geometry rather than the entire transparent monitor-sized layer whenever the shell can expose that geometry reliably;
+- every enabled monitor must remain selectable even when it has no ordinary window;
+- mouse selection remains available; keyboard-first behavior is additive;
+- avoid a second screenshot picker implementation if the current Caelestia capture surface can be extended.
+
+## CWD-aware Launch
+
+Launching a new terminal or file manager from a terminal-focused workflow should preserve the useful working directory when it can be determined truthfully.
+
+Target behavior:
+
+```text
+active terminal cwd: ~/Code/vesper
+New Terminal         -> ~/Code/vesper
+Open Files Here      -> ~/Code/vesper
+```
+
+Rules:
+
+- obtain CWD from a trusted local process/window relationship rather than parsing terminal title text;
+- if the active window is not a supported terminal or its CWD cannot be attributed safely, fall back to the normal default directory;
+- never fabricate a directory from a project label or window title;
+- generic terminal launch and file-manager launch should share the same CWD-resolution backend;
+- this is default ergonomic behavior and should not require a second terminal profile.
+
+## Display Arrange
+
+`Settings -> Display` should include a native visual arrangement surface for connected displays.
+
+Target interaction:
+
+- drag displays to arrange their logical position;
+- snap edges/corners where useful without preventing free valid layouts;
+- select a display and rotate/change orientation through the same native surface;
+- show enough identity information to distinguish similar monitors;
+- apply through the same display backend used by the ordinary Display controls.
+
+Safety contract:
+
+```text
+Apply layout
+    ↓
+preview becomes live
+    ↓
+confirmation countdown
+    ├─ Confirm -> keep
+    └─ timeout / reject -> revert automatically
+```
+
+A bad layout must not strand the user on an unusable output arrangement. Runtime preview changes should revert automatically after a bounded confirmation window unless explicitly accepted.
+
+Persistent layout changes remain subject to Vesper's runtime-to-declarative Settings contract. The visual editor must not become a second monitor configuration database.
+
+## Context-aware Universal Actions
+
+Vesper may provide universal Copy/Paste-style actions that adapt to the focused application class/capability, but only after auditing existing Caelestia bindings and avoiding conflicts.
+
+The goal is semantic actions such as:
+
+```text
+Copy
+Paste
+Cut
+```
+
+rather than teaching the user different chords for terminal, TUI and GUI contexts.
+
+Requirements:
+
+- terminal/TUI detection must come from reliable app/window identity, not broad title regexes;
+- a terminal-hosted TUI must receive terminal-safe copy/paste chords rather than a GUI chord that could send SIGINT or literal input;
+- ordinary GUI applications receive their normal toolkit shortcuts;
+- do not claim a universal action for applications whose input model cannot be safely adapted;
+- do not steal the current `Super + C` or any other existing Vesper chord without the canonical shortcut-conflict check;
+- expose the resulting semantic actions through the same structured shortcut registry as other Vesper actions.
+
+## Compositor Screen Zoom
+
+Provide a lightweight Hyprland/compositor-level screen zoom action for inspecting small UI and accessibility use without launching another application.
+
+Target behavior:
+
+- zoom around the cursor/focus point using compositor-native capabilities;
+- repeated action may increment zoom in controlled steps;
+- provide a direct reset-to-100% action;
+- make active zoom state discoverable through OSD/indicator feedback where useful;
+- reduced-motion policy should avoid unnecessary animated zoom transitions;
+- do not confuse compositor zoom with per-display scale in `Settings -> Display`.
+
+## Bar Scroll + OSD Interaction
+
+Volume and brightness controls in the bar should normalize mouse-wheel and touchpad scrolling into predictable steps and show the same feedback language as keyboard media keys.
+
+Requirements:
+
+- accumulate high-resolution touchpad wheel deltas instead of applying an action for every tiny event;
+- map completed notches/thresholds to consistent steps such as the existing Vesper volume/brightness increment;
+- trigger the normal Vesper OSD only when a real step is applied;
+- keep precise adjustment paths available where Vesper already exposes them;
+- do not add a second volume/brightness backend for bar scrolling.
+
+## Launch-or-Focus
+
+Dedicated application actions may focus an existing matching application window instead of spawning duplicates when that matches the intended app semantics.
+
+Rules:
+
+- desktop-entry/application identity remains authoritative;
+- distinguish apps where multiple independent windows are expected from single-instance or focus-first apps;
+- web-app and terminal/TUI wrappers must use stable application identity rather than window titles;
+- inspect existing Caelestia launcher/dock behavior first and reuse it when it already provides correct launch-or-focus semantics;
+- do not introduce a parallel application identity registry.
+
+## Keep-mapped Hidden Shell Surfaces
+
+For expensive Quickshell layer surfaces that are frequently hidden/revealed, implementation may keep the surface mapped and move/park it out of the visible region when this measurably avoids scene-graph rebuild cost and does not break compositor behavior.
+
+This is an optimization contract, not a requirement to keep every hidden popup alive.
+
+Requirements:
+
+- hidden surfaces must reserve no unintended exclusive zone;
+- they must not intercept pointer/keyboard input;
+- they must not appear in captures of the visible desktop;
+- multi-monitor parking must not leak visible content onto adjacent outputs;
+- background work should continue only if it was already intended to survive hiding;
+- prefer this technique only after measurement shows map/unmap churn is the problem.
+
 ## Shell State Indicators
 
 The bar/shell should show compact temporary indicators for user-controlled states that are easy to forget.
@@ -330,6 +506,7 @@ DND
 active reminders
 Tor/privacy state when already provided by Privacy HUD
 active-agent count / quota pressure when already provided by AI Hub
+screen zoom when active and useful
 ```
 
 Rules:
@@ -358,18 +535,67 @@ Bounded polling remains acceptable for inherently remote or periodic data such a
 
 The rule is not "no polling". The rule is: do not repeatedly spawn expensive local probes when the owner can push a trustworthy state change.
 
+## Settings integration
+
+The ergonomics in this document should appear in Settings only where persistent configuration or discoverability is useful. Do not create a generic "Omarchy features" page.
+
+Target ownership:
+
+```text
+Settings
+├── Apps
+│   └── Default Apps
+│       └── Default Agent
+│
+├── Display
+│   ├── Arrange Displays
+│   └── ordinary resolution / scale / orientation / mirror controls
+│
+├── Input
+│   └── Assistant / Copilot key
+│       └── action: Toggle Agent Console
+│
+├── Shortcuts
+│   ├── Toggle Agent Console
+│   │   ├── physical Assistant/Copilot key when present
+│   │   └── Super + `
+│   ├── Move window to Agent Console
+│   ├── Share
+│   ├── Reminder
+│   ├── Screen Zoom / Reset Zoom
+│   └── universal semantic actions when implemented
+│
+└── Power & Performance
+    └── normal idle/suspend policy remains authoritative
+```
+
+Settings rules:
+
+- **Default Agent** is the only persistent selector that determines what the generic agent console launches;
+- the physical Copilot/Assistant key row should report the detected hardware capability truthfully and must not appear as a fake device-specific control on hardware that does not expose such a key;
+- the default Copilot/Assistant-key action is `Toggle Agent Console`;
+- if shortcut customization permits changing that action later, it must go through the canonical shortcut registry and conflict detection;
+- `Arrange Displays` is part of Display, not a standalone app;
+- the display confirmation/revert countdown belongs to the Display transaction UX, not a hidden script;
+- CWD-aware launch, bar-scroll normalization and launch-or-focus are interaction behaviors, not settings toggles by default;
+- Capture keyboard navigation belongs to Capture behavior and shortcut help, not a new settings page;
+- compositor zoom shortcuts belong in Shortcuts; do not expose zoom level as persistent display scale;
+- Stay Awake is a temporary runtime action, not a persistent replacement for idle/suspend settings;
+- LocalSend and OnionShare configuration remain owned by their existing app/service surfaces; Settings should not create a third sharing configuration stack.
+
 ## shortcut family
 
 Final chords must pass the shared Vesper shortcut conflict check. Conceptually reserve a coherent family such as:
 
 ```text
-Super + `              Agent Console
-Super + Shift + `      Move window to Agent Console
-Super + Ctrl + S       Share
-Super + Ctrl + R       Quick Reminder
+Copilot / Assistant key  Agent Console
+Super + `                Agent Console
+Super + Shift + `        Move window to Agent Console
+Super + Ctrl + S         Share
+Super + Ctrl + R         Quick Reminder
 ```
 
-Stay Awake, audio-output cycle, notification actions and capture actions should be assigned through the canonical shortcut registry after conflicts with existing Vesper/Caelestia bindings are checked.
+Stay Awake, audio-output cycle, notification actions, zoom, universal actions and capture actions should be assigned through the canonical shortcut registry after conflicts with existing Vesper/Caelestia bindings are checked.
 
 Do not silently replace existing bindings solely to mimic Omarchy.
 
@@ -378,17 +604,27 @@ Do not silently replace existing bindings solely to mimic Omarchy.
 Recommended order:
 
 1. Default Agent canonical setting;
-2. Quake Agent Console consuming Default Agent;
-3. Share menu with LocalSend + OnionShare;
-4. Stay Awake;
-5. audio-output cycle;
-6. notification actions/replay;
-7. Quick Reminders;
-8. unified command palette registry;
-9. workspace layout snapshots;
-10. Capture Hub addition: Color Picker;
-11. shell state indicators;
-12. event-driven cleanup of local state sources.
+2. physical Copilot/Assistant-key normalization;
+3. Quake Agent Console consuming Default Agent;
+4. UI-token/visual-authority wiring for the console and new transient surfaces;
+5. Share menu with LocalSend + OnionShare;
+6. Stay Awake;
+7. audio-output cycle;
+8. notification actions/replay;
+9. Quick Reminders;
+10. Keyboard-first Smart Capture;
+11. CWD-aware terminal/file-manager launch;
+12. Display Arrange with automatic confirmation/revert;
+13. compositor screen zoom;
+14. bar scroll + OSD normalization;
+15. unified command palette registry;
+16. workspace layout snapshots;
+17. Capture Hub addition: Color Picker;
+18. launch-or-focus audit/integration;
+19. context-aware universal actions after shortcut/application audit;
+20. shell state indicators;
+21. keep-mapped optimization where measurement justifies it;
+22. event-driven cleanup of local state sources.
 
 ## implementation rules
 
@@ -396,13 +632,17 @@ When implementing this document:
 
 1. inspect the current Hyprland/Caelestia behavior first;
 2. reuse existing Vesper services and QML surfaces instead of forking equivalent infrastructure;
-3. keep Default Agent canonical and shared by all generic agent launch paths;
-4. keep Quake Agent Console as a tiled special workspace, not a fixed floating terminal;
-5. keep LocalSend and OnionShare behind one Share UX without merging their transport semantics;
-6. keep quick reminders separate from Hermes recurring automation;
-7. preserve Settings/action safety rules for destructive or declarative mutations;
-8. prefer event-driven local state where the owner exposes it;
-9. do not add Night Light as part of this work;
-10. do not add sensitive clipboard filtering as part of this work;
-11. do not add Dictation as part of this work;
-12. update this document's status/current-state notes as features become implemented.
+3. keep Default Agent canonical and shared by all generic agent launch paths, including the physical Copilot/Assistant key;
+4. normalize real assistant-key hardware events into the semantic Agent Console action rather than assuming every laptop emits one fixed chord;
+5. keep Quake Agent Console as a tiled special workspace, not a fixed floating terminal;
+6. obey the Vesper UI implementation contract and active visual authority rather than copying Omarchy presentation;
+7. keep LocalSend and OnionShare behind one Share UX without merging their transport semantics;
+8. keep quick reminders separate from Hermes recurring automation;
+9. preserve Settings/action safety rules for destructive or declarative mutations;
+10. use automatic revert for risky display-layout previews;
+11. prefer event-driven local state where the owner exposes it;
+12. audit current Caelestia behavior before adding launch-or-focus or universal shortcut logic;
+13. do not add Night Light as part of this work;
+14. do not add sensitive clipboard filtering as part of this work;
+15. do not add Dictation as part of this work;
+16. update this document's status/current-state notes as features become implemented.

@@ -35,6 +35,7 @@ Vesper Store
   -> plan/install
 
 Settings -> Apps
+  -> default applications and generic handlers
   -> inspect installed applications
   -> launch
   -> installed source/ownership state
@@ -47,6 +48,7 @@ Settings -> Apps
 
 `MARKETPLACE.md` is authoritative for Store architecture, package sources, catalogue identity and install transactions.
 `ADAPTIVE-ICONS.md` is authoritative for adaptive icon discovery, conversion and appearance semantics.
+`DESKTOP-ERGONOMICS.md` is authoritative for the Quake Agent Console and physical Assistant/Copilot-key interaction.
 
 Do not add a second installed-app management system to Vesper Store.
 
@@ -64,6 +66,52 @@ The action launches `vesper-store`.
 Prefer single-instance activation so an existing Store window is focused rather than duplicated.
 
 Do not add `Open in Vesper Store` to installed application details. Once an application is installed, Apps is the intended management surface.
+
+## Default Apps
+
+`Settings -> Apps` should expose a native **Default Apps** section for user-level generic handlers. This is a settings surface, not Store catalogue metadata.
+
+The section should include **Default Agent** alongside the other default-application choices supported by the underlying Caelestia/Vesper settings model.
+
+Target structure:
+
+```text
+Settings
+└── Apps
+    └── Default Apps
+        ├── ...existing supported defaults...
+        └── Default Agent
+```
+
+### Default Agent
+
+`Default Agent` selects which installed supported coding-agent runtime handles the generic Vesper "open my coding agent" intent.
+
+Candidate values should be derived from supported installed runtimes rather than a hard-coded provider list. Examples may include, only when installed/supported:
+
+```text
+Codex
+Claude Code
+OpenCode
+Gemini CLI
+GitHub Copilot CLI
+Pi
+other Vesper-supported agent runtimes
+None
+```
+
+Rules:
+
+- `None` is a valid explicit state;
+- do not hard-code Codex, Claude, GitHub Copilot or any other provider as the default;
+- the selected runtime is an application/agent default, not a provider/model preference;
+- provider credentials, model/router policy and per-agent capabilities remain owned by `Settings -> AI`;
+- the generic agent launcher, Quake Agent Console and physical Assistant/Copilot key all consume this one canonical selection;
+- the physical Copilot key does not imply `GitHub Copilot CLI`; its default action is the generic `Toggle Agent Console` action described in `DESKTOP-ERGONOMICS.md`;
+- do not store separate defaults for keyboard hardware, launcher and console;
+- if the selected agent is removed or stops being supported, show the stale selection as unavailable and require an explicit new selection rather than silently launching a different agent;
+- persist through the normal Vesper settings/config ownership path, not an unrelated hidden mutable file;
+- the row must use native Caelestia/Nexus settings components and Vesper semantic tokens rather than introducing custom Omarchy-styled UI.
 
 ## installed application list
 
@@ -248,9 +296,10 @@ When implementing any target behavior from this document:
 
 1. inspect the current Caelestia Apps surface first;
 2. extend rather than duplicate existing installed-app UI;
-3. keep Store transaction logic in the shared Rust Store core, not QML;
-4. keep App Inspector normalization and process attribution in a Vesper backend, not QML shell parsing;
-5. keep source ownership explicit;
-6. never expose a permission/restriction toggle without enforcement;
-7. keep wellbeing local by default;
-8. update this document's `current state` section when the feature actually lands.
+3. keep Default Agent in the existing/native Default Apps surface and share that selection with every generic agent launch path;
+4. keep Store transaction logic in the shared Rust Store core, not QML;
+5. keep App Inspector normalization and process attribution in a Vesper backend, not QML shell parsing;
+6. keep source ownership explicit;
+7. never expose a permission/restriction toggle without enforcement;
+8. keep wellbeing local by default;
+9. update this document's `current state` section when the feature actually lands.
