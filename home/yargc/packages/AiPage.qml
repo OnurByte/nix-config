@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import Quickshell.Io
 import Caelestia.Config
 import qs.components
+import qs.components.controls
 import qs.services
 import qs.modules.nexus.common
 
@@ -13,8 +14,8 @@ PageBase {
 
     property var control: ({ credentials: [], skills: { count: 0, items: [] }, mcp: { count: 0, items: [] }, hermesRegistry: false })
     property var hub: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
-    property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0, aiTransport: "pending" })
-    property var iconQueue: ({ total: 0, pending: 0, ready: 0, running: 0, retryWait: 0, blockedNoProvider: 0, failed: 0, succeeded: 0, superseded: 0, transport: "not-implemented" })
+    property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0 })
+    property var iconQueue: ({ total: 0, pending: 0, ready: 0, running: 0, retryWait: 0, blockedNoProvider: 0, blockedNoConsent: 0, failed: 0, succeeded: 0, superseded: 0, paused: false, transport: "active" })
     property string loadError: ""
     property string iconMessage: ""
 
@@ -49,7 +50,47 @@ PageBase {
         iconChange.running = true;
     }
 
+    property list<MenuItem> providerItems: [
+        MenuItem {
+            objectName: "openai"
+            text: "OpenAI"
+            icon: "smart_toy"
+            onClicked: root.runIcon(["provider", "openai"])
+        },
+        MenuItem {
+            objectName: "anthropic"
+            text: "Anthropic"
+            icon: "smart_toy"
+            onClicked: root.runIcon(["provider", "anthropic"])
+        },
+        MenuItem {
+            objectName: "xai"
+            text: "xAI"
+            icon: "smart_toy"
+            onClicked: root.runIcon(["provider", "xai"])
+        },
+        MenuItem {
+            objectName: "openrouter"
+            text: "OpenRouter"
+            icon: "route"
+            onClicked: root.runIcon(["provider", "openrouter"])
+        },
+        MenuItem {
+            objectName: "google"
+            text: "Google AI"
+            icon: "smart_toy"
+            onClicked: root.runIcon(["provider", "google"])
+        }
+    ]
+
     Component.onCompleted: refresh()
+
+    Timer {
+        interval: 5000
+        repeat: true
+        running: root.visible && ((root.iconQueue.pending || 0) > 0 || (root.iconQueue.running || 0) > 0)
+        onTriggered: root.refresh()
+    }
 
     Timer {
         interval: 30000
@@ -109,7 +150,7 @@ PageBase {
                 try {
                     root.iconQueue = JSON.parse(text);
                 } catch (e) {
-                    // The engine inventory remains usable if queue state is unavailable.
+                    // Inventory remains usable if queue state is temporarily unavailable.
                 }
             }
         }
@@ -183,17 +224,26 @@ PageBase {
 
         ToggleRow {
             text: qsTr("Automatic adaptive icons")
-            subtext: qsTr("safe vectors canonicalize locally; raster and unsuitable sources enter the persistent conversion queue")
+            subtext: qsTr("safe vectors stay local; raster and unsuitable sources are canonicalized through the bounded conversion worker")
             checked: root.icons.enabled || false
             disabled: iconChange.running
             onToggled: root.runIcon([checked ? "enable" : "disable"])
         }
 
-        InfoRow {
-            icon: "smart_toy"
+        SelectRow {
             label: qsTr("Conversion provider")
-            subtext: root.icons.providerConfigured ? qsTr("existing Secret Service credential available") : qsTr("API key is not configured")
-            value: root.providerName(root.icons.provider || "openai")
+            subtext: root.icons.providerConfigured ? qsTr("existing Secret Service credential is ready") : qsTr("selected provider needs an API key")
+            fallbackIcon: "smart_toy"
+            fallbackText: root.providerName(root.icons.provider || "openai")
+            menuItems: root.providerItems
+            active: root.providerItems.find(item => item.objectName === root.icons.provider) ?? null
+        }
+
+        InfoRow {
+            icon: "tune"
+            label: qsTr("Conversion model")
+            subtext: qsTr("provider default · can be overridden in adaptive-icons-ai.conf")
+            value: qsTr("Auto")
         }
 
         InfoRow {
@@ -206,7 +256,7 @@ PageBase {
         InfoRow {
             icon: "verified"
             label: qsTr("Canonical icons")
-            subtext: qsTr("locally validated vector assets")
+            subtext: qsTr("accepted canonical assets with .vicon packages")
             value: String(root.icons.canonical || 0)
         }
 
@@ -215,17 +265,24 @@ PageBase {
             label: qsTr("Conversion queue")
             subtext: root.iconQueue.blockedNoProvider > 0
                 ? qsTr("%1 source jobs are waiting for the selected provider").arg(root.iconQueue.blockedNoProvider)
-                : root.iconQueue.transport === "not-implemented"
-                    ? qsTr("semantic conversion transport is the remaining engine stage")
-                    : qsTr("bounded source-hash conversion queue")
+                : root.iconQueue.paused
+                    ? qsTr("queue is paused")
+                    : qsTr("SQLite-backed source-hash queue")
             value: qsTr("%1 pending").arg(root.iconQueue.pending || root.icons.pending || 0)
         }
 
         InfoRow {
             icon: "play_arrow"
-            label: qsTr("Ready conversions")
-            subtext: qsTr("deduplicated source jobs eligible for processing")
-            value: String(root.iconQueue.ready || 0)
+            label: qsTr("Worker")
+            subtext: qsTr("%1 ready · %2 retrying").arg(root.iconQueue.ready || 0).arg(root.iconQueue.retryWait || 0)
+            value: root.iconQueue.running > 0 ? qsTr("%1 running").arg(root.iconQueue.running) : qsTr("idle")
+        }
+
+        InfoRow {
+            icon: "check_circle"
+            label: qsTr("Completed conversions")
+            subtext: qsTr("accepted semantic conversions kept in canonical cache")
+            value: String(root.iconQueue.succeeded || 0)
         }
 
         InfoRow {
@@ -243,6 +300,15 @@ PageBase {
         }
 
         RowButton {
+            icon: root.iconQueue.paused ? "play_arrow" : "pause"
+            text: root.iconQueue.paused ? qsTr("Resume conversion queue") : qsTr("Pause conversion queue")
+            subtext: root.iconQueue.paused ? qsTr("continue pending semantic conversions") : qsTr("keep current icons and stop starting new remote work")
+            trailingIcon: root.iconQueue.paused ? "play_arrow" : "pause"
+            disabled: iconChange.running
+            onClicked: root.runIcon([root.iconQueue.paused ? "queue-resume" : "queue-pause"])
+        }
+
+        RowButton {
             icon: "sync"
             text: qsTr("Reconcile icon inventory")
             subtext: qsTr("rescan desktop entries, validate sources and rebuild the local theme")
@@ -254,7 +320,7 @@ PageBase {
         RowButton {
             icon: "restart_alt"
             text: qsTr("Rebuild canonical assets")
-            subtext: qsTr("discard the local canonical cache and validate installed sources again")
+            subtext: qsTr("discard the local canonical cache and reconstruct installed sources")
             trailingIcon: "refresh"
             disabled: iconChange.running
             onClicked: root.runIcon(["rebuild-canonical"])
