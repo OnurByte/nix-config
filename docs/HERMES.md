@@ -1,5 +1,7 @@
 # Hermes automations
 
+Status: **current**
+
 Vesper uses Hermes cron as the only recurring scheduler. Vesper-owned scheduling, state, dispatch, watchdog and briefing logic lives in one native Rust control plane:
 
 ```text
