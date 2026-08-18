@@ -68,6 +68,10 @@ fn legacy_queue_path() -> PathBuf {
     state_root().join("conversion-queue.tsv")
 }
 
+fn legacy_manual_queue_path() -> PathBuf {
+    state_root().join("queue")
+}
+
 fn config_path() -> PathBuf {
     config_root().join("adaptive-icons.conf")
 }
@@ -134,6 +138,21 @@ fn sqlite(sql: &str) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+fn cleanup_legacy_manual_queue() -> Result<(), String> {
+    let path = legacy_manual_queue_path();
+    if !path.exists() {
+        return Ok(());
+    }
+    if !path.is_dir() {
+        return Err(format!(
+            "legacy adaptive icon queue path is not a directory: {}",
+            path.display()
+        ));
+    }
+    fs::remove_dir_all(&path)
+        .map_err(|error| format!("failed to remove legacy manual icon queue: {error}"))
+}
+
 fn init_db() -> Result<(), String> {
     sqlite(
         "PRAGMA journal_mode=WAL;\n\
@@ -162,7 +181,8 @@ fn init_db() -> Result<(), String> {
          INSERT INTO meta(key, value) VALUES('paused', '0')\n\
            ON CONFLICT(key) DO NOTHING;\n",
     )?;
-    migrate_legacy_queue()
+    migrate_legacy_queue()?;
+    cleanup_legacy_manual_queue()
 }
 
 fn load_provider() -> String {
