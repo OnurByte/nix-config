@@ -5,7 +5,7 @@ Status: **partial**
 This document is the single product-boundary contract for Vesper AI.
 It contains both implemented behavior and target behavior. Current code must be checked before claiming a capability exists.
 
-`AI-ANALYTICS.md` owns analytics measurement semantics. `ADAPTIVE-ICONS.md` owns the adaptive icon pipeline.
+`AI-ANALYTICS.md` owns analytics measurement semantics. `ADAPTIVE-ICONS.md` owns the adaptive icon pipeline. `SETTINGS.md` owns where AI controls appear in the wider Settings information architecture.
 
 ## current implementation
 
@@ -22,7 +22,7 @@ Current Vesper AI already has:
 - adaptive-icon AI controls and provider readiness
 
 Current implementation is still incomplete relative to the target contract below.
-In particular, detailed analytics/history and the backend-neutral Agent Teams orchestration surface are not complete product surfaces yet.
+In particular, detailed analytics/history, enforceable per-agent capability policy and the backend-neutral Agent Teams orchestration surface are not complete product surfaces yet.
 
 ## product boundary
 
@@ -155,6 +155,59 @@ Persistent Agent Cockpit snapshots belong under:
 ~/.local/state/vesper/agents/
 ```
 
+## capability policy
+
+Vesper should grow from inventory into an enforceable AI capability control plane.
+
+Target policy dimensions include:
+
+- default model/router
+- provider priority and fallback
+- model/provider selection per agent or runtime
+- usage/budget policy
+- MCP access
+- skill access
+- shared-secret access
+- filesystem scope
+- browser/network access
+- shell capability
+- privileged/root capability
+- permission to modify `nix-config`
+- context/memory controls
+
+Conceptual policy:
+
+```text
+Codex
+  GitHub       allow
+  filesystem   allow
+  browser      allow
+  nix-config   ask
+  root         deny
+
+Hermes
+  research     allow
+  network      allow
+  nix-config   deny
+  root         deny
+```
+
+The exact capability vocabulary should remain backend-neutral. A runtime/backend can map these concepts to its own enforceable primitives.
+
+Rules:
+
+- a visible permission must correspond to a real enforcement path
+- `deny` must not mean "hide the button but the agent can still do it"
+- `ask` must gate the capability before use, not merely log it afterward
+- default to least privilege for dangerous capabilities such as root, secret access and declarative system mutation
+- capability decisions should be attributable to the agent/runtime and action
+- do not pass long-lived secrets through broad environment state merely to implement permission checks
+- an orchestration backend must not silently widen capabilities beyond Vesper policy
+
+Until an enforcement backend exists for a capability, show it as unavailable/unenforced rather than presenting a fake security toggle.
+
+`SETTINGS.md` owns how this policy is presented alongside the rest of Vesper Settings. This document owns the AI permission semantics.
+
 ## Agent Teams and orchestration
 
 Agent Teams is the user-facing orchestration feature.
@@ -221,12 +274,16 @@ The MCP list comes from the Home Manager `programs.mcp.servers` registry so Code
 
 Skills and MCP configuration remain Vesper-owned even when an orchestration backend references them.
 
+Capability policy may restrict an individual agent's access to a configured skill or MCP server without deleting it from the shared registry.
+Configuration and permission are separate facts.
+
 ## Hermes
 
 Hermes keeps its own recurring research/scheduling contract.
 The AI page may surface Hermes status and relevant controls without creating a second scheduler.
 
 Recurring Hermes jobs are governed by `HERMES.md`.
+The target Settings presentation is defined in `SETTINGS.md`.
 
 ## adaptive icons
 
@@ -268,4 +325,5 @@ When implementing this document:
 2. preserve the Vesper-owned backend-neutral boundary
 3. reuse existing provider/Agent Cockpit/skills/MCP/Hermes data instead of adding parallel parsers
 4. keep detailed analytics semantics in `AI-ANALYTICS.md`
-5. update this document's `current implementation` section when a target surface becomes real
+5. do not present unenforced capability controls as security boundaries
+6. update this document's `current implementation` section when a target surface becomes real
