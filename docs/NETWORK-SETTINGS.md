@@ -1,5 +1,7 @@
 # network settings
 
+Status: **current**
+
 Caelestia remains the only network UI.
 
 Vesper extends the native Nexus Network page with:
