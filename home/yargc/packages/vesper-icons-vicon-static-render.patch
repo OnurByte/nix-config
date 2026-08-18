@@ -1,0 +1,111 @@
+--- a/vesper-icons.rs
++++ b/vesper-icons.rs
+@@ -783,6 +783,73 @@ fn gc_generations(current: &Path) {
+     }
+ }
+ 
++fn vicon_primary_asset(id: &str, fingerprint: &str) -> Option<PathBuf> {
++    let package = canonical_dir(id, fingerprint).join("icon.vicon");
++    let manifest = fs::read_to_string(package.join("manifest.json")).ok()?;
++    let needle = "\"asset\":\"";
++    let start = manifest.find(needle)? + needle.len();
++    let rest = &manifest[start..];
++    let end = rest.find('"')?;
++    let relative = PathBuf::from(&rest[..end]);
++    if relative.is_absolute()
++        || relative.components().any(|component| {
++            !matches!(component, std::path::Component::Normal(_))
++        })
++    {
++        return None;
++    }
++    let asset = package.join(relative);
++    if !asset.is_file() {
++        return None;
++    }
++    match asset
++        .extension()
++        .and_then(|value| value.to_str())
++        .unwrap_or("")
++        .to_ascii_lowercase()
++        .as_str()
++    {
++        "svg" | "png" => Some(asset),
++        _ => None,
++    }
++}
++
++fn static_render_source(id: &str, fingerprint: &str) -> Result<(PathBuf, bool), String> {
++    let Some(asset) = vicon_primary_asset(id, fingerprint) else {
++        return existing_canonical(id, fingerprint)
++            .map(|path| (path, false))
++            .ok_or_else(|| "canonical source unavailable".to_string());
++    };
++
++    let canonical_dir = canonical_dir(id, fingerprint);
++    let scratch = canonical_dir.join(format!(
++        ".vicon-static-source.{}.svg",
++        std::process::id()
++    ));
++    let extension = asset
++        .extension()
++        .and_then(|value| value.to_str())
++        .unwrap_or("")
++        .to_ascii_lowercase();
++
++    if extension == "svg" {
++        fs::copy(&asset, &scratch).map_err(|error| error.to_string())?;
++    } else {
++        let output = Command::new("base64")
++            .args(["-w", "0"])
++            .arg(&asset)
++            .output()
++            .map_err(|error| format!("failed to encode vicon raster layer: {error}"))?;
++        if !output.status.success() {
++            return Err("failed to encode vicon raster layer".to_string());
++        }
++        let encoded = String::from_utf8_lossy(&output.stdout);
++        let wrapper = format!(
++            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\"><image x=\"0\" y=\"0\" width=\"1024\" height=\"1024\" preserveAspectRatio=\"xMidYMid meet\" href=\"data:image/png;base64,{}\"/></svg>\n",
++            encoded
++        );
++        fs::write(&scratch, wrapper).map_err(|error| error.to_string())?;
++    }
++    Ok((scratch, true))
++}
++
+ fn compile_theme(items: &mut [InventoryItem], config: &Config) -> Result<usize, String> {
+     let generation = generations_root().join(generation_id());
+     let apps_dir = generation.join("scalable/apps");
+@@ -807,10 +874,14 @@ fn compile_theme(items: &mut [InventoryItem], config: &Config) -> Result<usize,
+             if item.excluded || item.canonical_state != "validated" {
+                 continue;
+             }
+-            let Some(source) = existing_canonical(&item.id, &item.fingerprint) else {
+-                continue;
++            let (source, scratch) = match static_render_source(&item.id, &item.fingerprint) {
++                Ok(value) => value,
++                Err(error) => {
++                    item.error = format!("canonical: {error}");
++                    continue;
++                }
+             };
+             let primary = icon_theme_name(&item.icon_key).unwrap_or_else(|| {
+                 safe_name(item.id.strip_suffix(".desktop").unwrap_or(&item.id))
+@@ -818,10 +889,14 @@ fn compile_theme(items: &mut [InventoryItem], config: &Config) -> Result<usize,
+             let compiled = match compile_icon(&source, config) {
+                 Ok(compiled) => compiled,
+                 Err(error) => {
++                    if scratch {
++                        let _ = fs::remove_file(&source);
++                    }
+                     item.error = format!("compile: {error}");
+                     continue;
+                 }
+             };
++            if scratch {
++                let _ = fs::remove_file(&source);
++            }
+ 
+             let mut aliases = BTreeSet::new();
+             aliases.insert(primary);
