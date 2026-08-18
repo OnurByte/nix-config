@@ -33,18 +33,39 @@ let
         # Optional external dead-man signal. The URL is mutable secret/config
         # state, never Nix/Git state and never a curl command-line argument.
         deadman_file="''${VESPER_DEADMAN_URL_FILE:-${home}/.config/vesper/hermes-deadman.url}"
+        deadman_current=""
+
         if [ -r "$deadman_file" ]; then
           IFS= read -r deadman_url < "$deadman_file" || true
           case "$deadman_url" in
             http://*|https://*)
               if ! printf 'url = "%s"\nfail\nsilent\nshow-error\nmax-time = 15\n' "$deadman_url" \
-                | ${pkgs.curl}/bin/curl --config - >/dev/null; then
-                echo '[Hermes dead-man] external heartbeat ping failed'
+                | ${pkgs.curl}/bin/curl --config - >/dev/null 2>&1; then
+                deadman_current='[Hermes dead-man] external heartbeat ping failed'
               fi
               ;;
             "") ;;
-            *) echo '[Hermes dead-man] URL file exists but does not contain an http(s) URL' ;;
+            *) deadman_current='[Hermes dead-man] URL file exists but does not contain an http(s) URL' ;;
           esac
+        fi
+
+        deadman_state="''${VESPER_RESEARCH_STATE_DIR:-${home}/.local/state/vesper/research}/watches/hermes-deadman-watch.txt"
+        deadman_previous=""
+        if [ -r "$deadman_state" ]; then
+          IFS= read -r deadman_previous < "$deadman_state" || true
+        fi
+
+        if [ "$deadman_current" != "$deadman_previous" ]; then
+          ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$deadman_state")"
+          deadman_tmp="$deadman_state.tmp.$$"
+          printf '%s\n' "$deadman_current" > "$deadman_tmp"
+          ${pkgs.coreutils}/bin/mv -f "$deadman_tmp" "$deadman_state"
+
+          if [ -n "$deadman_current" ]; then
+            printf '%s\n' "$deadman_current"
+          elif [ -n "$deadman_previous" ]; then
+            echo '[Hermes dead-man] external heartbeat recovered or was disabled'
+          fi
         fi
       ''}
     ''
