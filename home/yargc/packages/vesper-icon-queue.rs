@@ -1,12 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const QUEUE_SCHEMA_VERSION: u32 = 1;
+const QUEUE_SCHEMA_VERSION: u32 = 2;
+const LEASE_MS: i64 = 5 * 60 * 1000;
+const MAX_ATTEMPTS: u32 = 4;
 
 #[derive(Clone, Debug)]
 struct InventoryItem {
@@ -27,7 +30,9 @@ struct QueueJob {
     source_path: String,
     app_ids: BTreeSet<String>,
     attempts: u32,
-    updated_ms: u128,
+    updated_ms: i64,
+    next_run_ms: i64,
+    lease_until_ms: i64,
     last_error: String,
 }
 
@@ -55,27 +60,24 @@ fn inventory_path() -> PathBuf {
     state_root().join("inventory.tsv")
 }
 
-fn queue_tsv_path() -> PathBuf {
+fn db_path() -> PathBuf {
+    state_root().join("state.sqlite3")
+}
+
+fn legacy_queue_path() -> PathBuf {
     state_root().join("conversion-queue.tsv")
-}
-
-fn queue_json_path() -> PathBuf {
-    state_root().join("conversion-queue.json")
-}
-
-fn queue_status_path() -> PathBuf {
-    state_root().join("conversion-queue-status.json")
 }
 
 fn config_path() -> PathBuf {
     config_root().join("adaptive-icons.conf")
 }
 
-fn now_ms() -> u128 {
+fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis()
+        .min(i64::MAX as u128) as i64
 }
 
 fn json_escape(value: &str) -> String {
@@ -94,25 +96,73 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn tsv_escape(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| if matches!(ch, '\t' | '\n' | '\r') { ' ' } else { ch })
-        .collect()
+fn sql_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
-fn write_atomic(path: &Path, data: impl AsRef<[u8]>) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("invalid path: {}", path.display()))?;
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    let tmp = parent.join(format!(
-        ".{}.{}.tmp",
-        path.file_name().and_then(|name| name.to_str()).unwrap_or("queue"),
-        std::process::id()
-    ));
-    fs::write(&tmp, data).map_err(|error| error.to_string())?;
-    fs::rename(&tmp, path).map_err(|error| error.to_string())
+fn sqlite(sql: &str) -> Result<String, String> {
+    fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
+    let mut child = Command::new("sqlite3")
+        .arg("-batch")
+        .arg("-noheader")
+        .arg("-separator")
+        .arg("\t")
+        .arg(db_path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start sqlite3: {error}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(sql.as_bytes())
+            .map_err(|error| format!("failed to write sqlite query: {error}"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for sqlite3: {error}"))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            format!("sqlite3 exited with {}", output.status.code().unwrap_or(-1))
+        } else {
+            message
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn init_db() -> Result<(), String> {
+    sqlite(
+        "PRAGMA journal_mode=WAL;\n\
+         PRAGMA synchronous=NORMAL;\n\
+         PRAGMA busy_timeout=5000;\n\
+         CREATE TABLE IF NOT EXISTS meta (\n\
+           key TEXT PRIMARY KEY,\n\
+           value TEXT NOT NULL\n\
+         );\n\
+         CREATE TABLE IF NOT EXISTS jobs (\n\
+           key TEXT PRIMARY KEY,\n\
+           state TEXT NOT NULL,\n\
+           provider TEXT NOT NULL,\n\
+           source_kind TEXT NOT NULL,\n\
+           source_path TEXT NOT NULL,\n\
+           app_ids TEXT NOT NULL,\n\
+           attempts INTEGER NOT NULL DEFAULT 0,\n\
+           updated_ms INTEGER NOT NULL,\n\
+           next_run_ms INTEGER NOT NULL DEFAULT 0,\n\
+           lease_until_ms INTEGER NOT NULL DEFAULT 0,\n\
+           last_error TEXT NOT NULL DEFAULT ''\n\
+         );\n\
+         CREATE INDEX IF NOT EXISTS jobs_state_next_idx ON jobs(state, next_run_ms, updated_ms);\n\
+         INSERT INTO meta(key, value) VALUES('schemaVersion', '2')\n\
+           ON CONFLICT(key) DO UPDATE SET value=excluded.value;\n\
+         INSERT INTO meta(key, value) VALUES('paused', '0')\n\
+           ON CONFLICT(key) DO NOTHING;\n",
+    )?;
+    migrate_legacy_queue()
 }
 
 fn load_provider() -> String {
@@ -170,16 +220,21 @@ fn parse_apps(value: &str) -> BTreeSet<String> {
         .collect()
 }
 
-fn load_queue() -> BTreeMap<String, QueueJob> {
-    let content = fs::read_to_string(queue_tsv_path()).unwrap_or_default();
+fn app_string(values: &BTreeSet<String>) -> String {
+    values.iter().cloned().collect::<Vec<_>>().join(",")
+}
+
+fn load_jobs() -> Result<BTreeMap<String, QueueJob>, String> {
+    init_db()?;
+    let output = sqlite(
+        "SELECT key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error FROM jobs ORDER BY key;",
+    )?;
     let mut jobs = BTreeMap::new();
-    for line in content.lines() {
+    for line in output.lines() {
         let parts = line.split('\t').collect::<Vec<_>>();
-        if parts.len() < 9 {
+        if parts.len() < 11 {
             continue;
         }
-        let attempts = parts[6].parse::<u32>().unwrap_or(0);
-        let updated_ms = parts[7].parse::<u128>().unwrap_or(0);
         let key = parts[0].to_string();
         jobs.insert(
             key.clone(),
@@ -190,23 +245,60 @@ fn load_queue() -> BTreeMap<String, QueueJob> {
                 source_kind: parts[3].to_string(),
                 source_path: parts[4].to_string(),
                 app_ids: parse_apps(parts[5]),
-                attempts,
-                updated_ms,
-                last_error: parts[8].to_string(),
+                attempts: parts[6].parse().unwrap_or(0),
+                updated_ms: parts[7].parse().unwrap_or(0),
+                next_run_ms: parts[8].parse().unwrap_or(0),
+                lease_until_ms: parts[9].parse().unwrap_or(0),
+                last_error: parts[10].to_string(),
             },
         );
     }
-    jobs
+    Ok(jobs)
+}
+
+fn migrate_legacy_queue() -> Result<(), String> {
+    if !legacy_queue_path().is_file() {
+        return Ok(());
+    }
+    let count = sqlite("SELECT COUNT(*) FROM jobs;")?;
+    if count.trim().parse::<usize>().unwrap_or(0) != 0 {
+        return Ok(());
+    }
+
+    let content = fs::read_to_string(legacy_queue_path()).unwrap_or_default();
+    let mut sql = String::from("BEGIN IMMEDIATE;\n");
+    for line in content.lines() {
+        let parts = line.split('\t').collect::<Vec<_>>();
+        if parts.len() < 9 {
+            continue;
+        }
+        let attempts = parts[6].parse::<u32>().unwrap_or(0);
+        let updated_ms = parts[7].parse::<i64>().unwrap_or_else(|_| now_ms());
+        sql.push_str(&format!(
+            "INSERT OR IGNORE INTO jobs(key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error) VALUES({},{},{},{},{},{},{},{},0,0,{});\n",
+            sql_quote(parts[0]),
+            sql_quote(parts[1]),
+            sql_quote(parts[2]),
+            sql_quote(parts[3]),
+            sql_quote(parts[4]),
+            sql_quote(parts[5]),
+            attempts,
+            updated_ms,
+            sql_quote(parts[8]),
+        ));
+    }
+    sql.push_str("COMMIT;\n");
+    sqlite(&sql)?;
+    let retired = state_root().join("conversion-queue.tsv.retired");
+    let _ = fs::rename(legacy_queue_path(), retired);
+    Ok(())
 }
 
 fn desired_jobs(items: &[InventoryItem], provider: &str) -> BTreeMap<String, QueueJob> {
     let ready = provider_configured(provider);
     let mut jobs = BTreeMap::<String, QueueJob>::new();
     for item in items {
-        if item.excluded
-            || item.fingerprint.is_empty()
-            || item.canonical_state != "pending-ai"
-        {
+        if item.excluded || item.fingerprint.is_empty() || item.canonical_state != "pending-ai" {
             continue;
         }
         let entry = jobs.entry(item.fingerprint.clone()).or_insert_with(|| QueueJob {
@@ -218,6 +310,8 @@ fn desired_jobs(items: &[InventoryItem], provider: &str) -> BTreeMap<String, Que
             app_ids: BTreeSet::new(),
             attempts: 0,
             updated_ms: now_ms(),
+            next_run_ms: 0,
+            lease_until_ms: 0,
             last_error: String::new(),
         });
         entry.app_ids.insert(item.id.clone());
@@ -228,196 +322,304 @@ fn desired_jobs(items: &[InventoryItem], provider: &str) -> BTreeMap<String, Que
     jobs
 }
 
-fn reconcile_jobs(
-    mut existing: BTreeMap<String, QueueJob>,
-    desired: BTreeMap<String, QueueJob>,
-    provider: &str,
-) -> BTreeMap<String, QueueJob> {
-    let ready = provider_configured(provider);
+fn sync() -> Result<(), String> {
+    init_db()?;
+    let provider = load_provider();
+    let provider_ready = provider_configured(&provider);
+    let desired = desired_jobs(&load_inventory(), &provider);
+    let existing = load_jobs()?;
     let timestamp = now_ms();
-    let mut next = BTreeMap::new();
+    let ready_state = if provider_ready { "ready" } else { "blocked-no-provider" };
+    let mut sql = String::from("BEGIN IMMEDIATE;\n");
 
-    for (key, mut target) in desired {
-        if let Some(old) = existing.remove(&key) {
-            target.attempts = old.attempts;
-            target.last_error = old.last_error;
-            target.updated_ms = old.updated_ms;
+    for (key, target) in &desired {
+        let apps = app_string(&target.app_ids);
+        if let Some(old) = existing.get(key) {
+            let mut state = old.state.clone();
+            let mut attempts = old.attempts;
+            let mut last_error = old.last_error.clone();
+            let mut next_run = old.next_run_ms;
+            let mut lease_until = old.lease_until_ms;
 
-            target.state = match old.state.as_str() {
-                "running" => {
-                    target.last_error = "recovered interrupted conversion".to_string();
-                    target.updated_ms = timestamp;
-                    if ready { "ready" } else { "blocked-no-provider" }.to_string()
-                }
-                "retry-wait" | "failed" | "cancelled" => old.state,
-                "succeeded" => "superseded".to_string(),
-                _ => {
-                    let wanted = if ready { "ready" } else { "blocked-no-provider" };
-                    if old.state != wanted || old.provider != provider {
-                        target.updated_ms = timestamp;
-                    }
-                    wanted.to_string()
-                }
-            };
+            if old.provider != provider && matches!(state.as_str(), "failed" | "blocked-no-provider" | "ready" | "retry-wait") {
+                state = ready_state.to_string();
+                attempts = 0;
+                last_error.clear();
+                next_run = 0;
+                lease_until = 0;
+            } else if state == "running" && lease_until <= timestamp {
+                state = ready_state.to_string();
+                last_error = "recovered expired conversion lease".to_string();
+                lease_until = 0;
+            } else if state == "retry-wait" && next_run <= timestamp {
+                state = ready_state.to_string();
+                next_run = 0;
+            } else if state == "blocked-no-provider" && provider_ready {
+                state = "ready".to_string();
+            } else if state == "ready" && !provider_ready {
+                state = "blocked-no-provider".to_string();
+            } else if state == "superseded" {
+                state = ready_state.to_string();
+                attempts = 0;
+                last_error.clear();
+                next_run = 0;
+                lease_until = 0;
+            }
+
+            sql.push_str(&format!(
+                "UPDATE jobs SET state={},provider={},source_kind={},source_path={},app_ids={},attempts={},updated_ms={},next_run_ms={},lease_until_ms={},last_error={} WHERE key={};\n",
+                sql_quote(&state),
+                sql_quote(&provider),
+                sql_quote(&target.source_kind),
+                sql_quote(&target.source_path),
+                sql_quote(&apps),
+                attempts,
+                timestamp,
+                next_run,
+                lease_until,
+                sql_quote(&last_error),
+                sql_quote(key),
+            ));
+        } else {
+            sql.push_str(&format!(
+                "INSERT INTO jobs(key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error) VALUES({},{},{},{},{},{},0,{},0,0,'');\n",
+                sql_quote(key),
+                sql_quote(ready_state),
+                sql_quote(&provider),
+                sql_quote(&target.source_kind),
+                sql_quote(&target.source_path),
+                sql_quote(&apps),
+                timestamp,
+            ));
         }
-        target.provider = provider.to_string();
-        next.insert(key, target);
     }
 
-    for (key, mut old) in existing {
-        if !matches!(old.state.as_str(), "superseded" | "cancelled") {
-            old.state = "superseded".to_string();
-            old.updated_ms = timestamp;
+    for (key, old) in &existing {
+        if desired.contains_key(key) {
+            continue;
         }
-        next.insert(key, old);
+        if matches!(
+            old.state.as_str(),
+            "pending" | "ready" | "running" | "retry-wait" | "blocked-no-provider" | "blocked-no-consent"
+        ) {
+            sql.push_str(&format!(
+                "UPDATE jobs SET state='superseded',updated_ms={},lease_until_ms=0 WHERE key={};\n",
+                timestamp,
+                sql_quote(key),
+            ));
+        }
     }
 
-    next
+    sql.push_str(&format!(
+        "INSERT INTO meta(key,value) VALUES('provider',{}) ON CONFLICT(key) DO UPDATE SET value=excluded.value;\n",
+        sql_quote(&provider),
+    ));
+    sql.push_str("COMMIT;\n");
+    sqlite(&sql)?;
+    Ok(())
 }
 
-fn queue_json(jobs: &BTreeMap<String, QueueJob>) -> String {
-    let rows = jobs
-        .values()
-        .map(|job| {
-            let apps = job
-                .app_ids
-                .iter()
-                .map(|id| format!("\"{}\"", json_escape(id)))
-                .collect::<Vec<_>>()
-                .join(",");
-            format!(
-                "{{\"key\":\"{}\",\"state\":\"{}\",\"provider\":\"{}\",\"sourceKind\":\"{}\",\"sourcePath\":\"{}\",\"appIds\":[{}],\"attempts\":{},\"updatedMs\":{},\"lastError\":\"{}\"}}",
-                json_escape(&job.key),
-                json_escape(&job.state),
-                json_escape(&job.provider),
-                json_escape(&job.source_kind),
-                json_escape(&job.source_path),
-                apps,
-                job.attempts,
-                job.updated_ms,
-                json_escape(&job.last_error)
-            )
-        })
-        .collect::<Vec<_>>();
-    format!(
-        "{{\"schemaVersion\":{},\"jobs\":[{}]}}\n",
-        QUEUE_SCHEMA_VERSION,
-        rows.join(",")
-    )
+fn paused() -> Result<bool, String> {
+    init_db()?;
+    Ok(sqlite("SELECT value FROM meta WHERE key='paused';")?.trim() == "1")
 }
 
-fn queue_tsv(jobs: &BTreeMap<String, QueueJob>) -> String {
-    let mut body = String::new();
+fn set_paused(value: bool) -> Result<(), String> {
+    init_db()?;
+    sqlite(&format!(
+        "INSERT INTO meta(key,value) VALUES('paused','{}') ON CONFLICT(key) DO UPDATE SET value=excluded.value;",
+        if value { 1 } else { 0 }
+    ))?;
+    Ok(())
+}
+
+fn claim() -> Result<(), String> {
+    sync()?;
+    if paused()? {
+        println!("{{\"job\":null,\"paused\":true}}");
+        return Ok(());
+    }
+    let timestamp = now_ms();
+    let lease = timestamp.saturating_add(LEASE_MS);
+    let sql = format!(
+        "BEGIN IMMEDIATE;\n\
+         UPDATE jobs SET state='running',updated_ms={timestamp},lease_until_ms={lease}\n\
+         WHERE key=(SELECT key FROM jobs WHERE state='ready' AND next_run_ms<={timestamp} ORDER BY attempts ASC,updated_ms ASC,key ASC LIMIT 1)\n\
+         RETURNING key,provider,source_kind,source_path,app_ids,attempts;\n\
+         COMMIT;\n"
+    );
+    let output = sqlite(&sql)?;
+    let Some(line) = output.lines().find(|line| !line.trim().is_empty()) else {
+        println!("{{\"job\":null,\"paused\":false}}");
+        return Ok(());
+    };
+    let parts = line.split('\t').collect::<Vec<_>>();
+    if parts.len() < 6 {
+        return Err("invalid claimed queue row".to_string());
+    }
+    let apps = parse_apps(parts[4])
+        .iter()
+        .map(|id| format!("\"{}\"", json_escape(id)))
+        .collect::<Vec<_>>()
+        .join(",");
+    println!(
+        "{{\"job\":{{\"key\":\"{}\",\"provider\":\"{}\",\"sourceKind\":\"{}\",\"sourcePath\":\"{}\",\"appIds\":[{}],\"attempts\":{}}},\"paused\":false}}",
+        json_escape(parts[0]),
+        json_escape(parts[1]),
+        json_escape(parts[2]),
+        json_escape(parts[3]),
+        apps,
+        parts[5].parse::<u32>().unwrap_or(0),
+    );
+    Ok(())
+}
+
+fn heartbeat(key: &str) -> Result<(), String> {
+    let timestamp = now_ms();
+    let lease = timestamp.saturating_add(LEASE_MS);
+    sqlite(&format!(
+        "UPDATE jobs SET updated_ms={timestamp},lease_until_ms={lease} WHERE key={} AND state='running';",
+        sql_quote(key),
+    ))?;
+    Ok(())
+}
+
+fn complete(key: &str) -> Result<(), String> {
+    let timestamp = now_ms();
+    sqlite(&format!(
+        "UPDATE jobs SET state='succeeded',updated_ms={timestamp},next_run_ms=0,lease_until_ms=0,last_error='' WHERE key={};",
+        sql_quote(key),
+    ))?;
+    Ok(())
+}
+
+fn fail(key: &str, message: &str, permanent: bool) -> Result<(), String> {
+    init_db()?;
+    let query = format!("SELECT attempts FROM jobs WHERE key={};", sql_quote(key));
+    let attempts = sqlite(&query)?.trim().parse::<u32>().unwrap_or(0).saturating_add(1);
+    let timestamp = now_ms();
+    let (state, next_run) = if permanent || attempts >= MAX_ATTEMPTS {
+        ("failed", 0)
+    } else {
+        let exponent = attempts.saturating_sub(1).min(5);
+        let backoff = 15_000_i64.saturating_mul(1_i64 << exponent);
+        ("retry-wait", timestamp.saturating_add(backoff.min(10 * 60 * 1000)))
+    };
+    sqlite(&format!(
+        "UPDATE jobs SET state={},attempts={},updated_ms={},next_run_ms={},lease_until_ms=0,last_error={} WHERE key={};",
+        sql_quote(state),
+        attempts,
+        timestamp,
+        next_run,
+        sql_quote(message),
+        sql_quote(key),
+    ))?;
+    Ok(())
+}
+
+fn retry_app(id: &str) -> Result<(), String> {
+    sync()?;
+    let provider = load_provider();
+    let state = if provider_configured(&provider) { "ready" } else { "blocked-no-provider" };
+    let jobs = load_jobs()?;
+    let mut keys = Vec::new();
     for job in jobs.values() {
-        let apps = job.app_ids.iter().cloned().collect::<Vec<_>>().join(",");
-        body.push_str(&format!(
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n",
-            tsv_escape(&job.key),
-            tsv_escape(&job.state),
-            tsv_escape(&job.provider),
-            tsv_escape(&job.source_kind),
-            tsv_escape(&job.source_path),
-            tsv_escape(&apps),
-            job.attempts,
-            job.updated_ms,
-            tsv_escape(&job.last_error)
+        if job.app_ids.contains(id) && !matches!(job.state.as_str(), "superseded" | "cancelled") {
+            keys.push(job.key.clone());
+        }
+    }
+    if keys.is_empty() {
+        return Err(format!("application has no queued conversion: {id}"));
+    }
+    let timestamp = now_ms();
+    let mut sql = String::from("BEGIN IMMEDIATE;\n");
+    for key in keys {
+        sql.push_str(&format!(
+            "UPDATE jobs SET state={},attempts=0,updated_ms={},next_run_ms=0,lease_until_ms=0,last_error='' WHERE key={};\n",
+            sql_quote(state),
+            timestamp,
+            sql_quote(&key),
         ));
     }
-    body
+    sql.push_str("COMMIT;\n");
+    sqlite(&sql)?;
+    Ok(())
 }
 
-fn status_json(jobs: &BTreeMap<String, QueueJob>, provider: &str) -> String {
+fn app_status(id: &str) -> Result<(), String> {
+    sync()?;
+    let jobs = load_jobs()?;
+    let mut matches = jobs
+        .values()
+        .filter(|job| job.app_ids.contains(id))
+        .collect::<Vec<_>>();
+    matches.sort_by_key(|job| {
+        let priority = match job.state.as_str() {
+            "running" => 0,
+            "ready" => 1,
+            "retry-wait" => 2,
+            "blocked-no-provider" | "blocked-no-consent" => 3,
+            "failed" => 4,
+            "succeeded" => 5,
+            _ => 6,
+        };
+        (priority, std::cmp::Reverse(job.updated_ms))
+    });
+    let Some(job) = matches.first() else {
+        println!("{{\"state\":\"none\"}}");
+        return Ok(());
+    };
+    println!(
+        "{{\"state\":\"{}\",\"provider\":\"{}\",\"attempts\":{},\"updatedMs\":{},\"nextRunMs\":{},\"lastError\":\"{}\"}}",
+        json_escape(&job.state),
+        json_escape(&job.provider),
+        job.attempts,
+        job.updated_ms,
+        job.next_run_ms,
+        json_escape(&job.last_error),
+    );
+    Ok(())
+}
+
+fn print_status() -> Result<(), String> {
+    sync()?;
+    let jobs = load_jobs()?;
+    let provider = load_provider();
+    let paused = paused()?;
     let count = |state: &str| jobs.values().filter(|job| job.state == state).count();
     let pending = jobs
         .values()
-        .filter(|job| matches!(job.state.as_str(), "pending" | "ready" | "running" | "retry-wait" | "blocked-no-provider" | "blocked-no-consent"))
+        .filter(|job| {
+            matches!(
+                job.state.as_str(),
+                "pending" | "ready" | "running" | "retry-wait" | "blocked-no-provider" | "blocked-no-consent"
+            )
+        })
         .count();
-    format!(
-        "{{\"schemaVersion\":{},\"provider\":\"{}\",\"providerConfigured\":{},\"total\":{},\"pending\":{},\"ready\":{},\"running\":{},\"retryWait\":{},\"blockedNoProvider\":{},\"failed\":{},\"succeeded\":{},\"superseded\":{},\"transport\":\"not-implemented\"}}\n",
+    println!(
+        "{{\"schemaVersion\":{},\"provider\":\"{}\",\"providerConfigured\":{},\"paused\":{},\"total\":{},\"pending\":{},\"ready\":{},\"running\":{},\"retryWait\":{},\"blockedNoProvider\":{},\"blockedNoConsent\":{},\"failed\":{},\"succeeded\":{},\"superseded\":{},\"transport\":\"active\"}}",
         QUEUE_SCHEMA_VERSION,
-        json_escape(provider),
-        if provider_configured(provider) { "true" } else { "false" },
+        json_escape(&provider),
+        if provider_configured(&provider) { "true" } else { "false" },
+        if paused { "true" } else { "false" },
         jobs.len(),
         pending,
         count("ready"),
         count("running"),
         count("retry-wait"),
         count("blocked-no-provider"),
+        count("blocked-no-consent"),
         count("failed"),
         count("succeeded"),
-        count("superseded")
-    )
-}
-
-fn persist(jobs: &BTreeMap<String, QueueJob>, provider: &str) -> Result<(), String> {
-    fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
-    write_atomic(&queue_tsv_path(), queue_tsv(jobs))?;
-    write_atomic(&queue_json_path(), queue_json(jobs))?;
-    write_atomic(&queue_status_path(), status_json(jobs, provider))?;
+        count("superseded"),
+    );
     Ok(())
-}
-
-fn sync() -> Result<(), String> {
-    let provider = load_provider();
-    let items = load_inventory();
-    let existing = load_queue();
-    let desired = desired_jobs(&items, &provider);
-    let jobs = reconcile_jobs(existing, desired, &provider);
-    persist(&jobs, &provider)
-}
-
-fn retry_app(id: &str) -> Result<(), String> {
-    sync()?;
-    let provider = load_provider();
-    let ready = provider_configured(&provider);
-    let mut jobs = load_queue();
-    let mut matched = false;
-    for job in jobs.values_mut() {
-        if job.app_ids.contains(id) && !matches!(job.state.as_str(), "superseded" | "cancelled") {
-            job.state = if ready { "ready" } else { "blocked-no-provider" }.to_string();
-            job.last_error.clear();
-            job.updated_ms = now_ms();
-            matched = true;
-        }
-    }
-    if !matched {
-        return Err(format!("application has no queued conversion: {id}"));
-    }
-    persist(&jobs, &provider)
-}
-
-fn print_status() -> Result<(), String> {
-    if !queue_status_path().is_file() {
-        sync()?;
-    }
-    let text = fs::read_to_string(queue_status_path()).map_err(|error| error.to_string())?;
-    print!("{text}");
-    Ok(())
-}
-
-fn modified(path: &Path) -> Option<SystemTime> {
-    fs::metadata(path).and_then(|metadata| metadata.modified()).ok()
 }
 
 fn daemon() -> Result<(), String> {
-    let mut last_inventory = None;
-    let mut last_config = None;
-    let mut last_provider_ready = None;
     loop {
-        let inventory_mtime = modified(&inventory_path());
-        let config_mtime = modified(&config_path());
-        let provider = load_provider();
-        let provider_ready = provider_configured(&provider);
-        if inventory_mtime != last_inventory
-            || config_mtime != last_config
-            || Some(provider_ready) != last_provider_ready
-        {
-            if let Err(error) = sync() {
-                eprintln!("adaptive icon queue sync failed: {error}");
-            }
-            last_inventory = inventory_mtime;
-            last_config = config_mtime;
-            last_provider_ready = Some(provider_ready);
+        if let Err(error) = sync() {
+            eprintln!("adaptive icon queue sync failed: {error}");
         }
         thread::sleep(Duration::from_secs(5));
     }
@@ -429,7 +631,13 @@ fn usage() -> ! {
          commands:\n\
            sync\n\
            status\n\
+           app-status <desktop-id>\n\
+           claim\n\
+           heartbeat <job-key>\n\
+           complete <job-key>\n\
+           fail <job-key> transient|permanent <message>\n\
            retry-app <desktop-id>\n\
+           pause|resume\n\
            daemon"
     );
     std::process::exit(2);
@@ -440,7 +648,16 @@ fn main() {
     let result = match args.as_slice() {
         [command] if command == "sync" => sync(),
         [command] if command == "status" => print_status(),
+        [command, id] if command == "app-status" => app_status(id),
+        [command] if command == "claim" => claim(),
+        [command, key] if command == "heartbeat" => heartbeat(key),
+        [command, key] if command == "complete" => complete(key),
+        [command, key, kind, message] if command == "fail" => {
+            fail(key, message, kind == "permanent")
+        }
         [command, id] if command == "retry-app" => retry_app(id),
+        [command] if command == "pause" => set_paused(true),
+        [command] if command == "resume" => set_paused(false),
         [command] if command == "daemon" => daemon(),
         _ => usage(),
     };
