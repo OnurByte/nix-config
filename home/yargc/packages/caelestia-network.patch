@@ -7,7 +7,7 @@
              text: qsTr("Add provider")
              onClicked: {
                  root.nState.editingVpnIndex = -1;
-                 root.nState.openSubPage(4);
+                 root.nState.openSubPage(4); // Add/edit provider sub-page
              }
          }
 +
