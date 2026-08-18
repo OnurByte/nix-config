@@ -1,0 +1,155 @@
+--- a/vesper-icons.rs
++++ b/vesper-icons.rs
+@@ -1,7 +1,8 @@
+ use std::collections::{BTreeMap, BTreeSet};
+ use std::env;
+ use std::fs;
++use std::io::Write;
+ use std::os::unix::fs::symlink;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, Stdio};
+@@ -67,6 +68,10 @@ fn state_root() -> PathBuf {
+         .join("vesper/adaptive-icons")
+ }
+ 
++fn db_path() -> PathBuf {
++    state_root().join("state.sqlite3")
++}
++
+ fn config_root() -> PathBuf {
+     env::var_os("XDG_CONFIG_HOME")
+         .map(PathBuf::from)
+@@ -128,6 +133,43 @@ fn write_atomic(path: &Path, data: impl AsRef<[u8]>) -> Result<(), String> {
+     fs::rename(&tmp, path).map_err(|error| error.to_string())
+ }
+ 
++fn sql_quote(value: &str) -> String {
++    format!("'{}'", value.replace('\'', "''"))
++}
++
++fn sqlite(sql: &str) -> Result<String, String> {
++    fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
++    let mut child = Command::new("sqlite3")
++        .arg("-batch")
++        .arg("-noheader")
++        .arg("-separator")
++        .arg("\t")
++        .arg(db_path())
++        .stdin(Stdio::piped())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::piped())
++        .spawn()
++        .map_err(|error| format!("failed to start sqlite3: {error}"))?;
++    if let Some(mut stdin) = child.stdin.take() {
++        stdin
++            .write_all(sql.as_bytes())
++            .map_err(|error| format!("failed to write sqlite query: {error}"))?;
++    }
++    let output = child
++        .wait_with_output()
++        .map_err(|error| format!("failed to wait for sqlite3: {error}"))?;
++    if !output.status.success() {
++        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
++        return Err(if message.is_empty() {
++            format!("sqlite3 exited with {}", output.status.code().unwrap_or(-1))
++        } else {
++            message
++        });
++    }
++    Ok(String::from_utf8_lossy(&output.stdout).to_string())
++}
++
+ fn command_output(command: &str, args: &[&str]) -> Result<String, String> {
+     let output = Command::new(command)
+         .args(args)
+@@ -986,10 +1028,82 @@ fn status_json(items: &[InventoryItem], config: &Config, current: &str) -> Strin
+     )
+ }
+ 
++fn persist_inventory_db(items: &[InventoryItem]) -> Result<(), String> {
++    let mut sql = String::from(
++        "PRAGMA journal_mode=WAL;\n\
++         PRAGMA synchronous=NORMAL;\n\
++         PRAGMA busy_timeout=5000;\n\
++         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);\n\
++         CREATE TABLE IF NOT EXISTS application_inventory (\n\
++           desktop_id TEXT PRIMARY KEY,\n\
++           desktop_path TEXT NOT NULL,\n\
++           icon_key TEXT NOT NULL,\n\
++           source_path TEXT NOT NULL,\n\
++           source_fingerprint TEXT NOT NULL,\n\
++           source_kind TEXT NOT NULL,\n\
++           canonical_state TEXT NOT NULL,\n\
++           active INTEGER NOT NULL,\n\
++           excluded INTEGER NOT NULL,\n\
++           error TEXT NOT NULL,\n\
++           updated_ms INTEGER NOT NULL\n\
++         );\n\
++         CREATE INDEX IF NOT EXISTS application_inventory_fingerprint_idx ON application_inventory(source_fingerprint);\n\
++         CREATE TABLE IF NOT EXISTS source_provenance (\n\
++           fingerprint TEXT PRIMARY KEY,\n\
++           source_path TEXT NOT NULL,\n\
++           source_kind TEXT NOT NULL,\n\
++           reference_count INTEGER NOT NULL,\n\
++           updated_ms INTEGER NOT NULL\n\
++         );\n\
++         BEGIN IMMEDIATE;\n\
++         DELETE FROM application_inventory;\n\
++         DELETE FROM source_provenance;\n",
++    );
++    let updated_ms = SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .unwrap_or_default()
++        .as_millis()
++        .min(i64::MAX as u128) as i64;
++    let mut sources = BTreeMap::<String, (String, String, usize)>::new();
++    for item in items {
++        let source_path = item
++            .source_path
++            .as_ref()
++            .map(|path| path.to_string_lossy().into_owned())
++            .unwrap_or_default();
++        sql.push_str(&format!(
++            "INSERT INTO application_inventory(desktop_id, desktop_path, icon_key, source_path, source_fingerprint, source_kind, canonical_state, active, excluded, error, updated_ms) VALUES({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {});\n",
++            sql_quote(&item.id),
++            sql_quote(&item.desktop_path.to_string_lossy()),
++            sql_quote(&item.icon_key),
++            sql_quote(&source_path),
++            sql_quote(&item.fingerprint),
++            sql_quote(&item.source_kind),
++            sql_quote(&item.canonical_state),
++            if item.active { 1 } else { 0 },
++            if item.excluded { 1 } else { 0 },
++            sql_quote(&item.error),
++            updated_ms,
++        ));
++        if !item.fingerprint.is_empty() {
++            let entry = sources
++                .entry(item.fingerprint.clone())
++                .or_insert_with(|| (source_path, item.source_kind.clone(), 0));
++            entry.2 += 1;
++        }
++    }
++    for (fingerprint, (source_path, source_kind, reference_count)) in sources {
++        sql.push_str(&format!(
++            "INSERT INTO source_provenance(fingerprint, source_path, source_kind, reference_count, updated_ms) VALUES({}, {}, {}, {}, {});\n",
++            sql_quote(&fingerprint),
++            sql_quote(&source_path),
++            sql_quote(&source_kind),
++            reference_count,
++            updated_ms,
++        ));
++    }
++    sql.push_str(
++        "INSERT INTO meta(key, value) VALUES('inventorySchemaVersion', '1') ON CONFLICT(key) DO UPDATE SET value=excluded.value;\nCOMMIT;\n",
++    );
++    sqlite(&sql)?;
++    Ok(())
++}
++
+ fn write_state(items: &[InventoryItem], config: &Config, current: &str) -> Result<(), String> {
+     fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
++    persist_inventory_db(items)?;
+     write_atomic(&state_root().join("inventory.json"), inventory_json(items))?;
+     write_atomic(&state_root().join("inventory.tsv"), inventory_tsv(items))?;
+     write_atomic(
