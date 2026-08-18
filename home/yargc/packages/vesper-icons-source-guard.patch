@@ -1,0 +1,56 @@
+--- a/vesper-icons.rs
++++ b/vesper-icons.rs
+@@ -105,6 +105,25 @@ fn theme_link() -> PathBuf {
+     data_home().join("icons").join(THEME_NAME)
+ }
+ 
++fn is_vesper_owned_source(path: &Path) -> bool {
++    let owned_roots = [
++        theme_link(),
++        canonical_root(),
++        generations_root(),
++        cache_root(),
++        data_home().join("vesper/adaptive-icons/exports"),
++    ];
++    if owned_roots.iter().any(|root| path.starts_with(root)) {
++        return true;
++    }
++
++    // User-facing exports live in Downloads. Keep them out of provenance even
++    // when a desktop entry later points at an exported file by absolute path.
++    path.to_string_lossy()
++        .split(std::path::MAIN_SEPARATOR)
++        .any(|part| part.starts_with("Vesper-Adaptive-Icons-"))
++}
++
+ fn config_path() -> PathBuf {
+     config_root().join("adaptive-icons.conf")
+ }
+@@ -477,6 +496,9 @@ fn index_icon_tree(
+     if depth > 12 {
+         return;
+     }
++    if is_vesper_owned_source(current) {
++        return;
++    }
+     let Ok(entries) = fs::read_dir(current) else {
+         return;
+     };
+@@ -484,6 +506,9 @@ fn index_icon_tree(
+     for entry in entries.flatten() {
+         let path = entry.path();
++        if is_vesper_owned_source(&path) {
++            continue;
++        }
+         if path.is_dir() {
+             index_icon_tree(root, &path, root_rank, depth + 1, index);
+             continue;
+@@ -535,7 +560,7 @@ fn resolve_icon(
+     index: &BTreeMap<String, Vec<IconCandidate>>,
+ ) -> Option<PathBuf> {
+     let path = PathBuf::from(icon);
+-    if path.is_absolute() && path.is_file() {
++    if path.is_absolute() && path.is_file() && !is_vesper_owned_source(&path) {
+         return Some(path);
+     }
+ 
