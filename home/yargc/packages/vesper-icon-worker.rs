@@ -76,10 +76,6 @@ fn canonical_root() -> PathBuf {
     data_home().join("vesper/adaptive-icons/canonical")
 }
 
-fn active_theme() -> PathBuf {
-    data_home().join("icons/Vesper-Adaptive")
-}
-
 fn ai_config_path() -> PathBuf {
     config_root().join("adaptive-icons-ai.conf")
 }
@@ -903,121 +899,6 @@ fn export_root() -> Result<PathBuf, String> {
     Ok(downloads.join(format!("Vesper-Adaptive-Icons-{}", now_ms())))
 }
 
-fn export_all(kind: &str) -> Result<PathBuf, String> {
-    sync_local_vicons()?;
-    let root = export_root()?;
-    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
-    let accent = read_accent();
-
-    if matches!(kind, "current-svg" | "archive") {
-        copy_tree(&active_theme(), &root.join("current-svg"))?;
-    }
-
-    if matches!(kind, "current-png" | "archive") {
-        let source = active_theme();
-        let target = root.join("current-png");
-        if source.is_dir() {
-            for entry in walk_files(&source)? {
-                if entry.extension().and_then(|value| value.to_str()) != Some("svg") {
-                    continue;
-                }
-                let relative = entry.strip_prefix(&source).unwrap_or(&entry);
-                let mut out = target.join(relative);
-                out.set_extension("png");
-                if let Some(parent) = out.parent() {
-                    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-                }
-                let status = Command::new("rsvg-convert")
-                    .args(["-w", "512", "-h", "512", "-o"])
-                    .arg(&out)
-                    .arg(&entry)
-                    .status()
-                    .map_err(|error| error.to_string())?;
-                if !status.success() {
-                    return Err(format!("failed to export {}", entry.display()));
-                }
-            }
-        }
-    }
-
-    if matches!(kind, "all-appearances" | "archive") {
-        let target = root.join("all-appearances");
-        for item in load_inventory() {
-            if item.excluded || item.canonical_state != "validated" || item.fingerprint.is_empty() {
-                continue;
-            }
-            let canonical = canonical_dir(&item.id, &item.fingerprint).join("canonical.svg");
-            if !canonical.is_file() {
-                continue;
-            }
-            let bytes = fs::read(&canonical).map_err(|error| error.to_string())?;
-            let app_dir = target.join(safe_name(&item.id));
-            fs::create_dir_all(&app_dir).map_err(|error| error.to_string())?;
-            for mode in ["original", "light", "dark", "tinted", "clear", "glass"] {
-                fs::write(app_dir.join(format!("{mode}.svg")), render_appearance(&bytes, mode, &accent))
-                    .map_err(|error| error.to_string())?;
-            }
-        }
-    }
-
-    if matches!(kind, "canonical" | "archive") {
-        let target = root.join("canonical-vicon");
-        for item in load_inventory() {
-            if item.fingerprint.is_empty() {
-                continue;
-            }
-            let source = canonical_dir(&item.id, &item.fingerprint).join("icon.vicon");
-            if source.is_dir() {
-                copy_tree(&source, &target.join(format!("{}.vicon", safe_name(&item.id))))?;
-            }
-        }
-    }
-
-    if kind == "archive" {
-        let archive = root.with_extension("tar.gz");
-        let parent = root.parent().ok_or_else(|| "invalid export path".to_string())?;
-        let name = root
-            .file_name()
-            .and_then(|value| value.to_str())
-            .ok_or_else(|| "invalid export name".to_string())?;
-        let status = Command::new("tar")
-            .arg("-C")
-            .arg(parent)
-            .args(["-czf"])
-            .arg(&archive)
-            .arg(name)
-            .status()
-            .map_err(|error| format!("failed to start tar: {error}"))?;
-        if !status.success() {
-            return Err("failed to create icon export archive".to_string());
-        }
-        return Ok(archive);
-    }
-
-    if !matches!(kind, "current-svg" | "current-png" | "all-appearances" | "canonical") {
-        return Err(format!("unknown export format: {kind}"));
-    }
-    Ok(root)
-}
-
-fn walk_files(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for entry in fs::read_dir(&dir).map_err(|error| error.to_string())? {
-            let entry = entry.map_err(|error| error.to_string())?;
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.is_file() {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    Ok(files)
-}
-
 fn export_app(id: &str) -> Result<PathBuf, String> {
     sync_local_vicons()?;
     let item = load_inventory()
@@ -1059,7 +940,6 @@ fn usage() -> ! {
          commands:\n\
            process-once\n\
            sync-vicons\n\
-           export-all current-svg|current-png|all-appearances|canonical|archive\n\
            export-app <desktop-id>\n\
            daemon"
     );
@@ -1073,7 +953,6 @@ fn main() {
             println!("{}", if processed { "processed" } else { "idle" });
         }),
         [command] if command == "sync-vicons" => sync_local_vicons(),
-        [command, kind] if command == "export-all" => export_all(kind).map(|path| println!("{}", path.display())),
         [command, id] if command == "export-app" => export_app(id).map(|path| println!("{}", path.display())),
         [command] if command == "daemon" => daemon(),
         _ => usage(),
