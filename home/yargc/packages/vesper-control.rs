@@ -642,42 +642,6 @@ fn app_reset_permissions(id: &str) -> Result<(), String> {
     }
 }
 
-fn icon_state_path() -> PathBuf {
-    state_root().join("adaptive-icons/enabled")
-}
-
-fn icon_enabled() -> bool {
-    fs::read_to_string(icon_state_path())
-        .map(|value| value.trim() == "1")
-        .unwrap_or(false)
-}
-
-fn icon_set(enabled: bool) -> Result<(), String> {
-    let path = icon_state_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-    fs::write(path, if enabled { "1\n" } else { "0\n" }).map_err(|error| error.to_string())
-}
-
-fn icon_request(app_id: &str, icon: &str) -> Result<(), String> {
-    if !icon_enabled() {
-        return Err("adaptive icons are disabled".to_string());
-    }
-    let dir = state_root().join("adaptive-icons/queue");
-    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    let safe_name = app_id
-        .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() || ch == '.' || ch == '-' || ch == '_' { ch } else { '_' })
-        .collect::<String>();
-    let body = format!(
-        "{{\"schemaVersion\":1,\"appId\":\"{}\",\"sourceIcon\":\"{}\",\"state\":\"queued\"}}\n",
-        json_escape(app_id),
-        json_escape(icon)
-    );
-    fs::write(dir.join(format!("{safe_name}.json")), body).map_err(|error| error.to_string())
-}
-
 fn usage() -> ! {
     eprintln!(
         "vesper-control\n\
@@ -693,9 +657,7 @@ fn usage() -> ! {
            wellbeing-summary\n\
            app-status <desktop-id>\n\
            app-permission <desktop-id> network|home on|off\n\
-           app-reset-permissions <desktop-id>\n\
-           icon status|on|off\n\
-           icon request <desktop-id> [source-icon]"
+           app-reset-permissions <desktop-id>"
     );
     std::process::exit(2);
 }
@@ -753,18 +715,6 @@ fn main() {
         }
         [command, id] if command == "app-reset-permissions" => {
             app_reset_permissions(id).unwrap_or_else(|error| print_error(&error));
-        }
-        [group, action] if group == "icon" && action == "status" => {
-            println!("{}", if icon_enabled() { "on" } else { "off" });
-        }
-        [group, action] if group == "icon" && (action == "on" || action == "off") => {
-            icon_set(action == "on").unwrap_or_else(|error| print_error(&error));
-        }
-        [group, action, app_id] if group == "icon" && action == "request" => {
-            icon_request(app_id, "").unwrap_or_else(|error| print_error(&error));
-        }
-        [group, action, app_id, icon] if group == "icon" && action == "request" => {
-            icon_request(app_id, icon).unwrap_or_else(|error| print_error(&error));
         }
         _ => usage(),
     }
