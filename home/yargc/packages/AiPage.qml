@@ -14,6 +14,7 @@ PageBase {
     property var control: ({ credentials: [], skills: { count: 0, items: [] }, mcp: { count: 0, items: [] }, hermesRegistry: false })
     property var hub: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
     property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0, aiTransport: "pending" })
+    property var iconQueue: ({ total: 0, pending: 0, ready: 0, running: 0, retryWait: 0, blockedNoProvider: 0, failed: 0, succeeded: 0, superseded: 0, transport: "not-implemented" })
     property string loadError: ""
     property string iconMessage: ""
 
@@ -36,6 +37,8 @@ PageBase {
             hubStatus.running = true;
         if (!iconStatus.running)
             iconStatus.running = true;
+        if (!iconQueueStatus.running)
+            iconQueueStatus.running = true;
     }
 
     function runIcon(args) {
@@ -93,6 +96,20 @@ PageBase {
                     root.icons = JSON.parse(text);
                 } catch (e) {
                     root.iconMessage = qsTr("Could not read adaptive icon status");
+                }
+            }
+        }
+    }
+
+    Process {
+        id: iconQueueStatus
+        command: ["@vesperControl@", "icon", "queue-status"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.iconQueue = JSON.parse(text);
+                } catch (e) {
+                    // The engine inventory remains usable if queue state is unavailable.
                 }
             }
         }
@@ -166,7 +183,7 @@ PageBase {
 
         ToggleRow {
             text: qsTr("Automatic adaptive icons")
-            subtext: qsTr("clean local SVGs are canonicalized automatically; raster AI conversion is not active yet")
+            subtext: qsTr("safe vectors canonicalize locally; raster and unsuitable sources enter the persistent conversion queue")
             checked: root.icons.enabled || false
             disabled: iconChange.running
             onToggled: root.runIcon([checked ? "enable" : "disable"])
@@ -195,16 +212,27 @@ PageBase {
 
         InfoRow {
             icon: "hourglass_top"
-            label: qsTr("Pending conversion")
-            subtext: root.icons.aiTransport === "pending" ? qsTr("raster/provider transport is the next engine stage") : qsTr("waiting for semantic conversion")
-            value: String(root.icons.pending || 0)
+            label: qsTr("Conversion queue")
+            subtext: root.iconQueue.blockedNoProvider > 0
+                ? qsTr("%1 source jobs are waiting for the selected provider").arg(root.iconQueue.blockedNoProvider)
+                : root.iconQueue.transport === "not-implemented"
+                    ? qsTr("semantic conversion transport is the remaining engine stage")
+                    : qsTr("bounded source-hash conversion queue")
+            value: qsTr("%1 pending").arg(root.iconQueue.pending || root.icons.pending || 0)
+        }
+
+        InfoRow {
+            icon: "play_arrow"
+            label: qsTr("Ready conversions")
+            subtext: qsTr("deduplicated source jobs eligible for processing")
+            value: String(root.iconQueue.ready || 0)
         }
 
         InfoRow {
             icon: "error"
             label: qsTr("Failed")
             subtext: qsTr("original packaged icons remain as fallback")
-            value: String(root.icons.failed || 0)
+            value: String((root.icons.failed || 0) + (root.iconQueue.failed || 0))
         }
 
         InfoRow {
