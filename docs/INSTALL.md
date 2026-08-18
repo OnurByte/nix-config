@@ -1,5 +1,7 @@
 # Vesper installation and storage
 
+Status: **current**
+
 Vesper is a single-machine configuration. Do not make the host generic and do not copy another machine's generated hardware configuration.
 
 ## Verified current disk inventory
