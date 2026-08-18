@@ -1,0 +1,128 @@
+--- a/vesper-icons.rs
++++ b/vesper-icons.rs
+@@ -15,6 +15,7 @@ struct Config {
+     enabled: bool,
+     mode: String,
++    material: String,
+     provider: String,
+     follow_palette: bool,
+     scheme_mode: String,
+@@ -26,6 +27,7 @@ impl Default for Config {
+         Self {
+             enabled: false,
+             mode: "original".to_string(),
++            material: "standard".to_string(),
+             provider: "openai".to_string(),
+             follow_palette: true,
+             scheme_mode: "dark".to_string(),
+@@ -151,10 +153,11 @@ fn command_success(command: &str, args: &[&str]) -> bool {
+ }
+ 
+ fn valid_mode(value: &str) -> bool {
+-    matches!(
+-        value,
+-        "original" | "light" | "dark" | "tinted" | "clear" | "glass"
+-    )
++    matches!(value, "original" | "light" | "dark" | "tinted" | "clear")
++}
++
++fn valid_material(value: &str) -> bool {
++    matches!(value, "standard" | "glass")
+ }
+ 
+ fn valid_provider(value: &str) -> bool {
+@@ -184,7 +187,12 @@ fn load_config() -> Config {
+         let value = value.trim();
+         match key.trim() {
+             "enabled" => config.enabled = value == "1" || value.eq_ignore_ascii_case("true"),
++            "mode" if value == "glass" => {
++                config.mode = "clear".to_string();
++                config.material = "glass".to_string();
++            }
+             "mode" if valid_mode(value) => config.mode = value.to_string(),
++            "material" if valid_material(value) => config.material = value.to_string(),
+             "provider" if valid_provider(value) => config.provider = value.to_string(),
+             "followPalette" => {
+                 config.follow_palette = value == "1" || value.eq_ignore_ascii_case("true")
+@@ -211,10 +219,11 @@ fn load_config() -> Config {
+ 
+ fn save_config(config: &Config) -> Result<(), String> {
+     let body = format!(
+-        "enabled={}\nmode={}\nprovider={}\nfollowPalette={}\nschemeMode={}\naccent={}\n",
++        "enabled={}\nmode={}\nmaterial={}\nprovider={}\nfollowPalette={}\nschemeMode={}\naccent={}\n",
+         if config.enabled { 1 } else { 0 },
+         config.mode,
++        config.material,
+         config.provider,
+         if config.follow_palette { 1 } else { 0 },
+         config.scheme_mode,
+@@ -703,12 +712,24 @@ fn compile_icon(canonical: &Path, config: &Config) -> Result<String, String> {
+                 foreground
+             )
+         }
+-        "glass" => format!(
+-            "<defs><linearGradient id=\"vesperGlass\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.46\"/><stop offset=\"0.42\" stop-color=\"{}\" stop-opacity=\"0.18\"/><stop offset=\"1\" stop-color=\"#ffffff\" stop-opacity=\"0.08\"/></linearGradient><linearGradient id=\"vesperSpec\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.72\"/><stop offset=\"0.45\" stop-color=\"#ffffff\" stop-opacity=\"0.08\"/><stop offset=\"1\" stop-color=\"#ffffff\" stop-opacity=\"0\"/></linearGradient></defs><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#vesperGlass)\" stroke=\"#ffffff\" stroke-opacity=\"0.42\" stroke-width=\"8\"/><rect x=\"116\" y=\"116\" width=\"792\" height=\"396\" rx=\"172\" fill=\"url(#vesperSpec)\"/>{glyph}",
+-            config.accent
+-        ),
+         _ => glyph,
+     };
++
++    let body = if config.material == "glass" {
++        format!(
++            "<defs><linearGradient id=\"vesperMaterialGlass\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.18\"/><stop offset=\"0.46\" stop-color=\"{}\" stop-opacity=\"0.08\"/><stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.06\"/></linearGradient><linearGradient id=\"vesperMaterialSpec\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.54\"/><stop offset=\"0.48\" stop-color=\"#ffffff\" stop-opacity=\"0.05\"/><stop offset=\"1\" stop-color=\"#ffffff\" stop-opacity=\"0\"/></linearGradient></defs><g>{body}</g><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#vesperMaterialGlass)\" pointer-events=\"none\"/><rect x=\"116\" y=\"116\" width=\"792\" height=\"350\" rx=\"172\" fill=\"url(#vesperMaterialSpec)\" pointer-events=\"none\"/>",
++            config.accent
++        )
++    } else {
++        body
++    };
+ 
+     Ok(format!(
+         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\">{body}</svg>\n"
+@@ -935,9 +956,10 @@ fn status_json(items: &[InventoryItem], config: &Config, current: &str) -> Strin
+     let active = items.iter().filter(|item| item.active).count();
+ 
+     format!(
+-        "{{\"enabled\":{},\"mode\":\"{}\",\"provider\":\"{}\",\"providerConfigured\":{},\"followPalette\":{},\"schemeMode\":\"{}\",\"accent\":\"{}\",\"theme\":\"{}\",\"discovered\":{},\"canonical\":{},\"pending\":{},\"failed\":{},\"excluded\":{},\"active\":{},\"current\":\"{}\",\"aiTransport\":\"pending\"}}\n",
++        "{{\"enabled\":{},\"mode\":\"{}\",\"material\":\"{}\",\"provider\":\"{}\",\"providerConfigured\":{},\"followPalette\":{},\"schemeMode\":\"{}\",\"accent\":\"{}\",\"theme\":\"{}\",\"discovered\":{},\"canonical\":{},\"pending\":{},\"failed\":{},\"excluded\":{},\"active\":{},\"current\":\"{}\",\"aiTransport\":\"worker\"}}\n",
+         if config.enabled { "true" } else { "false" },
+         json_escape(&config.mode),
++        json_escape(&config.material),
+         json_escape(&config.provider),
+         if provider_configured(&config.provider) { "true" } else { "false" },
+         if config.follow_palette { "true" } else { "false" },
+@@ -1026,6 +1048,17 @@ fn set_mode(mode: &str) -> Result<(), String> {
+     Ok(())
+ }
+ 
++fn set_material(material: &str) -> Result<(), String> {
++    if !valid_material(material) {
++        return Err(format!("unsupported icon material: {material}"));
++    }
++    let mut config = load_config();
++    config.material = material.to_string();
++    save_config(&config)?;
++    reconcile()?;
++    Ok(())
++}
++
+ fn set_provider(provider: &str) -> Result<(), String> {
+     if !valid_provider(provider) {
+         return Err(format!("unsupported provider: {provider}"));
+@@ -1161,7 +1194,8 @@ fn usage() -> ! {
+            enable|disable\n\
+            reconcile\n\
+            ensure-theme\n\
+-           mode original|light|dark|tinted|clear|glass\n\
++           mode original|light|dark|tinted|clear\n\
++           material standard|glass\n\
+            provider openai|anthropic|xai|openrouter|google\n\
+            follow-palette on|off\n\
+            sync-theme light|dark\n\
+@@ -1185,6 +1219,7 @@ fn main() {
+         [command] if command == "reconcile" => reconcile().map(|summary| println!("{summary}")),
+         [command] if command == "ensure-theme" => ensure_theme(),
+         [command, mode] if command == "mode" => set_mode(mode),
++        [command, material] if command == "material" => set_material(material),
+         [command, provider] if command == "provider" => set_provider(provider),
+         [command, value] if command == "follow-palette" => match value.as_str() {
+             "on" => set_follow_palette(true),
