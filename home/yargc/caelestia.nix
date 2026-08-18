@@ -52,8 +52,9 @@ let
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperAppControls.qml} modules/nexus/pages/apps/VesperAppControls.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
-      ${pkgs.coreutils}/bin/install -Dm644 ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml
     '';
   });
 
@@ -197,16 +198,19 @@ in
         enableChromium = false;
         enableZed = false;
         enableCava = false;
-        iconThemeLight = "Papirus-Light";
-        iconThemeDark = "Papirus-Dark";
+        iconThemeLight = "Vesper-Adaptive";
+        iconThemeDark = "Vesper-Adaptive";
         # Upstream currently writes adw-gtk3-dark even in light mode. Correct
         # that final dconf key after palette generation without forking the CLI.
+        # The icon engine consumes the same generated palette and recompiles
+        # canonical assets locally. No remote AI work happens in this hook.
         postHook = ''
           if [ "$SCHEME_MODE" = "light" ]; then
             ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3'"
           else
             ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3-dark'"
           fi
+          ${vesperControl}/bin/vesper-control icon sync-theme "$SCHEME_MODE" || true
           hyprctl reload
         '';
       };
@@ -239,10 +243,38 @@ in
     pkgs.darkly
   ];
 
+  # Caelestia renders user templates into ~/.local/state/caelestia/theme.
+  # Keep only the primary accent as the icon compiler input. The icon engine
+  # owns material recipes and must not duplicate the full Caelestia palette.
+  home.file.".config/caelestia/templates/vesper-icons".text = "{{ primary.hex }}\n";
+
   # The AI settings page reads the same MCP registry that Home Manager feeds to
   # Codex, Claude Code and OpenCode. Keep this generated inventory value-only.
   home.file.".config/vesper/mcp-servers".text = lib.concatStringsSep "\n" mcpServerNames + "\n";
 
   home.file."Pictures/Wallpapers/vesper-nix-dracula.png".source = nixDracula.gnomeFilePath;
   home.file."Pictures/Wallpapers/vesper-nix-solarized-dark.png".source = nixSolarized.gnomeFilePath;
+
+  # The configured icon theme name must always resolve, even when adaptive
+  # icons are disabled. In that state the generated theme is intentionally
+  # empty and inherits Papirus, giving an immediate visual rollback.
+  home.activation.vesperAdaptiveIconTheme = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    ${vesperControl}/bin/vesper-control icon ensure-theme
+  '';
+
+  # Filesystem notifications are the primary discovery path. The daemon also
+  # performs a bounded periodic full scan as recovery for missed profile or
+  # exported Flatpak changes.
+  systemd.user.services.vesper-adaptive-icons = {
+    Unit = {
+      Description = "Vesper adaptive application icon reconciliation";
+      After = [ "graphical-session-pre.target" ];
+    };
+    Service = {
+      ExecStart = "${vesperControl}/bin/vesper-icon-engine daemon";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
 }
