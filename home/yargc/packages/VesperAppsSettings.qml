@@ -50,6 +50,26 @@ ColumnLayout {
         }
     }
 
+    Process {
+        id: storeLauncher
+        command: ["vesper-store"]
+    }
+
+    SectionHeader {
+        text: qsTr("Apps")
+    }
+
+    RowButton {
+        icon: "add_circle"
+        text: qsTr("Find New Apps")
+        subtext: qsTr("Discover and install applications with Vesper Store")
+        disabled: storeLauncher.running
+        onClicked: {
+            if (!storeLauncher.running)
+                storeLauncher.running = true;
+        }
+    }
+
     SectionHeader {
         text: qsTr("Wellbeing")
     }

@@ -51,6 +51,7 @@ in
 
     obsidian
     inputs.self.packages.${pkgs.system}.t3code-nightly
+    inputs.self.packages.${pkgs.system}.vesper-store
   ];
 
   xdg.mimeApps = {
