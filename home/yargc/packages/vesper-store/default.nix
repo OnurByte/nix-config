@@ -3,6 +3,7 @@
   pkg-config,
   qt6,
   rustc,
+  sqlite,
   stdenv,
 }:
 stdenv.mkDerivation {
@@ -15,6 +16,7 @@ stdenv.mkDerivation {
     pkg-config
     qt6.wrapQtAppsHook
     rustc
+    sqlite
   ];
 
   buildInputs = [
@@ -47,6 +49,11 @@ stdenv.mkDerivation {
     env -u VESPER_STORE_CATALOG ./vesper-store-core catalog-status \
       | grep -F '"available":false' >/dev/null
 
+    fixture="$TMPDIR/catalog.sqlite"
+    sqlite3 "$fixture" < data/catalog-schema.sql
+    VESPER_STORE_CATALOG="$fixture" ./vesper-store-core catalog-status \
+      | grep -F '"available":true' >/dev/null
+
     runHook postCheck
   '';
 
@@ -56,6 +63,7 @@ stdenv.mkDerivation {
     install -Dm755 vesper-store "$out/bin/vesper-store"
     install -Dm755 vesper-store-core "$out/libexec/vesper-store-core"
     install -Dm644 qml/Main.qml "$out/share/vesper-store/qml/Main.qml"
+    install -Dm644 data/catalog-schema.sql "$out/share/vesper-store/catalog-schema.sql"
     install -Dm644 data/io.vesper.Store.desktop "$out/share/applications/io.vesper.Store.desktop"
     install -Dm644 data/io.vesper.Store.metainfo.xml "$out/share/metainfo/io.vesper.Store.metainfo.xml"
 
@@ -66,6 +74,7 @@ stdenv.mkDerivation {
     qtWrapperArgs+=(
       --set VESPER_STORE_QML "$out/share/vesper-store/qml/Main.qml"
       --set VESPER_STORE_CORE "$out/libexec/vesper-store-core"
+      --prefix PATH : "${lib.makeBinPath [ sqlite ]}"
     )
   '';
 
