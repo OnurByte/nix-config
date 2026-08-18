@@ -144,6 +144,9 @@ jobs:
       - name: Evaluate Home Manager activation
         run: nix eval --raw '.#nixosConfigurations.vesper.config.home-manager.users.yargc.home.activationPackage.drvPath' >/dev/null
 
+      - name: Build Vesper Store package
+        run: nix build --no-link --print-build-logs .#vesper-store
+
       - name: Build Caelestia surface
         shell: bash
         run: |
