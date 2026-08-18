@@ -13,7 +13,9 @@ ColumnLayout {
 
     property var app
     property var status: ({ sandbox: "native", flatpakId: "", permissions: "", todaySeconds: 0 })
+    property var iconStatus: ({ id: "", iconKey: "", sourcePath: "", sourceKind: "", fingerprint: "", canonicalState: "missing", active: false, excluded: false, error: "" })
     property string message: ""
+    property bool messageOk: false
 
     Layout.fillWidth: true
     spacing: Tokens.spacing.extraSmall / 2
@@ -30,10 +32,26 @@ ColumnLayout {
     }
 
     function refresh() {
-        if (root.app && !appStatus.running) {
+        if (!root.app)
+            return;
+        if (!appStatus.running) {
             appStatus.command = ["@vesperControl@", "app-status", root.app.id];
             appStatus.running = true;
         }
+        if (!iconAppStatus.running) {
+            iconAppStatus.command = ["@vesperControl@", "icon", "app-status", root.app.id];
+            iconAppStatus.running = true;
+        }
+    }
+
+    function runIcon(args, successMessage) {
+        if (!root.app || iconAction.running)
+            return;
+        root.message = "";
+        root.messageOk = false;
+        iconAction.successMessage = successMessage;
+        iconAction.command = ["@vesperControl@", "icon"].concat(args);
+        iconAction.running = true;
     }
 
     onAppChanged: refresh()
@@ -47,6 +65,20 @@ ColumnLayout {
                     root.status = JSON.parse(text);
                 } catch (e) {
                     root.message = qsTr("Could not read app controls");
+                    root.messageOk = false;
+                }
+            }
+        }
+    }
+
+    Process {
+        id: iconAppStatus
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    root.iconStatus = JSON.parse(text);
+                } catch (e) {
+                    root.iconStatus = ({ id: root.app?.id || "", iconKey: root.app?.icon || "", sourcePath: "", sourceKind: "", fingerprint: "", canonicalState: "missing", active: false, excluded: false, error: qsTr("not discovered yet") });
                 }
             }
         }
@@ -57,15 +89,19 @@ ColumnLayout {
         stderr: StdioCollector { id: permissionError }
         onExited: (code, status) => {
             root.message = code === 0 ? "" : permissionError.text.trim();
+            root.messageOk = code === 0;
             root.refresh();
         }
     }
 
     Process {
-        id: iconRequest
+        id: iconAction
+        property string successMessage: ""
         stderr: StdioCollector { id: iconError }
         onExited: (code, status) => {
-            root.message = code === 0 ? qsTr("Adaptive icon job queued") : iconError.text.trim();
+            root.message = code === 0 ? successMessage : iconError.text.trim();
+            root.messageOk = code === 0;
+            root.refresh();
         }
     }
 
@@ -129,18 +165,46 @@ ColumnLayout {
     }
 
     SectionHeader {
-        text: qsTr("Experimental")
+        text: qsTr("Adaptive icon")
+    }
+
+    InfoRow {
+        icon: "image"
+        label: qsTr("Source icon")
+        subtext: root.iconStatus.sourcePath || root.iconStatus.iconKey || qsTr("source not resolved")
+        value: root.iconStatus.sourceKind || qsTr("unknown")
+    }
+
+    InfoRow {
+        icon: root.iconStatus.canonicalState === "validated" ? "verified" : "hourglass_top"
+        label: qsTr("Canonical asset")
+        subtext: root.iconStatus.error || qsTr("source fingerprint %1").arg((root.iconStatus.fingerprint || "").slice(0, 12))
+        value: root.iconStatus.canonicalState || qsTr("missing")
+        iconColour: root.iconStatus.canonicalState === "validated" ? Colours.palette.m3primary : Colours.palette.m3tertiary
+    }
+
+    InfoRow {
+        icon: "palette"
+        label: qsTr("Active appearance")
+        subtext: root.iconStatus.active ? qsTr("served by the Vesper adaptive icon theme") : qsTr("using inherited packaged/fallback icon")
+        value: root.iconStatus.active ? qsTr("Vesper") : qsTr("original")
+    }
+
+    ToggleRow {
+        text: qsTr("Exclude this app")
+        subtext: qsTr("always keep the original packaged icon for this application")
+        checked: root.iconStatus.excluded || false
+        disabled: !root.app || iconAction.running
+        onToggled: root.runIcon(["app-exclude", root.app.id, checked ? "on" : "off"], checked ? qsTr("App excluded from adaptation") : qsTr("App returned to adaptive icons"))
     }
 
     RowButton {
-        icon: "auto_awesome"
-        text: qsTr("Queue adaptive icon")
-        subtext: qsTr("hand this app icon to the Vesper AI icon workflow for review")
-        disabled: !root.app || iconRequest.running
-        onClicked: {
-            iconRequest.command = ["@vesperControl@", "icon", "request", root.app.id, root.app.icon || ""];
-            iconRequest.running = true;
-        }
+        icon: "restart_alt"
+        text: qsTr("Retry this icon")
+        subtext: qsTr("discard this app's canonical cache and run local reconciliation again")
+        trailingIcon: "refresh"
+        disabled: !root.app || iconAction.running
+        onClicked: root.runIcon(["app-retry", root.app.id], qsTr("Adaptive icon reconciled"))
     }
 
     StyledText {
@@ -148,7 +212,7 @@ ColumnLayout {
         Layout.leftMargin: Tokens.padding.largeIncreased
         visible: root.message
         text: root.message
-        color: root.message.includes(qsTr("queued")) ? Colours.palette.m3primary : Colours.palette.m3error
+        color: root.messageOk ? Colours.palette.m3primary : Colours.palette.m3error
         font: Tokens.font.label.small
         wrapMode: Text.WordWrap
     }
