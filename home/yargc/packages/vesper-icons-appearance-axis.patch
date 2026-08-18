@@ -1,5 +1,14 @@
 --- a/vesper-icons.rs
 +++ b/vesper-icons.rs
+@@ -27,7 +27,7 @@ impl Default for Config {
+     fn default() -> Self {
+         Self {
+             enabled: false,
+-            mode: "original".to_string(),
++            mode: "automatic".to_string(),
+             material: "standard".to_string(),
+             provider: "openai".to_string(),
+             follow_palette: true,
 @@ -160,7 +160,11 @@ fn command_success(command: &str, args: &[&str]) -> bool {
  }
  
