@@ -1,6 +1,8 @@
 --- a/modules/bar/Bar.qml
 +++ b/modules/bar/Bar.qml
-@@ -130,6 +130,51 @@ ColumnLayout {
+@@ -155,10 +155,55 @@ ColumnLayout {
+                     Tray {
+                         objectName: "taskbarTray"
                      }
                  }
              }
@@ -52,9 +54,13 @@
              DelegateChoice {
                  roleValue: "clock"
                  delegate: EntryWrapper {
+                     Clock {
+                         objectName: "taskbarClock"
 --- a/modules/dashboard/Content.qml
 +++ b/modules/dashboard/Content.qml
-@@ -30,6 +30,12 @@ Item {
+@@ -33,10 +33,16 @@ Item {
+                 component: performanceComponent,
+                 iconName: "speed",
                  text: qsTr("Performance"),
                  enabled: Config.dashboard.showPerformance
              },
@@ -67,7 +73,11 @@
              {
                  component: weatherComponent,
                  iconName: "cloud",
-@@ -164,6 +170,12 @@ Item {
+                 text: qsTr("Weather"),
+                 enabled: Config.dashboard.showWeather
+@@ -172,10 +172,16 @@ Item {
+             Component {
+                 id: performanceComponent
  
                  Performance {}
              }
@@ -80,9 +90,11 @@
  
              Component {
                  id: weatherComponent
+ 
+                 WeatherTab {}
 --- a/modules/nexus/PageRegistry.qml
 +++ b/modules/nexus/PageRegistry.qml
-@@ -52,8 +52,8 @@ QtObject {
+@@ -51,7 +51,7 @@ QtObject {
          },
          {
 -            label: qsTr("Plugins"),
@@ -93,10 +105,9 @@
 +            description: qsTr("API keys, agents, skills, MCP, Hermes"),
              category: "system"
          },
- 
 --- a/modules/nexus/PageCompRegistry.qml
 +++ b/modules/nexus/PageCompRegistry.qml
-@@ -59,5 +59,8 @@ QtObject {
+@@ -64,5 +64,8 @@ QtObject {
                  Component {
                      SavedNetworksPage {}
                  }
@@ -105,7 +116,8 @@
 +                }
              }
          },
-@@ -88,7 +91,15 @@ QtObject {
+@@ -96,8 +96,16 @@ QtObject {
+         Component {
              PlaceholderComp {}
          },
          Component {
@@ -124,7 +136,9 @@
          // Shell
 --- a/modules/nexus/pages/AppsPage.qml
 +++ b/modules/nexus/pages/AppsPage.qml
-@@ -58,6 +58,10 @@ PageBase {
+@@ -57,10 +57,14 @@ PageBase {
+             label: qsTr("File manager")
+             status: GlobalConfig.general.apps.explorer.join(" ")
              onSelected: app => GlobalConfig.general.apps.explorer = app.command
          }
  
@@ -135,9 +149,14 @@
          // Library
          SectionHeader {
              text: qsTr("Library")
+         }
+ 
 --- a/modules/nexus/pages/apps/AppInfo.qml
 +++ b/modules/nexus/pages/apps/AppInfo.qml
-@@ -117,5 +117,10 @@ PageBase {
+@@ -124,10 +124,15 @@ PageBase {
+             last: true
+             label: qsTr("Command")
+             value: (root.app?.command ?? []).join(" ")
              labelComp.Layout.preferredWidth: Math.max(labelComp.implicitWidth, appId.labelComp.implicitWidth)
          }
 +
@@ -148,14 +167,11 @@
      }
  
      component WrapInfoRow: ConnectedRect {
+         id: row
+ 
 --- a/modules/nexus/pages/NetworkPage.qml
 +++ b/modules/nexus/pages/NetworkPage.qml
-@@ -340,12 +340,17 @@ PageBase {
-         // Add provider
-         RowButton {
-             last: true
-             icon: "add"
-             text: qsTr("Add provider")
+@@ -345,7 +345,12 @@ PageBase {
              onClicked: {
                  root.nState.editingVpnIndex = -1;
                  root.nState.openSubPage(4); // Add/edit provider sub-page
@@ -170,7 +186,7 @@
  }
 --- a/modules/nexus/pages/WallpaperAndStyle.qml
 +++ b/modules/nexus/pages/WallpaperAndStyle.qml
-@@ -13,7 +13,7 @@ import qs.modules.nexus.common
+@@ -13,7 +13,7 @@ PageBase {
  PageBase {
      id: root
  
@@ -179,7 +195,8 @@
  
      ColumnLayout {
          anchors.horizontalCenter: parent.horizontalCenter
-@@ -173,23 +173,9 @@ PageBase {
+@@ -175,24 +175,10 @@ PageBase {
+             text: qsTr("Display wallpaper")
              checked: Config.background.wallpaperEnabled
              onToggled: GlobalConfig.background.wallpaperEnabled = checked
          }
@@ -200,14 +217,15 @@
 -            text: qsTr("Dark theme")
 -            checked: !Colours.light
 -            onToggled: Colours.setMode(checked ? "dark" : "light")
+-        }
 +        VesperThemeSettings {
 +            Layout.fillWidth: true
-         }
++        }
      }
  }
 --- a/utils/Icons.qml
 +++ b/utils/Icons.qml
-@@ -2,10 +2,43 @@ pragma Singleton
+@@ -2,11 +2,41 @@
  
  import QtQuick
  import Quickshell
@@ -217,7 +235,7 @@
  
  Singleton {
      id: root
-+
+ 
 +    property var vesperIdentity: ({ aliases: ({}) })
 +    readonly property string vesperIdentityPath: `${Quickshell.env("XDG_STATE_HOME") || `${Quickshell.env("HOME")}/.local/state`}/vesper/adaptive-icons/identity.json`
 +
@@ -246,9 +264,11 @@
 +            return "";
 +        return Quickshell.iconPath(mapping.themeIcon, true);
 +    }
- 
++
      readonly property var weatherIcons: ({
-@@ -93,6 +126,10 @@ Singleton {
+             "0": "clear_day",
+@@ -99,9 +99,13 @@ Singleton {
+         return false;
      }
  
      function getAppIcon(name: string, fallback: string): string {
@@ -259,5 +279,5 @@
          const icon = DesktopEntries.heuristicLookup(name)?.icon;
          if (fallback !== "undefined")
              return Quickshell.iconPath(icon, fallback);
-+        return Quickshell.iconPath(icon);
-+    }
+         return Quickshell.iconPath(icon);
+     }
