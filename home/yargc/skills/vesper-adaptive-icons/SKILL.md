@@ -1,33 +1,46 @@
 ---
 name: vesper-adaptive-icons
-description: Process Vesper's experimental adaptive app-icon queue into reviewed, palette-aware Linux icons without silently replacing originals.
+description: Inspect and operate Vesper's automatic adaptive icon pipeline, canonical packages, conversion queue and generated icon theme.
 ---
 
 # Vesper adaptive icons
 
-Use this skill when the user asks to process or review queued adaptive app icons from Vesper Settings.
+Use this skill when working on Vesper adaptive application icons.
 
-## Contract
+`docs/ADAPTIVE-ICONS.md` is the single source of truth for architecture and behavior. Do not recreate the old manual request/review workflow.
 
-- Queue: `~/.local/state/vesper/adaptive-icons/queue/*.json`
-- Generated assets: `~/.local/share/vesper/adaptive-icons/generated/`
-- Never overwrite the application's packaged icon.
-- Never install or activate a generated icon without explicit user approval.
-- Preserve recognisable brand geometry and symbols. Adapt framing, background, padding, corner treatment and palette rather than redrawing an unrelated logo.
-- Prefer SVG when the source can be represented cleanly; otherwise produce a high-resolution PNG.
-- Follow the current Caelestia/Vesper palette instead of hard-coding a permanent colour scheme.
-- Do not upload source icons or app metadata to a remote service unless the user explicitly asked for remote generation and the selected provider is configured for that scope.
+## runtime contract
 
-## Workflow
+- inventory and queue state live under `~/.local/state/vesper/adaptive-icons/`
+- canonical assets live under `~/.local/share/vesper/adaptive-icons/canonical/`
+- generated theme generations live under `~/.local/share/vesper/adaptive-icons/themes/`
+- the active freedesktop theme is `~/.local/share/icons/Vesper-Adaptive`
+- never overwrite packaged application icons or anything in `/nix/store`
+- never use Vesper-generated outputs as a future upstream source
+- keep canonical conversion independent from palette and appearance rendering
+- source-hash identical work must be deduplicated before remote conversion
+- provider outages must leave original or previously accepted icons usable
 
-1. Read every queued JSON item and validate `schemaVersion`, `appId`, `sourceIcon` and `state`.
-2. Resolve the installed desktop entry and its real icon source. Do not guess from the application name.
-3. Inspect the source icon and current Vesper palette.
-4. Produce one conservative adaptive candidate with consistent safe-area/padding and transparent outer canvas.
-5. Save it under `~/.local/share/vesper/adaptive-icons/generated/<appId>.svg` or `.png`.
-6. Update the queue item to `state: "review"` and add `generatedPath` plus a short `notes` field describing what changed.
-7. Stop there. Activation is a separate explicit approval step.
+## queue behavior
 
-## Review rules
+The Rust conversion queue is persistent. Jobs may be `pending`, `ready`, `running`, `retry-wait`, `blocked-no-provider`, `blocked-no-consent`, `succeeded`, `failed`, `superseded` or `cancelled`.
 
-Reject a candidate if it loses the app's recognisable mark, has illegible small details, bakes text into the icon unnecessarily, violates transparency, or clashes with the current palette. If the source is already visually compatible, mark the queue item `state: "no-change"` instead of changing it for the sake of activity.
+A missing provider key is not a permanent failure. Keep the job blocked and allow the daemon to move it to `ready` automatically when the selected provider becomes available.
+
+Do not create one remote request per desktop entry when several entries share the same trustworthy source fingerprint.
+
+## canonicalization rules
+
+AI is used for semantic decomposition or reconstruction only when local canonicalization is insufficient. It must not generate the final glossy PNG, own palette colors or bake Vesper's material renderer into source artwork.
+
+Preserve recognizable identity and reliable original vector geometry whenever possible. Reject external URLs, scripts, embedded raster payloads disguised as SVG, unsafe resources and recursive Vesper-generated provenance.
+
+Canonical output follows the `.vicon` package contract in `docs/ADAPTIVE-ICONS.md`. Flattened SVG or PNG files are compiled outputs, not canonical source.
+
+## operations
+
+Use `vesper-control icon status` for engine state and `vesper-control icon queue-status` for persistent conversion queue state.
+
+Use `vesper-control icon reconcile` after debugging discovery or source resolution. Use `vesper-control icon app-retry <desktop-id>` only when an explicitly failed or invalidated application should be retried.
+
+Do not require per-app manual review or approval for normal automatic operation.
