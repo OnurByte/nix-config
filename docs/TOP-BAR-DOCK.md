@@ -1,69 +1,272 @@
-# top bar + dock
+# liquid glass top bar + dock
 
-Status: proposed shell layout spec
+Status: implementation spec
 
-This document defines the target Vesper desktop shell layout: a thin system bar at the top and a centred application dock at the bottom.
+This document defines Vesper's target shell layout and material behavior.
 
-The goal is the macOS/GNOME separation of concerns, not a pixel clone of either desktop. The implementation stays inside Caelestia/Quickshell and follows the existing Vesper glass, palette and adaptive-icon contracts.
+The target is a macOS-style top system bar plus a centred bottom application dock rendered with an Apple Liquid Glass material language. This is not a generic frosted-glass theme, not a visionOS-inspired approximation and not a collection of translucent Material cards.
 
-## research basis
+The implementation stays inside Caelestia/Quickshell and reuses Vesper's existing palette, adaptive-icon and application-identity systems.
 
-The useful prior art is already close to Vesper's stack.
+## mission
 
-- `dim-ghub/midnight-shell` is a Caelestia fork that added horizontal bar positions, start/centre/end bar sections and a native app dock. Its dock uses `DesktopEntries` plus Hyprland to merge pinned and running applications, supports drag reorder, focus-or-launch, context popouts and running/focused indicators. It also derives its surfaces and states from Caelestia colour tokens instead of owning a second theme system.
-- `nick-friedrich/hyprland-dock` is a standalone Quickshell/Hyprland dock with macOS-style pointer-distance magnification, focus-or-launch behaviour, running indicators and multi-monitor layer-shell handling. Its own roadmap still lists theme integration, auto-hide, reorder and context-menu work, so it is useful as an interaction reference rather than as a component to import.
-- `ekremx25/quickshell` keeps dock presentation and dock/application modelling separate. Its backend merges pinned launchers with active clients and resolves focus/launch behaviour centrally. That split is a good fit for Vesper because application identity and icon identity must remain shared across launcher, dock and Apps settings.
-- Noctalia and other current Quickshell shells reinforce the same general direction: bar, dock and palette-aware shell surfaces can remain one native shell instead of composing Waybar, Plank and separate theme daemons.
-
-A Reddit scan of recent Hyprland/Quickshell ricing did not turn up a stronger implementation model than the repositories above. Reddit is useful for visual references, but this spec should follow working shell code and Vesper's own constraints rather than screenshot conventions.
-
-Do not vendor or depend on these projects. Reuse the architectural lessons in the existing pinned Caelestia package and keep the Vesper patch small enough to replace when upstream gains equivalent primitives.
-
-## hard constraints
-
-- Caelestia remains the only shell/bar implementation.
-- Do not add Waybar, Plank, nwg-dock, Latte, GTK dock code or another dock daemon.
-- The top bar and dock run in the existing Caelestia/Quickshell process.
-- Home Manager remains the declarative source of shell configuration.
-- Hyprland remains the compositor and runtime window source.
-- Do not add polling when Hyprland, Quickshell or desktop-entry models already expose change signals.
-- Do not create a second palette, accent or icon theme system.
-- Do not hardcode presentation colours for normal, hover, focused, running or selected states.
-- Keep custom Caelestia changes modular and build-tested.
-
-## shell structure
-
-Vesper should expose two distinct shell surfaces.
+Replace the current left-side taskbar layout with two native Caelestia surfaces:
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│ top system bar                                              │
-│ system/workspaces      clock       status/privacy/AI/power │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ liquid glass top bar                                        │
+│ system/workspaces        clock        privacy/status/power   │
+└──────────────────────────────────────────────────────────────┘
 
 
                          application space
 
 
-                 ╭──────────────────────────╮
-                 │ centred application dock │
-                 ╰──────────────────────────╯
+                  ╭────────────────────────╮
+                  │ liquid glass app dock  │
+                  ╰────────────────────────╯
 ```
 
-The top bar is a system/status surface. The bottom dock is an application launch and switching surface. Do not mix the full status stack into the dock and do not turn the top bar into a second taskbar.
+The top bar owns system state and shell controls.
+
+The dock owns applications only.
+
+Both surfaces use one shared Liquid Glass renderer and one shared theme/token system. Do not implement separate glass recipes for the dock, bar, popouts and context menus.
+
+## research basis
+
+The useful prior art is close to Vesper's actual stack.
+
+- `dim-ghub/midnight-shell` proves that Caelestia can support horizontal bar positions, start/centre/end sections and a native application dock without introducing another shell. Its dock combines `DesktopEntries` with Hyprland state, supports pinned/running deduplication, drag reorder, focus-or-launch, context popouts and running/focused indicators.
+- `nick-friedrich/hyprland-dock` demonstrates pointer-distance dock magnification, focus-or-launch behaviour, running indicators and multi-monitor layer-shell handling in Quickshell.
+- `ekremx25/quickshell` separates dock presentation from application modelling. Vesper should follow the same separation because application identity belongs to a shared service, not to dock QML.
+- Noctalia and similar Quickshell shells confirm that bar, dock, popouts and palette-aware presentation can remain inside one native shell process.
+
+These projects are architectural references only. Do not vendor them and do not add them as runtime dependencies.
+
+## non-negotiable constraints
+
+- Caelestia remains the only desktop shell/bar implementation.
+- Do not add Waybar, Plank, nwg-dock, Latte, GTK dock code or another dock daemon.
+- The top bar and dock run in the existing Caelestia/Quickshell process.
+- Home Manager owns declarative configuration and installation.
+- Hyprland remains the compositor and source of live window state.
+- Do not poll `hyprctl clients` on an interval when Quickshell/Hyprland models already expose state changes.
+- Do not create another accent, palette or icon theme system.
+- Do not create a second application identity resolver inside the dock.
+- Do not hardcode normal, hover, focused or running colours independently of the active Vesper palette.
+- Keep the Caelestia patch modular and replaceable if upstream later grows equivalent primitives.
+- Every changed Caelestia/QML path must be build-tested according to `AGENTS.md`.
+
+## Liquid Glass is the visual contract
+
+The shell material is Apple Liquid Glass.
+
+Do not describe the target as:
+
+```text
+visionOS inspired
+frosted acrylic
+blurred translucent panel
+glassmorphism
+Material glass
+```
+
+Those may overlap visually but they are not the contract.
+
+For Vesper, a Liquid Glass surface is a dynamic material composed from several effects that behave as one object:
+
+```text
+background content
+      ↓
+backdrop sampling
+      ↓
+controlled blur
+      ↓
+subtle refraction / optical displacement
+      ↓
+adaptive material tint and contrast compensation
+      ↓
+contour-aware edge luminance
+      ↓
+specular response
+      ↓
+soft depth shadow
+      ↓
+crisp foreground content
+```
+
+A plain rectangle with opacity plus blur does not satisfy this spec.
+
+The implementation does not need Apple's private renderer or shaders. It must reproduce the public visual behaviour with Quickshell/Qt primitives and small custom shader/effect code where necessary.
+
+## one shared Liquid Glass renderer
+
+Create one shared Vesper/Caelestia material primitive conceptually equivalent to:
+
+```text
+LiquidGlassSurface
+├── backdrop sampler
+├── blur stage
+├── optical/refraction stage
+├── adaptive tint stage
+├── contour/rim response
+├── specular response
+├── shadow/depth response
+└── foreground slot
+```
+
+The exact QML/component names may differ.
+
+The top bar, dock, dock popouts and related shell surfaces consume the same primitive with different geometry and material parameters.
+
+Do not duplicate shader constants across components.
+
+Do not turn every child control into another independent sheet of glass. Related controls should normally sit inside one coherent glass container.
+
+## material variants
+
+Vesper needs two semantic Liquid Glass variants:
+
+```text
+regular
+clear
+```
+
+`regular` is the default shell material. It prioritises legibility while preserving visible background interaction.
+
+`clear` is more transparent and visually lighter. Use it only where the underlying wallpaper/window content remains readable and foreground contrast can be guaranteed.
+
+The renderer may automatically strengthen tint/blur or fall back from `clear` toward `regular` when background contrast becomes unsafe.
+
+The user should not need to tune raw shader parameters to get readable shell text.
+
+## backdrop blur
+
+Blur exists to separate content planes, not to erase the wallpaper.
+
+Requirements:
+
+- preserve broad colour and luminance information from the content behind the surface
+- avoid a milky opaque rectangle
+- avoid excessive blur that makes every wallpaper converge to grey
+- scale blur correctly for output scale
+- keep foreground icons/text outside the blur pass
+- avoid recursively sampling other Vesper glass layers when a simpler compositing path is available
+
+Blur strength may vary between regular and clear material, but it must be controlled centrally by the material renderer.
+
+## refraction and optical displacement
+
+Liquid Glass must have a restrained optical response beyond blur.
+
+Use a small displacement/refraction field tied to surface geometry. The effect should make the material feel optically thick without making text or wallpaper look warped.
+
+Requirements:
+
+- displacement is strongest near the glass contour and extremely small through the centre
+- rounded corners affect the refraction field continuously
+- the effect must remain stable while the surface animates
+- do not introduce visible wobble while the pointer is stationary
+- do not distort foreground icons or text
+- disable or simplify this pass if required by reduced-transparency/performance mode
+
+This should read as material thickness, not as a water-ripple filter.
+
+## contour and specular response
+
+A static white 1 px border is not an adequate Liquid Glass edge.
+
+The glass contour should have luminance variation derived from shape, background and a stable virtual light direction.
+
+Use a restrained combination of:
+
+```text
+outer edge luminance
+inner edge highlight
+soft specular lobe
+subtle opposite-side darkening
+```
+
+Requirements:
+
+- continuous around rounded corners
+- no neon outline
+- no permanently bright white ring
+- no chromatic RGB border
+- highlight strength adapts to light/dark wallpaper conditions
+- focused/hovered state may alter material response slightly but must not replace the normal accent-state semantics
+
+The dock should look like one optically coherent piece of shaped glass.
+
+## adaptive tint and contrast
+
+Liquid Glass responds to what is behind it.
+
+The material renderer should derive enough backdrop luminance/chroma information to keep foreground content legible without destroying the background relationship.
+
+Use the current Vesper palette as the semantic colour source, but apply it as a restrained material tint rather than painting the entire dock an opaque accent colour.
+
+The renderer may adjust:
+
+```text
+material tint opacity
+blur strength within a bounded range
+foreground contrast role
+rim/specular strength
+shadow strength
+```
+
+Do not create a dock-specific accent picker.
+
+Wallpaper or palette changes must update the dock and top bar through the same existing Caelestia/Vesper theme path.
+
+## depth and shadows
+
+Glass surfaces need depth separation from the desktop without looking like floating opaque cards.
+
+Use:
+
+- a broad low-opacity outer shadow
+- subtle contact/depth shadow near the material edge
+- optional weak inner luminance variation
+
+Do not use heavy black drop shadows or fake 3D bevels.
+
+Shadow geometry must follow the actual continuous rounded shape.
+
+## motion behaviour
+
+Liquid Glass responds as a material during geometry changes.
+
+When the dock grows, shrinks, reveals, hides or changes item count:
+
+- container geometry interpolates continuously
+- corner shape remains continuous
+- backdrop/material effects track the animated geometry
+- specular/rim response does not pop between static textures
+- foreground content remains crisp
+
+Do not animate by cross-fading between pre-rendered glass screenshots.
+
+For ordinary state changes, prefer smooth spatial interpolation and opacity/tint changes over bounce-heavy UI animation.
+
+Reduced-motion mode disables magnification and spring-like behaviour while preserving instant or short material transitions.
 
 ## top bar
 
-The current left-side Caelestia bar should become a thin horizontal top bar rather than being rotated wholesale into the dock.
+The current left-side Caelestia bar becomes a horizontal top system bar.
 
-Default layout:
+It is not the dock rotated 90 degrees.
+
+Default structure:
 
 ```text
-start                              centre                              end
-logo  workspaces  active window    clock     privacy  hermes  AI  tray  status  power
+start                              centre                             end
+logo  workspaces  active window    clock       privacy  AI  tray  status  power
 ```
 
-Existing Vesper components remain available:
+Existing Vesper components remain available, including:
 
 - `systemMonitor`
 - `agentCockpit`
@@ -72,15 +275,38 @@ Existing Vesper components remain available:
 - `aiUsage`
 - tray
 - network/Bluetooth/battery and other Caelestia status icons
-- power/session entry
+- power/session controls
 
-The bar must support start, centre and end sections instead of one flat list. The clock is centred by default. Low-priority telemetry must compact or move behind an overflow/popout when horizontal space is constrained. Important privacy state, network state, battery and power controls must not disappear behind telemetry.
+The bar must expose start, centre and end sections instead of one flat vertical entry array.
 
-The top bar is persistent except in true fullscreen where policy may hide it with the rest of the shell. Maximised windows should respect its exclusive zone.
+Clock is centred by default.
+
+When horizontal space is constrained, low-priority telemetry compacts or moves behind a native overflow/popout. Privacy, network, battery and power state have higher visibility priority than telemetry.
+
+The top bar normally reserves a stable exclusive zone. Maximised windows respect it.
+
+True fullscreen may hide the bar according to shell fullscreen policy.
+
+## top bar Liquid Glass geometry
+
+The bar should read as a light shell strip rather than a thick opaque taskbar.
+
+Two acceptable geometry modes may be implemented:
+
+```text
+continuous strip
+floating inset strip
+```
+
+Default target: `floating inset strip` if it remains visually stable with Caelestia drawers/popouts, otherwise use a continuous top strip.
+
+The material is regular Liquid Glass by default.
+
+Do not wrap every status icon in an individual glass capsule. Group related status controls into coherent hit regions while the bar itself remains the primary material surface.
 
 ## dock role
 
-The dock contains applications only.
+The bottom dock contains applications only.
 
 It combines:
 
@@ -94,150 +320,115 @@ canonical Vesper application identity
 one dock item per application
 ```
 
-Pinned applications stay in their configured order. Running but unpinned applications appear after the pinned group. A pinned application that is running must never produce a duplicate item.
+Pinned applications remain in configured order.
 
-Reuse `launcher.favouriteApps` as the initial pinned-app source instead of creating another favourites database. If dock ordering later needs metadata beyond that list, keep the canonical pin order in one Vesper-owned config/state model and expose it back to the launcher rather than maintaining two independent lists.
+Running unpinned applications appear after the pinned group.
 
-## application identity
+A pinned application that is running produces one item, never two.
 
-The dock must use the canonical application identity defined in `docs/ADAPTIVE-ICONS.md`.
+Reuse `launcher.favouriteApps` as the initial pinned source instead of creating another favourites database.
 
-Identity may reconcile desktop id, `StartupWMClass`, Wayland `app_id`, X11 `WM_CLASS`, Flatpak id, executable identity, Electron app id, Steam app id, Wine/Proton launcher identity and browser PWA identity.
+## canonical application identity
 
-Do not make fuzzy window-title matching the primary identity mechanism.
+The dock consumes the canonical application identity defined by `docs/ADAPTIVE-ICONS.md`.
 
-This invariant applies to every Vesper-owned application surface:
+Identity may reconcile:
+
+```text
+desktop id
+StartupWMClass
+Wayland app_id
+X11 WM_CLASS
+Flatpak id
+executable identity
+Electron app id
+Steam app id
+Wine/Proton launcher identity
+browser PWA identity
+explicit aliases
+```
+
+Window title is not the primary identity mechanism.
+
+The invariant is:
 
 ```text
 launcher icon == dock icon == running-state icon == app-grid icon
 ```
 
-The dock should consume the same identity resolver rather than grow its own permanent regex table. Small explicit compatibility aliases are acceptable as recovery data, not as the architecture.
+The dock must not grow a permanent private regex map that diverges from Apps settings or the icon pipeline.
 
-## icon pipeline
+## adaptive icons
 
-The dock consumes the active `Vesper-Adaptive` icon result and must not implement another icon conversion path.
+The dock consumes Vesper's canonical adaptive icon result.
 
-`docs/ADAPTIVE-ICONS.md` remains the single source of truth for adaptive icon generation and rendering. This document only defines how the dock consumes those icons.
+`docs/ADAPTIVE-ICONS.md` remains the source of truth for icon decomposition, canonical identity, appearances and rendering.
 
-Rules:
+Dock rules:
 
-- prefer the canonical Vesper application id and icon in Vesper-owned surfaces
-- fall back to the resolved desktop-entry icon when no adaptive result exists
-- never show a missing icon because adaptive generation failed
-- theme/accent changes may re-render dock icons locally without new AI work
-- do not rasterise an additional private dock icon cache unless required for Quickshell performance and keyed to the canonical rendered asset
+- prefer canonical Vesper icon identity
+- fall back to the real desktop-entry icon if no accepted adaptive result exists
+- never leave a blank/missing launcher because adaptive generation failed
+- palette/appearance changes may re-render locally without new AI work
+- do not build a second dock-specific icon conversion pipeline
 
-## visual contract
-
-The dock and top bar use the existing Vesper shell language from `AGENTS.md` and `home/yargc/caelestia.nix`.
-
-Current global shell values remain the baseline:
-
-```text
-rounding scale       1.25
-spacing scale        1.05
-padding scale        1.05
-animation duration   0.85
-transparency base    0.68
-transparency layers  0.34
-```
-
-The exact rendered geometry may use component-specific token multipliers, but those values must remain derived from the shared token system.
-
-Visual requirements:
-
-- layered translucent glass rather than a flat opaque panel
-- readable backdrop blur
-- quiet neutral or palette-tinted glass
-- thin luminous border where contrast needs edge definition
-- soft restrained shadow
-- generous continuous rounding
-- no neon multicolour borders
-- no opaque Material-dashboard cards inside the dock
-- no hardcoded white/black glass treatment that ignores the current palette
-
-The result may borrow macOS proportions and motion ideas, but it must still look like the rest of Vesper.
-
-## palette and accent behaviour
-
-All shell state colours come from semantic Caelestia/Vesper palette tokens.
-
-At minimum the dock needs semantic roles equivalent to:
-
-```text
-surface glass
-surface border
-on-surface foreground
-hover tonal overlay
-pressed tonal overlay
-focused accent
-running neutral indicator
-urgent semantic indicator
-```
-
-The current accent/primary colour drives focused and selected emphasis. Wallpaper/scheme changes must update the top bar and dock through the same Caelestia theme propagation path already used by the shell.
-
-Suggested mapping when the current Caelestia palette exposes Material-style token names:
-
-```text
-dock glass             surface/container token + Vesper transparency
-normal foreground      onSurface
-hover                   onSurface or primary tonal overlay at low opacity
-focused indicator       primary
-selected/focused halo   primary at restrained opacity
-running indicator       onSurfaceVariant or equivalent neutral token
-urgent                  semantic error/warning token
-```
-
-Token names are implementation details. The semantic roles above are the contract.
-
-Do not create a dock-specific accent selector. The existing Vesper accent/theme control owns it.
+Adaptive icons must visually belong inside Liquid Glass without being flattened into the dock material. Application artwork remains its own foreground object.
 
 ## dock geometry
 
-The dock is bottom anchored and horizontally centred.
+The dock is bottom anchored, horizontally centred and content-sized.
 
-It is content-sized rather than screen-wide. Empty space must not become an invisible full-width pointer-capturing panel.
+It must not be a screen-wide invisible input panel.
 
-Default sizing target:
+Baseline target at logical scale 1:
 
 ```text
-icon visual size        ~46-50 px at scale 1
-item hit target         >= 48 px
-inner horizontal gap    shared spacing token
-outer glass padding     shared medium/large padding token
-corner radius           continuous/full token
-bottom screen gap       small Vesper spacing token
+icon visual size       48 px
+minimum hit target     48 px
+outer glass padding    shared medium/large token
+inner spacing          shared spacing token
+bottom screen gap      small shared spacing token
+shape                   continuous capsule/squircle-derived container
 ```
 
-Use logical sizes and output scaling correctly. Do not assume 1x rendering.
+Use logical dimensions and real output scaling. Do not assume 1x.
 
-When the application count cannot fit the usable monitor width, reduce spacing/magnification first, then allow a bounded horizontal scroll/overflow strategy. Do not let the dock clip off-screen.
+The material surface smoothly resizes as items appear/disappear.
+
+When too many applications exist for usable monitor width:
+
+1. reduce magnification amplitude
+2. reduce spacing within bounded limits
+3. allow bounded horizontal overflow/scroll
+
+Never clip dock items off-screen.
 
 ## magnification
 
-Pointer-distance magnification is allowed and should be implemented inside Quickshell rather than through compositor transforms.
-
-The effect must be calmer than the classic exaggerated macOS dock.
+Use pointer-distance magnification similar to macOS dock behaviour, implemented inside Quickshell.
 
 Default target:
 
 ```text
 hovered item max scale     1.18
-nearest neighbour scale    about 1.08
+nearest neighbour          ~1.08
 far items                  1.00
 ```
 
-The scale curve should be continuous based on pointer distance, not a binary hover jump. Layout compensation must prevent adjacent icons from visually colliding.
+Requirements:
 
-Magnification must be disabled or reduced when reduced-motion is enabled.
+- continuous distance curve instead of binary hover scaling
+- layout compensation prevents icon collisions
+- hit regions remain stable enough for precise pointing
+- material container may expand smoothly when necessary
+- magnification does not constantly rewrite the compositor exclusive zone
+- reduced-motion disables it
 
-Do not let icon magnification expand the layer-shell exclusive zone on every pointer movement.
+Do not exaggerate magnification to classic novelty-dock levels.
 
-## item states
+## dock item states
 
-Every dock item can independently represent:
+Each item may represent:
 
 ```text
 pinned
@@ -250,51 +441,69 @@ pressed
 dragging
 ```
 
-State priority must remain predictable. For example, urgent state may add semantic emphasis without hiding the fact that the app is running or focused.
+The glass container remains coherent while foreground state treatment changes.
 
-Running state uses a small bottom indicator. Focused state uses the current accent and may widen or brighten that indicator. Multiple windows may be represented by at most a small bounded count/segment treatment; do not draw one dot for dozens of windows.
+Running state uses a restrained bottom indicator.
 
-Launching state may use a local progress/spinner treatment and must clear when a matching toplevel appears or launch failure times out.
+Focused state uses the current semantic accent and may widen/brighten the indicator.
+
+Multiple windows use a bounded count/segment representation rather than unlimited dots.
+
+Launching state may show a compact local progress treatment and clears when the matching toplevel appears or launch failure expires.
+
+Urgent state uses semantic urgency colour without hiding running/focused state.
+
+## hover and press material response
+
+Do not place a permanent mini glass tile behind every icon.
+
+Normal state: icon floats cleanly inside the shared dock material.
+
+Hover may create a very restrained local lens/highlight response around the item, derived from the same Liquid Glass renderer.
+
+Press may briefly increase local tint/edge response or apply a small scale depression.
+
+The interaction must read as deformation/response of one shared material rather than a stack of independent cards.
 
 ## interaction
 
 Primary click:
 
-- no running window: launch the desktop entry
-- one running window: focus it
-- multiple running windows: focus the most recently active window for that application
+- no running window -> launch desktop entry
+- one running window -> focus it
+- multiple running windows -> focus the most recently active window for that app
 
-A second primary click on an already focused app should not implicitly minimise it. Vesper should avoid inventing a Windows-taskbar behaviour here.
+Clicking an already focused app does not implicitly minimise it.
 
-Middle click launches a new instance when the desktop entry supports it.
+Middle click launches a new instance when supported.
 
-Right click opens a native Caelestia popout/context surface with actions such as:
+Right click opens a native Caelestia Liquid Glass context popout with actions such as:
 
-- New Window when supported
-- listed running windows
+- New Window
+- running window list
 - Pin to Dock / Unpin from Dock
-- application-specific desktop actions when available
-- Quit/Close only when a reliable target exists
+- desktop-entry actions
+- Quit/Close when a reliable target exists
 
-Scrolling over an application with multiple windows may cycle its windows if this can be done without conflicting with global bar scroll actions.
+A window-preview/selection popout for multi-window apps may be added using the same popout primitive.
 
 ## drag and reorder
 
-Pinned items support drag reorder directly in the dock.
+Pinned items support direct drag reorder.
 
 Requirements:
 
-- reordering updates the canonical favourites order
-- running unpinned items cannot silently become pinned just because they were dragged within the transient area
-- explicit pinning may insert a running item into the pinned group
-- drag visuals use the same token/motion system
-- releasing outside the dock must not lose an application or corrupt the favourites list
+- reorder updates the canonical favourites order
+- dragging a transient running item does not silently pin it
+- explicit pinning inserts it into the pinned section
+- drag feedback uses shared motion/material primitives
+- releasing outside the dock cannot corrupt ordering
 
-Drag-to-unpin by throwing an icon away is optional and should not be the only unpin interaction.
+Drag-to-unpin may exist later but must not be the only unpin mechanism.
 
-## visibility
+## dock visibility
 
-Dock visibility modes:
+Supported modes:
 
 ```text
 persistent
@@ -306,29 +515,21 @@ Default: `smart`.
 
 `persistent` reserves a stable bottom exclusive zone.
 
-`auto-hide` uses no permanent exclusive zone and reveals from a small bottom hot zone.
+`auto-hide` overlays windows and reveals through a narrow bottom hot zone.
 
-`smart` behaves like auto-hide when the dock would obstruct relevant window content, otherwise it may remain visible. The initial implementation may define smart as visible on an empty desktop and hidden when a non-fullscreen window intersects the dock region, then refine overlap detection later.
+`smart` overlays when the dock would obstruct relevant window content and may remain visible when unobstructed.
 
-Fullscreen always hides the dock immediately.
+Fullscreen always hides the dock.
 
-Do not dynamically resize the compositor work area on every hover/reveal in auto-hide or smart mode. That causes visible window reflow. The dock should overlay in those modes.
+In `auto-hide` and `smart`, do not resize compositor work area on every reveal. Window reflow on pointer entry is unacceptable.
 
-The reveal hot zone must be narrow and must not make the entire lower screen edge consume clicks intended for applications.
-
-## top bar visibility
-
-The top bar and dock have independent visibility policy.
-
-The top bar is normally persistent and reserves its height. The dock may be smart/auto-hidden. Hiding the dock must not hide status, privacy or power state from the top bar.
-
-True fullscreen may hide both surfaces, with a deliberate edge reveal path if Vesper needs shell access while fullscreen.
+Reveal/hide should animate the material surface as a coherent sheet with opacity/position/shape continuity.
 
 ## multi-monitor
 
-The top bar may exist on every eligible monitor.
+Top bar may run on every eligible monitor.
 
-The dock supports:
+Dock monitor modes:
 
 ```text
 primary
@@ -336,57 +537,100 @@ all
 focused
 ```
 
-Default target: `primary` until focused-monitor behaviour is proven not to jump distractingly during ordinary window focus changes.
+Default: `primary`.
 
-Pinned applications are global. Running state is derived from all matching application windows, while focus emphasis follows the active toplevel. A future per-monitor filtering mode may show only windows belonging to that monitor, but it must not fork application identity or pin state.
+Pinned state is global.
 
-Monitor hotplug must not require a shell restart.
+Running state is derived from canonical app windows.
 
-## popouts and z-order
+Focus emphasis follows the active toplevel.
 
-Dock tooltips, window lists and context menus should reuse Caelestia popout primitives rather than implement independent popup windows with unrelated styling.
+Monitor hotplug must not require restarting Caelestia.
+
+## popouts
+
+Dock tooltips, window lists, status menus and context menus reuse Caelestia popout infrastructure but render with the shared Liquid Glass primitive.
 
 Popouts must:
 
-- stay above the dock
 - clamp to monitor bounds
-- survive dock magnification without jumping
-- close predictably when focus/pointer leaves the dock context
-- use the same glass, palette, radius and shadow tokens
+- stay above the owning surface
+- visually connect to their source without fake arrows when unnecessary
+- survive dock magnification without positional jumping
+- close predictably
+- not steal keyboard focus merely because the pointer entered the dock
 
-The dock must not steal keyboard focus merely because the pointer crosses it.
+Nested popouts should avoid stacking multiple heavy blur/refraction layers over each other. Prefer one clear hierarchy of materials.
+
+## palette semantics
+
+All semantic state colours come from the existing Caelestia/Vesper palette.
+
+The material renderer needs roles equivalent to:
+
+```text
+material tint
+on-material foreground
+secondary foreground
+focused accent
+running neutral
+urgent semantic colour
+shadow luminance
+specular luminance
+```
+
+Material tint is not the same thing as accent colour.
+
+The active accent drives focused/selected emphasis. It should not flood the whole glass surface.
+
+Light/dark wallpaper conditions may affect material tint and contour strength independently from semantic accent.
+
+## reduced transparency and fallback
+
+Liquid Glass must degrade safely.
+
+Reduced-transparency mode:
+
+- disables or greatly reduces refraction
+- raises material opacity
+- may reduce backdrop blur cost
+- preserves semantic tint and contour contrast
+- keeps foreground readability
+
+If the graphics stack cannot provide the required backdrop sampling/effect reliably, fall back to a high-quality static translucent material rather than showing broken shaders or missing surfaces.
+
+Fallback must still use the shared palette and geometry.
 
 ## performance
 
-The dock is event driven.
+The shell is event-driven.
 
 Use existing signals/models for:
 
 - Hyprland toplevel creation/removal/focus
-- desktop entry changes
-- favourite-app changes
-- theme/accent changes
+- desktop-entry changes
+- launcher favourite changes
+- adaptive-icon changes
+- palette/theme changes
 - monitor changes
 
-Avoid fixed-interval processes that repeatedly call `hyprctl clients` or rescan desktop files.
+Do not run fixed interval processes to rebuild the dock model.
 
-Expensive icon work belongs to the adaptive-icon engine. The QML dock should only resolve and display already-available local assets.
+Expensive icon generation belongs to the adaptive-icon service, not QML.
 
-Animations should stop when the dock is hidden and no transition is running.
+Material rendering requirements:
 
-## accessibility and motion
+- avoid separate full-screen blur passes per dock item
+- reuse one backdrop/material pass per coherent surface where practical
+- stop unnecessary animations/effects while hidden
+- cache static geometry where it does not break dynamic material behaviour
+- preserve smooth pointer interaction while magnification is active
 
-The dock must keep a usable pointer target even when an icon is visually smaller than the hit target.
+Do not sacrifice shell input latency for visually stronger refraction.
 
-Reduced-motion mode disables magnification and replaces spring/bounce effects with short opacity/position transitions or no transition.
+## declarative configuration target
 
-Reduced-transparency mode raises glass opacity and may disable backdrop blur while preserving border/foreground contrast.
-
-Keyboard navigation is desirable for a later pass but should not force a hidden dock into the tab order during ordinary application use.
-
-## config model
-
-The exact upstream schema may change, but Vesper should expose a declarative model equivalent to:
+The exact upstream schema may differ. Vesper should expose a model equivalent to:
 
 ```nix
 programs.caelestia.settings = {
@@ -395,6 +639,11 @@ programs.caelestia.settings = {
     position = "top";
     persistent = true;
     monitors = "all";
+
+    material = {
+      type = "liquid-glass";
+      variant = "regular";
+    };
   };
 
   dock = {
@@ -407,8 +656,13 @@ programs.caelestia.settings = {
     showRunning = true;
     groupWindows = true;
     useLauncherFavourites = true;
-
     iconSize = 48;
+
+    material = {
+      type = "liquid-glass";
+      variant = "regular";
+    };
+
     magnification = {
       enabled = true;
       maxScale = 1.18;
@@ -418,109 +672,117 @@ programs.caelestia.settings = {
 };
 ```
 
-This example describes Vesper's desired public configuration, not the current upstream Caelestia schema.
+This describes Vesper's public target, not the current upstream Caelestia schema.
 
-If extending Caelestia's C++ config layer is necessary, isolate the patch by responsibility. Do not scatter Vesper-specific dock constants across unrelated QML files.
+Do not expose raw shader/refraction parameters in normal settings.
 
 ## settings UI
 
-Caelestia settings may expose the dock under the existing shell/panels or appearance area.
+Caelestia settings should expose only useful policy controls.
 
-Useful controls:
+Dock controls:
 
 - visibility: persistent / smart / auto-hide
 - icon size
 - magnification on/off and strength
-- primary/all/focused monitor mode
-- show running unpinned apps
+- monitor mode
+- show running unpinned applications
 - reset pinned order to launcher favourites
+- Liquid Glass variant: regular / clear when clear is supported safely
 
-Do not expose colour pickers here. Accent and palette stay in the existing theme controls.
+Top bar controls may include monitor policy and layout ordering.
 
-Advanced application identity fixes belong to Apps settings, not dock settings.
+Do not expose independent dock/bar colour pickers.
+
+Accent and appearance remain owned by the existing Vesper theme controls.
 
 ## implementation shape
 
-Prefer a small patch set with clear ownership.
+Prefer explicit separation of model, shell geometry and material rendering.
 
 Conceptually:
 
 ```text
 Caelestia shell
-├── top system bar
+├── LiquidGlassSurface
+│   ├── backdrop/blur
+│   ├── refraction
+│   ├── tint/contrast
+│   ├── contour/specular
+│   └── shadow
+│
+├── TopBar
 │   ├── start section
 │   ├── centre section
 │   └── end section
-├── VesperDock surface
+│
+├── VesperDock
 │   ├── DockModel
 │   ├── DockItem
 │   ├── DockContextPopout
 │   └── DockVisibilityController
+│
 └── shared services
     ├── Hyprland state
     ├── DesktopEntries/AppDB
-    ├── Vesper canonical app identity
-    ├── Colours/Tokens
-    └── Vesper adaptive icons
+    ├── canonical Vesper app identity
+    ├── Vesper adaptive icons
+    └── Colours/Tokens
 ```
 
-The exact filenames can follow upstream Caelestia conventions. The important boundary is that application modelling is not embedded ad hoc inside each visual delegate.
+If extending Caelestia's C++ config layer is necessary, isolate those changes by responsibility. Do not scatter `position`, dock or Liquid Glass constants through unrelated QML files.
 
 ## implementation order
 
-1. Add horizontal top-bar layout with start/centre/end sections and migrate the current Vesper entries without losing functionality.
-2. Add a separate bottom-centred dock surface in the same Quickshell process.
-3. Build the dock model from launcher favourites plus running Hyprland toplevels using canonical app identity.
-4. Connect the dock to `Vesper-Adaptive` icons and shared palette/tokens.
-5. Add running/focused/launching states and native popouts.
-6. Add drag reorder and pin/unpin.
-7. Add restrained magnification and reduced-motion behaviour.
-8. Add persistent/auto-hide/smart visibility without dynamic work-area jitter.
-9. Add multi-monitor policy and hotplug handling.
-10. Add settings controls only after the underlying config is declarative and stable.
+Implement in this order:
 
-## validation
+1. horizontal Caelestia bar orientation and start/centre/end sections
+2. top bar geometry using existing entries
+3. shared canonical dock model using launcher favourites + Hyprland toplevels
+4. bottom centred dock with correct focus/launch/running behaviour
+5. canonical adaptive-icon consumption
+6. shared Liquid Glass material primitive
+7. apply Liquid Glass to top bar and dock
+8. pointer-distance magnification
+9. context popout and pin/reorder behaviour
+10. smart hide and multi-monitor policy
+11. reduced-motion/reduced-transparency fallbacks
+12. settings UI
 
-A change is not complete until these behaviours are verified.
+Functional application identity and shell behaviour must work before visual shader tuning is considered finished.
 
-```text
-[ ] only one shell implementation is running
-[ ] no Waybar/Plank/extra dock daemon was added
-[ ] top bar is horizontal and retains Vesper status/AI/privacy surfaces
-[ ] dock is bottom-centred and content-sized
-[ ] pinned + running instances deduplicate by canonical application identity
-[ ] Flatpak, Electron, Steam and browser-PWA cases do not collapse into obvious wrong identities
-[ ] adaptive icon == launcher icon == dock icon for known applications
-[ ] broken adaptive icon falls back safely
-[ ] accent change updates dock/top-bar focused states
-[ ] light/dark or wallpaper palette change updates glass and foregrounds coherently
-[ ] no normal visual state depends on hardcoded RGB/hex values
-[ ] magnification does not alter the compositor exclusive zone
-[ ] reduced-motion disables magnification/bounce
-[ ] fullscreen hides the dock
-[ ] smart/auto-hide reveal does not reflow application windows
-[ ] dock does not capture pointer input across unused screen width
-[ ] pinned reorder persists declaratively
-[ ] right-click popout clamps to the monitor
-[ ] monitor hotplug does not require a shell restart
-[ ] no periodic hyprctl/desktop-entry polling was introduced
-[ ] configured Caelestia package builds
-[ ] full Home Manager/NixOS evaluation still succeeds
-```
+## acceptance criteria
 
-## non-goals
+The implementation is not complete until all of these hold:
 
-- exact macOS pixel reproduction
-- GNOME Shell or Dash-to-Dock dependency
-- a second launcher
-- a second application identity database
-- a second icon theme/render pipeline
-- a dock-specific colour theme
-- GTK-based shell surfaces
-- moving system telemetry, privacy state or power controls into the dock
+- no left-side taskbar remains in the default Vesper layout
+- top system bar is horizontal and usable
+- dock is bottom-centred and content-sized
+- top bar and dock are native Caelestia/Quickshell surfaces
+- no Waybar/Plank/GTK/extra dock daemon is installed
+- pinned and running apps deduplicate correctly
+- focus-or-launch works for normal applications
+- canonical identity is reused instead of duplicated
+- adaptive icons appear consistently across launcher and dock
+- dock reorder persists through the canonical favourites source
+- fullscreen hides the dock
+- smart/auto-hide does not cause window reflow on every reveal
+- multi-monitor hotplug does not require shell restart
+- palette/accent changes propagate without a second theme system
+- the material visibly contains blur, restrained optical displacement/refraction, adaptive tint, contour/specular response and depth shadow
+- the dock does not look like a plain translucent rectangle
+- foreground icons/text are never included in the blur/refraction pass
+- nested per-item glass cards are not used as the default dock design
+- reduced-transparency has a readable safe fallback
+- reduced-motion disables magnification/spring motion
+- hidden surfaces do not continue expensive animation work
+- configured Caelestia package builds successfully
+- complete Home Manager/system evaluation still succeeds
 
-## upstream migration
+## final design rule
 
-The pinned Caelestia version currently assumes a vertical bar and does not expose a bar position/orientation property. Other Caelestia-derived work demonstrates that horizontal positions, sectioned layouts and a native dock can be added without abandoning the shell architecture.
+If a visual choice conflicts with the Liquid Glass material model, the Liquid Glass model wins.
 
-Keep Vesper's implementation narrow enough that future upstream Caelestia support can replace individual pieces. Prefer adapting upstream primitives over maintaining a permanent fork when equivalent behaviour lands upstream.
+If a visual choice conflicts with application identity, accessibility, input latency or shell reliability, correctness wins and the material effect degrades gracefully.
+
+The result should look like Apple Liquid Glass adapted to a native Linux/Hyprland shell, not like a Linux dock with blur turned on.
