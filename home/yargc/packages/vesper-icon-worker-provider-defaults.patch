@@ -1,0 +1,11 @@
+--- a/vesper-icon-worker.rs
++++ b/vesper-icon-worker.rs
+@@ -208,7 +208,7 @@ fn model_for(provider: &str) -> String {
+         "xai" => "grok-4.5".to_string(),
+         "openrouter" => "openai/gpt-5".to_string(),
+         "google" => "gemini-3.6-flash".to_string(),
+-        "anthropic" => "claude-sonnet-4-20250514".to_string(),
++        "anthropic" => "claude-sonnet-5".to_string(),
+         _ => String::new(),
+     }
+ }
