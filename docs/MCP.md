@@ -1,5 +1,7 @@
 # MCP
 
+Status: **current**
+
 Vesper keeps one Home Manager MCP registry and feeds it to Codex, Claude Code and OpenCode.
 
 Configured servers:
@@ -56,7 +58,7 @@ Context7 is pinned to `@upstash/context7-mcp@4.0.2`.
 
 Basic use does not require an API key. Ask the agent to `use context7` when a task depends on current framework or library documentation.
 
-An API key is optional for higher limits and private repositories. If one is added later, keep it in sops rather than the repository.
+An API key is optional for higher limits and private repositories. If one is added later, keep it in sops-nix when it is consumed declaratively by the MCP server.
 
 ## Helium
 
@@ -95,8 +97,9 @@ rm -rf ~/.local/share/vesper/helium-mcp
 rm -rf ~/.local/share/vesper/zen-mcp
 ```
 
-The browser and Context7 npm packages are version-pinned but fetched by `npx` on first use because they are not currently part of the Vesper Nix package set. Their npm cache is isolated under:
+The browser and Context7 npm packages are version-pinned but launched through Bun's `bunx` because they are not currently part of the Vesper Nix package set.
+Their isolated Bun cache lives under:
 
 ```text
-~/.cache/vesper-mcp/npm
+~/.cache/vesper-mcp/bun
 ```
