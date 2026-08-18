@@ -1,15 +1,10 @@
 # Vesper docs
 
 - `AI.md` — native AI settings, API-key manager, skills and MCP inventory
-- `APPS-SETTINGS.md` — per-app controls, wellbeing and current adaptive icon queue
-- `ADAPTIVE-ICONS.md` — implementation prompt for the automatic AI canonical SVG and theme-aware app icon engine
-- `ADAPTIVE-ICONS-AI.md` — normative AI provider, GPT vision, structured output, credential reuse and local-reconciliation contract
-- `ADAPTIVE-ICONS-LAYERED.md` — normative AI semantic decomposition, multi-layer canonical package and depth/material renderer contract
-- `APPLE-ICON-MODEL.md` — normative Apple-compatible layer, appearance and Liquid Glass contract for adaptive app icons
-- `APPLE-ICON-AUTOFIT.md` — current Apple-style legacy auto-fit, optical sizing, compatibility enclosure and renderer contract
-- `APPLE-ICON-FIDELITY.md` — normative calibrated geometry, blend/background recipes, runtime app identity, tray exclusion, adaptive fallback and bulk-export contract
+- `APPS-SETTINGS.md` — per-app controls and wellbeing
+- `ADAPTIVE-ICONS.md` — single source of truth for adaptive icon discovery, GPT semantic decomposition, multi-layer `.vicon`, Apple-style geometry/material rendering, runtime identity, validation, fallback and bulk export
 - `NETWORK-SETTINGS.md` — airplane mode, Wi-Fi QR, proxy and DPI status
 
-For adaptive icons, read `ADAPTIVE-ICONS.md`, `ADAPTIVE-ICONS-AI.md`, `ADAPTIVE-ICONS-LAYERED.md`, `APPLE-ICON-MODEL.md`, `APPLE-ICON-AUTOFIT.md` and `APPLE-ICON-FIDELITY.md` together. `ADAPTIVE-ICONS-AI.md` is authoritative for provider selection, existing API-key reuse, multimodal model input, structured model output, AI/local reconciliation and remote-conversion privacy. `ADAPTIVE-ICONS-LAYERED.md` is authoritative for canonical output structure: each new or changed source icon is semantically decomposed into a multi-layer package, and any older single-canonical-SVG wording is only a compatibility/compiler concept. `APPLE-ICON-MODEL.md` remains authoritative for Apple-style appearance/material semantics. `APPLE-ICON-AUTOFIT.md` remains authoritative for legacy circular/irregular normalization unless `APPLE-ICON-FIDELITY.md` overrides a geometry assumption. `APPLE-ICON-FIDELITY.md` is authoritative for calibrated current geometry, the non-authoritative status of the legacy 824/1024 heuristic, blend modes, system background recipes, renderer lighting/refraction fidelity, runtime application identity, tray/status separation, appearance-aware fallback and bulk icon export.
+Adaptive icon architecture lives only in `ADAPTIVE-ICONS.md`. Do not split AI, Apple compatibility, auto-fit, layered rendering, fidelity or export rules into additional icon-specific Markdown files.
 
 The existing install, backup, Hermes, MCP, secrets and skills documents remain authoritative for their underlying subsystems.
