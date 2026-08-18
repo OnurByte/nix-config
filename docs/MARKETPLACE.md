@@ -2,50 +2,37 @@
 
 This document is the single source of truth for Vesper Store.
 
-Vesper Store is a separate native desktop application for discovering, installing, removing and updating applications on Vesper.
+Vesper Store is a separate native desktop application for discovering installing removing and updating desktop applications on Vesper.
 
-It has its own window, process, desktop entry and icon. It is not embedded inside Settings.
+The application name is exactly `Vesper Store`.
 
 Nixpkgs is the default and primary source. Flathub is optional and disabled by default.
 
 ## product boundary
 
-Vesper Store is for user-facing desktop applications.
+Vesper Store is a desktop application store.
 
-It is not a generic nixpkgs browser, NixOS option editor, flake editor, service manager or frontend for every derivation in nixpkgs.
+It is not a general Nix package browser, NixOS option editor, flake editor, service manager or frontend for every derivation in nixpkgs.
 
-The normal catalogue excludes libraries, development outputs, runtimes, kernels, drivers, language package sets, hidden helpers and services without a real desktop application.
+Normal discovery contains user-facing desktop applications. Libraries, headers, development outputs, runtimes, kernels, drivers, language package sets, services without a desktop application and hidden helpers stay out of normal results.
 
-Default source order:
+Default source priority:
 
 1. Nixpkgs from the same locked revision used by Vesper
-2. reviewed local Vesper recipes when a package alone is not enough
-3. Flathub only after explicit opt-in
+2. reviewed Vesper integration recipes when a package alone is not enough
+3. Flathub only after explicit user opt-in
 
-No apt, rpm, pacman or PackageKit backend belongs in Vesper Store.
+There is no apt, rpm, pacman or PackageKit backend.
 
-Do not convert Nix packages into deb or rpm packages.
+There is no conversion from Nix packages into deb or rpm packages.
 
-## upstream-first rule
-
-Do not rebuild package infrastructure that already exists upstream.
-
-Use existing projects and standards as building blocks:
-
-- `NixOS/nixos-search` and `flake-info` for nixpkgs catalogue/export ideas
-- `snowfallorg/nixos-appstream-data` for NixOS AppStream generation
-- `snowfallorg/nix-software-center` as prior art for Nix GUI install/search/update behavior
-- Nix itself for evaluation, substituters, builds, profiles and generations
-- AppStream for store presentation metadata
-- Flatpak CLI and remote AppStream metadata when optional Flathub support is enabled
-
-Vesper-owned code should mostly be the native application UI, normalization/index layer, transaction policy, identity reconciliation and integration glue.
-
-Do not write a second Nix resolver, binary cache client, AppStream ecosystem or package manager.
+If Vesper Store is ever reused outside NixOS, Nix should remain the application layer instead of translating packages into the host distribution format.
 
 ## native application contract
 
-Application identity:
+Vesper Store is a normal native application with its own process, window, application ID, desktop entry and icon.
+
+Target identity:
 
 ```text
 name        Vesper Store
@@ -54,42 +41,94 @@ desktop id  io.vesper.Store.desktop
 binary      vesper-store
 ```
 
-The reverse-DNS ID may change once during implementation if packaging requires it, then it becomes stable.
+The reverse-DNS ID may change once before implementation if repository naming requires it. After persisted state or deep links exist it is stable.
 
-Vesper Store must launch like a normal Linux application and appear in the launcher and dock.
+Vesper Store appears in the launcher and can be pinned to the dock like any other desktop application.
 
-It should support single-instance application activation and deep links to application details.
-
-### required application stack
+### standard UI stack
 
 Vesper Store uses:
 
 ```text
-GTK4
-libadwaita
-Rust
-gtk-rs / libadwaita-rs
+Qt 6
+Qt Quick
+QML
+Rust backend
 SQLite
 Nix CLI / established Nix interfaces
 ```
 
-The UI is native GTK. The backend is Rust.
+Qt/QML is the standard Vesper Store presentation stack.
 
-Do not use:
+GTK and libadwaita are not globally forbidden in Vesper. They are simply not the Store UI stack.
 
-- Qt
-- QML
-- Qt Quick
-- Kirigami
-- Electron
-- Tauri/WebView
-- embedded Chromium/WebKit as the primary UI
-- localhost web frontends
-- a Quickshell-only Store implementation
+Do not implement Vesper Store with Electron, Tauri/WebView, an embedded browser, a localhost web application or a shell-only Quickshell page.
 
-The Store should reuse upstream Rust crates and native libraries where practical rather than wrapping every operation in shell parsing.
+The Store is a normal Qt application rather than a page that only exists while Caelestia is running.
 
-Nix CLI invocation is acceptable where Nix has no stable library interface for the operation, but arguments must be constructed from validated catalogue identities rather than arbitrary user-provided Nix expressions.
+Recommended shape:
+
+```text
+Qt Quick / QML application
+          │
+          ▼
+       Rust core
+          │
+          ├── local SQLite catalogue
+          ├── Nix package planning and transactions
+          ├── installed-app reconciliation
+          ├── source adapters
+          └── transaction and rollback state
+```
+
+QML is presentation logic. Do not put Nix expression parsing, Flatpak output parsing, SQLite query construction or transaction state machines in QML JavaScript.
+
+Use a maintained Rust/Qt integration approach available from pinned nixpkgs rather than inventing a large custom protocol just to connect one application to itself. Keep the bridge narrow and typed.
+
+## upstream-first rule
+
+Do not rebuild package infrastructure that already exists upstream.
+
+Use existing projects and standards as building blocks:
+
+### NixOS/nixos-search and flake-info
+
+Reuse the package-export/index concepts and `flake-info` where appropriate.
+
+The lesson from NixOS Search is important: one giant package JSON stopped scaling. Vesper Store should not evaluate all of nixpkgs on each search and should not fetch search.nixos.org on every keystroke.
+
+### snowfallorg/nixos-appstream-data
+
+Reuse or adapt the established NixOS AppStream generation path when it matches the pinned nixpkgs revision.
+
+Do not write a new AppStream ecosystem from scratch.
+
+### snowfallorg/nix-software-center
+
+Use it as prior art for Nix GUI-store behavior, metadata mapping and transaction edge cases.
+
+Reuse code only when its license, architecture and maintenance cost make that cleaner than a small Vesper implementation.
+
+Do not fork its GTK UI. Vesper Store has its own Qt/QML UI and Vesper design language.
+
+### Nix itself
+
+Nix remains authoritative for:
+
+- dependency closure resolution
+- binary substituters
+- trusted keys
+- realization
+- package profiles/generations where used
+- actual build failures
+
+Do not create a second resolver, downloader or cache format.
+
+### Flatpak itself
+
+When Flathub is enabled, use Flatpak's native CLI/AppStream/remote mechanisms.
+
+Do not scrape flathub.org and do not depend on an unofficial web API for core behavior.
 
 ## relationship with Settings -> Apps
 
@@ -99,7 +138,7 @@ Settings and Vesper Store have different jobs.
 
 - default applications
 - real Flatpak permissions
-- native/unsandboxed state
+- native/unsandboxed status
 - wellbeing
 - installed application identity
 - per-app adaptive icon status and actions
@@ -109,32 +148,40 @@ Vesper Store owns:
 - discovery
 - search
 - categories
-- application detail
+- application details
 - source choice
-- install/remove/update
+- install/remove/update transactions
 - Store-owned rollback
-- Store source settings
+- optional Flathub source management
 
-Do not duplicate permissions, wellbeing or adaptive-icon editors inside Vesper Store.
+Do not duplicate the full permissions, wellbeing or adaptive-icon editors inside Vesper Store.
 
 ### Find New Apps
 
-Add a `Find New Apps` row to `Settings -> Apps`.
+Add a prominent `Find New Apps` action near the top of `Settings -> Apps`.
 
-Suggested text:
+It launches Vesper Store.
+
+Suggested Settings row:
 
 ```text
 Find New Apps
 Discover and install applications with Vesper Store
 ```
 
-The action launches `vesper-store`.
+Use the existing Caelestia `RowButton` or an equivalent native Settings component. Do not turn it into a large promotional card.
 
-If application activation is implemented, use it instead of creating duplicate Store windows.
+Basic launch contract:
+
+```text
+vesper-store
+```
+
+Single-instance activation is preferred. If the Store is already running, activating it should focus its existing window rather than creating duplicate windows.
 
 ### Open in Vesper Store
 
-For an installed application with a reliable catalogue identity, Settings may expose:
+When Settings is showing an installed application that can be resolved to a Store catalogue identity, expose:
 
 ```text
 Open in Vesper Store
@@ -146,182 +193,203 @@ Deep-link contract:
 vesper-store --app <catalogue-id>
 ```
 
-Do not deep-link by display name.
+Use a stable catalogue ID. Never deep-link by display name.
 
 Hide the action when identity is uncertain.
 
-## visual contract
+### shared application identity
 
-Vesper Store follows the Vesper Apple/visionOS-inspired controlled-glass language while remaining a normal GTK application.
+Settings and Store must resolve installed applications through one compatible identity model.
 
-The Store is not a clone of GNOME Software's visual structure just because it uses GTK/libadwaita.
+Preferred identity keys:
 
-Use libadwaita as the native widget/window foundation, then apply a small Vesper CSS/theme layer.
+1. AppStream component ID
+2. desktop file ID
+3. Nix package attribute when known
+4. Flatpak application ID when relevant
+5. reviewed alias mappings for known mismatches
+
+A Store install should appear in existing Apps controls immediately after desktop-entry reconciliation.
+
+The Store must not create a second incompatible installed-app registry.
+
+## Vesper design language
+
+Vesper Store follows the same Apple/visionOS-inspired controlled-glass direction as Vesper without turning the whole application into a transparent shell overlay.
+
+The repository contract intentionally concentrates the strongest backdrop glass effects in shell surfaces. Vesper Store is a normal desktop app and should remain readable over any wallpaper or window behind it.
 
 Use:
 
 - calm palette-tinted surfaces
-- selective translucency where GTK/compositor behavior makes it reliable
+- selective translucency in navigation, floating controls and sheets where technically appropriate
 - generous continuous rounding
-- soft shadows
+- soft shadow
 - thin quiet borders
 - restrained hierarchy
-- large clean application artwork
-- comfortable spacing
-- smooth but short transitions
+- clear spacing
+- active Vesper palette integration
 
 Avoid:
 
-- neon multi-colour borders
-- dense Material-dashboard cards
-- opaque telemetry panels
-- web-store layouts
-- excessive blur on every row
-- copying GNOME Software pixel-for-pixel
+- neon source colours
+- thick glowing borders
+- dense telemetry cards
+- browser-like store chrome
+- a grid of dozens of independently blurred cards
+- a second unrelated spacing, typography or radius system
 
-### glass rule
+### design token ownership
 
-Vesper's strongest glass remains concentrated in shell surfaces.
+Do not copy arbitrary numeric values out of Caelestia QML and let them drift.
 
-For Vesper Store, prefer controlled application surfaces over forcing the whole window transparent.
-
-Glass can be used for header/navigation overlays, sheets and floating controls when Wayland/compositor support is reliable. Readability wins over transparency.
-
-### shared design values
-
-Do not make the GTK application depend on Caelestia's QML internals.
-
-Create a small Vesper GTK theme layer with shared semantic values derived from the active Vesper palette:
+Create a small Vesper application theme layer for Qt/QML that receives the active Vesper palette and exposes stable semantic values such as:
 
 ```text
 surface
-surface-container
-surface-container-high
-on-surface
-on-surface-variant
+surfaceContainer
+surfaceContainerHigh
+onSurface
+onSurfaceVariant
 primary
-secondary-container
+primaryContainer
+secondaryContainer
 error
 outline
-radius-small
-radius-medium
-radius-large
-radius-extra-large
-spacing-small
-spacing-medium
-spacing-large
+roundingSmall
+roundingMedium
+roundingLarge
+roundingExtraLarge
+spacingSmall
+spacingMedium
+spacingLarge
 ```
 
-The Store may read exported Vesper palette state, but it must remain usable when Caelestia is not currently running.
+The Store can match Caelestia without importing private shell page implementations.
 
-## main window
+### window layout
 
-Recommended desktop layout:
+Wide layout:
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Vesper Store                                      search      sources │
-├──────────────┬───────────────────────────────────────────────────────┤
-│ Discover     │ featured / useful categories                          │
-│ Categories   │                                                       │
-│ Installed    │ application grid/list                                 │
-│ Updates      │                                                       │
-│              │                                                       │
-│              │ selected app opens a full detail view                 │
-└──────────────┴───────────────────────────────────────────────────────┘
+│ Vesper Store                                                  window │
+├────────────────┬─────────────────────────────────────────────────────┤
+│ Search         │ Featured / category / search results                │
+│                │                                                     │
+│ Discover       │  app      app      app                              │
+│ Categories     │                                                     │
+│ Installed      │  selected app detail                                │
+│ Updates        │                                                     │
+│                │  screenshots                                        │
+│ Sources        │  description                                        │
+│                │  source  version  sandbox                           │
+│                │                                      [ Install ]    │
+└────────────────┴─────────────────────────────────────────────────────┘
 ```
 
-Use adaptive libadwaita navigation patterns for narrow windows rather than compressing desktop columns until they become unreadable.
-
-Recommended primitives include `AdwApplication`, `AdwApplicationWindow`, `AdwNavigationSplitView` or current equivalent, `AdwToolbarView`, `AdwHeaderBar`, `AdwViewStack`, `AdwPreferencesGroup` for compact settings-like sections and standard GTK list/grid models.
-
-Do not force a widget choice if the pinned libadwaita version has a better current replacement.
-
-### search
-
-Search is local and keyboard-first.
-
-- `Ctrl+F` focuses search
-- typing from Discover may focus search
-- Escape clears/closes the active search/detail layer according to context
-- Enter opens the selected result
-- search must not evaluate all of nixpkgs per keystroke
-
-Use SQLite FTS5 for fast local search.
+Narrow layout uses normal page navigation rather than crushing sidebar, results and details into three tiny columns.
 
 ### result presentation
 
-A normal result needs only:
+Prefer clean application tiles or rows with:
 
 - icon
-- application name
-- one short summary
-- source only when useful
+- name
+- short summary
 - installed/update state
-- primary action when appropriate
+- source only when relevant
+- one primary action
 
-Do not expose package internals in every card.
+License, architecture, package attribute, closure details and maintainers belong in detail or advanced information.
 
-Package attribute, architecture, license details, sandbox type and build warnings belong in the detail view or Advanced section.
+### app detail
 
-### application detail
-
-The detail view can show:
+Detail may show:
 
 - large icon
 - name
 - summary
-- description
-- screenshots when available
+- long description
+- screenshots
 - source
 - package version
 - installed version
 - homepage
 - license
 - sandbox state
-- local-build warning
-- package attribute under Advanced
-- Install / Remove / Update
+- cache/local-build warning
+- package attribute under advanced information
+- install, remove or update action
 
-If an app is declared by the main Vesper config, show:
+Config-managed apps show:
 
 ```text
 Installed
 Managed by Vesper config
 ```
 
-Do not offer a fake remove action.
+Store-managed apps show:
 
-If Store owns it, show `Managed by Vesper Store`.
+```text
+Installed
+Managed by Vesper Store
+```
 
-If it is a Flatpak, show `Flatpak` and keep permissions in Settings -> Apps.
+Flatpaks show their actual sandbox/source state.
+
+### interaction
+
+Store is keyboard usable.
+
+- typing from Discover focuses search where reasonable
+- `Ctrl+F` focuses search
+- arrow keys move through results
+- Enter opens the selected application
+- Escape closes a sheet or backs out of detail
+- install/remove always remain explicit actions
+
+Do not invent fake install percentages. Prefer real phases such as:
+
+```text
+planning
+resolving
+downloading
+building
+installing
+reconciling
+complete
+failed
+```
 
 ## catalogue architecture
 
-Do not query `search.nixos.org` for every search.
+Nixpkgs browsing is local and fast.
 
-The Nixpkgs catalogue is a local read-only artifact built for the same locked nixpkgs revision and architecture as Vesper.
+The Store catalogue is built for Vesper's pinned nixpkgs revision and `x86_64-linux`.
 
 Pipeline:
 
 ```text
 locked nixpkgs
      │
-     ├── flake-info / package metadata
+     ├── package metadata / flake-info
      ├── NixOS AppStream data
-     └── reviewed Vesper mappings
+     └── small reviewed Vesper overrides
              │
              ▼
        catalogue builder
              │
              ▼
-   normalized SQLite + icons
+     normalized SQLite
+             │
+       FTS5 search index
              │
              ▼
-          Vesper Store
+        Vesper Store
 ```
 
-The final catalogue should be a Nix derivation so it follows `flake.lock` and participates in normal Vesper validation.
+The final Nixpkgs catalogue should be a Nix derivation tied to `flake.lock`.
 
 Suggested output:
 
@@ -329,8 +397,8 @@ Suggested output:
 /nix/store/...-vesper-store-catalog/
 └── share/vesper/store/
     ├── catalog.sqlite
-    ├── catalog-meta.json
-    └── icons/
+    ├── icons/
+    └── catalog-meta.json
 ```
 
 `catalog-meta.json` contains at least:
@@ -344,22 +412,23 @@ Suggested output:
 }
 ```
 
-Do not store large screenshot blobs in SQLite. Keep URLs and use a bounded lazy media cache.
+Do not store large screenshot blobs inside SQLite. Store URLs/metadata and lazy-cache screenshot media when the user opens detail.
 
-## metadata authority
+### metadata authority
 
 Nixpkgs is authoritative for:
 
 - attribute path
-- pname/version
-- platform support
+- pname
+- version
+- supported platform
 - broken state
 - license
-- known vulnerability/insecure state
+- known vulnerabilities/insecure state
 - homepage
-- main program where present
+- main program where declared
 
-AppStream is used for presentation:
+AppStream enriches presentation with:
 
 - component ID
 - desktop ID
@@ -370,52 +439,47 @@ AppStream is used for presentation:
 - categories
 - keywords
 - screenshots
-- application icon metadata
+- icon metadata
 
-AppStream must not override the package version that Nix will actually install.
+AppStream must not override the package version Nix will install.
 
-## catalogue eligibility
+### catalogue eligibility
 
-Prefer entries with strong desktop identity such as an AppStream desktop component or visible `Type=Application` desktop entry.
+Normal Store results require strong desktop-app identity such as an AppStream desktop component or a visible `Type=Application` desktop entry.
 
-Hide from normal discovery:
+Hide by default:
 
 - broken packages
 - unsupported platforms
 - libraries
 - headers/dev outputs
-- kernels/drivers
 - language package sets
-- fonts unless a future Fonts surface explicitly wants them
-- service-only packages
+- kernels/drivers
+- services without desktop apps
 - Flatpak runtimes
 - `NoDisplay=true` helpers
-- duplicate outputs of the same application
+- duplicate outputs of one application
 
-Known-insecure packages must not look like normal installable results. Block by default and explain why.
+If Nixpkgs marks a package insecure, block normal one-click installation by default and show the reason.
 
-Vesper currently permits deliberate unfree packages, so the Store may list them while clearly showing license state.
+Vesper currently allows unfree packages, so they may be listed. License state remains visible in detail.
 
-## application identity and deduplication
+### normalized identity
 
-Normalized identity should use:
+A package attribute alone is not the user-facing identity.
+
+Normalize from:
 
 1. AppStream component ID
 2. desktop file ID
-3. package attribute
-4. Flatpak ID when applicable
-5. reviewed alias mappings
-6. canonical project/homepage only as a cautious fallback
+3. package attribute path
+4. reviewed homepage/project aliases only when needed
 
-Do not merge applications only because names look similar.
+Do not fuzzy-merge apps because names happen to look similar.
 
-When the same app is available from Nixpkgs and enabled Flathub, present one application with multiple source variants only when identity is strong.
+### database shape
 
-Nixpkgs remains the default variant.
-
-## database shape
-
-Suggested normalized model:
+The exact schema may evolve but should cover:
 
 ```text
 apps
@@ -451,53 +515,80 @@ keywords
 aliases
 ```
 
-Use SQLite FTS5 for name, generic name, aliases, package attribute, keywords and summary.
+Use SQLite FTS5 for name, generic name, aliases, keywords, package attr and summary.
 
-Ranking should prefer exact name/alias matches, then prefix matches, then keywords/summary, then long description.
+Ranking should roughly prefer:
 
-No AI service is required for search.
+1. exact display-name match
+2. exact alias/package attr
+3. name prefix
+4. generic name/keywords
+5. summary
+6. description
+
+No AI provider is needed for Store search.
 
 ## Nix installation model
 
-Store state must not be a pile of ad-hoc `nix profile install` commands with no desired-state record.
+Do not rewrite hand-maintained `home/yargc/apps.nix` every time someone presses Install.
 
-At the same time, Store installs must not rewrite hand-maintained `home/yargc/apps.nix` or deploy unrelated dirty changes from the Vesper checkout.
+Also do not let Install rebuild unrelated dirty work in `/home/yargc/nix-config`.
 
-Use a Store-owned manifest plus dedicated Nix profile.
-
-```text
-manifest = desired Store-owned application state
-profile  = realized environment generated from that state
-```
-
-Recommended paths:
+Use a dedicated manifest-driven Nix profile for applications owned by Vesper Store.
 
 ```text
-~/.config/vesper/store/manifest.json
-~/.local/state/vesper/store/profile
-~/.local/state/vesper/store/generations.json
-~/.local/state/vesper/store/transactions/
-~/.cache/vesper/store/media/
-$XDG_RUNTIME_DIR/vesper/store.lock
+manifest = desired Vesper Store Nix apps
+profile  = realized environment for that manifest
 ```
 
-The manifest contains only Store-owned choices.
+The manifest is authoritative for Store-owned Nix selections. The profile is the realized state.
 
-Existing Vesper-config packages remain external to this manifest and are detected separately.
+Existing packages declared in Vesper config are detected separately and never silently migrated.
 
-Do not store arbitrary Nix expressions in the manifest.
+Recommended state:
 
-Package attributes must come from the trusted local catalogue.
+```text
+~/.config/vesper/store/
+└── manifest.json
 
-## revision pinning
+~/.local/state/vesper/store/
+├── profile
+├── generations.json
+└── transactions/
 
-Vesper Store Nix installs must use the same nixpkgs revision as the running Vesper Store/catalogue build.
+~/.cache/vesper/store/
+└── media/
 
-Do not let plain `nixpkgs#foo` silently resolve against a newer registry revision.
+$XDG_RUNTIME_DIR/vesper/
+└── store.lock
+```
 
-Expose the locked revision to Store packaging at build time.
+Minimal manifest:
 
-When `flake.lock` changes, system, Store and catalogue move together.
+```json
+{
+  "version": 1,
+  "nix": [
+    {
+      "appId": "org.mozilla.firefox",
+      "attrPath": ["firefox"]
+    }
+  ],
+  "flatpak": []
+}
+```
+
+Do not store arbitrary executable Nix expressions in remote or mutable Store metadata.
+
+Package attrs come from the trusted local catalogue and are validated before use.
+
+### pinning
+
+Store installs use the exact nixpkgs revision compiled into the running Store/catalogue.
+
+Do not allow `nixpkgs#foo` to silently follow a newer registry revision than Vesper.
+
+These stay coherent:
 
 ```text
 Vesper system revision
@@ -505,67 +596,78 @@ Vesper Store catalogue revision
 Vesper Store package revision
 ```
 
-These must stay coherent.
+When `flake.lock` changes, the new Store build and catalogue move together. The Store can then offer reconciliation/update of its managed packages.
 
-## transaction model
+### transaction model
 
-Every install/remove/update is serialized.
+All package mutations are serialized.
 
-Flow:
+Nix install flow:
 
 1. acquire Store lock
 2. validate current manifest
-3. compute next desired state
-4. resolve validated installables against the pinned revision
+3. calculate desired manifest
+4. resolve installables against pinned nixpkgs
 5. ask Nix for a dry-run plan
 6. show local-build or policy warnings
-7. realize the new package set
-8. atomically switch the Store profile
-9. atomically write the new manifest
-10. reconcile desktop entries
-11. let the existing adaptive-icon system discover new installed apps
+7. realize desired packages
+8. atomically switch Store profile
+9. atomically persist new manifest
+10. refresh installed-app identity
+11. allow existing adaptive-icon discovery to handle new desktop entries
 12. release lock
 
-If realization fails, previous manifest/profile stay active.
+A failed realization leaves the previous profile and manifest active.
 
-Never commit desired state before realization succeeds.
+Never write desired state first and hope the build succeeds later.
 
-### binary cache behavior
+### cache awareness
 
-Do not guess cache availability.
+Do not guess cache availability from popularity or Hydra assumptions.
 
-Ask Nix through dry-run/planning output.
+Ask Nix using an appropriate dry-run/build plan.
 
-If local builds are required, show a warning such as:
+When local builds are required, show a warning such as:
 
 ```text
 Local build required
-This application is not fully available from your configured binary caches.
+Some of this application is not available from your configured binary caches.
 ```
 
-The Store uses the machine's existing substituters and trusted public keys.
+A cache miss is not automatically an error.
 
-Never add a third-party binary cache automatically.
+Vesper Store uses the machine's existing substituters and trusted public keys. It never adds a third-party cache automatically.
 
-### rollback
+### rollback and GC
 
-Keep several known-good Store generations and matching manifest snapshots.
+Keep several successful Store generations and manifest snapshots.
 
-Rollback restores the complete Store-owned application set from a previous successful generation.
+Rollback restores a known-good Store generation as a whole.
 
-Do not attempt file-level rollback inside `/nix/store`.
+The active Store profile and retained rollback generations remain GC roots.
 
-The active and retained Store profiles must remain GC roots.
+Verify that normal `nh clean` does not remove the active Store apps.
 
-## apps already managed by Vesper
+## Vesper-config-managed applications
 
-Applications already declared through Home Manager or NixOS remain owned by Vesper config.
+Apps already declared by Vesper config remain config-owned.
 
-Store shows them as installed but does not silently migrate them into Store state.
+Show:
 
-A future explicit migration feature can exist later if it performs a reviewed config change. It is not v1 work.
+```text
+Installed
+Managed by Vesper config
+```
 
-## packages requiring system integration
+Do not offer a misleading Store Remove action.
+
+Do not silently move an app from `home.packages` into Store state.
+
+A future explicit migration flow is separate work.
+
+## packages needing system integration
+
+Some nixpkgs packages require more than a user package. They may need a NixOS module, service, user/group, PAM rule, firewall setting or similar integration.
 
 Store install classes:
 
@@ -577,359 +679,519 @@ unsupported-system-integration
 
 ### package
 
-Normal user-facing package that works from the Store-owned profile.
+Normal desktop application that works as a user package.
 
-This is the v1 default.
+This is the default and ships first.
 
 ### recipe
 
-A reviewed local Vesper integration for an app that genuinely needs NixOS module/service/PAM/firewall/user-group changes.
+A reviewed Vesper integration for a real application that needs more.
 
-Recipes are static repository code.
+Recipe code is static local code in the Vesper repository.
 
-Remote catalogue metadata can never provide executable Nix.
+Remote Store metadata cannot provide executable Nix.
 
-Do not build a general recipe engine before real applications require it.
+Potential future layout:
+
+```text
+modules/store/
+├── default.nix
+└── recipes/
+    └── <reviewed-id>.nix
+```
+
+Do not build a generic recipe engine before actual applications need it.
 
 ### unsupported-system-integration
 
-If package-only installation would be misleading and no reviewed recipe exists, show the app but block one-click install with a clear explanation.
+If a package is known to need system integration and Vesper has no reviewed recipe, do not pretend one-click install is complete.
+
+Show the requirement clearly and block the misleading action.
 
 ## Flathub
 
 Flathub is optional and disabled by default.
 
-Fresh Vesper Store behavior:
+Strict fresh-system state:
 
 ```text
 Flatpak service available        yes
 Flathub remote auto-added        no
 Flathub catalogue downloaded     no
-Flathub search results shown     no
+Flathub results shown            no
 Flathub preferred over Nixpkgs   no
 Flathub beta enabled             no
 ```
 
-Flatpak service availability does not mean Flathub is enabled.
+Flatpak service availability exists because Vesper already has real Flatpak permission controls. That does not enable Flathub discovery.
 
-### enabling Flathub
+### Sources
 
-Expose a Sources page/sheet in Vesper Store:
+Vesper Store has a Sources page/sheet.
+
+Initial state:
 
 ```text
-Nixpkgs     On    Vesper default
-Flathub     Off   Optional sandboxed applications
+Nixpkgs   On    Vesper default
+Flathub   Off   Optional sandboxed applications
 ```
 
-Only after explicit opt-in may Store add/use the user Flathub remote and refresh its AppStream metadata.
+Only explicit user action may enable Flathub.
 
-Use official Flatpak remote operations and AppStream data. Do not scrape flathub.org pages or depend on an unofficial web API.
+After opt-in, prefer a user-scoped Flathub remote for Store-managed Flatpaks unless a real system-wide requirement appears.
 
-Prefer user-scope Flatpak installs for Store-owned apps unless a real system-wide requirement appears.
+Use native Flatpak operations and AppStream data. Do not scrape the Flathub website.
 
-Disabling Flathub discovery must not silently uninstall installed Flatpaks or destroy their update path.
+Useful operations include:
 
-## Flatpak ownership
+```text
+flatpak remotes
+flatpak remote-ls --app
+flatpak remote-info
+flatpak update --appstream
+```
 
-Flatpak remains authoritative for Flatpak install/remove/update state.
+Normalize and cache remote metadata locally so search stays fast.
 
-Store merges Flatpak identity into its application model but does not pretend those apps are Nix-owned.
+### source deduplication
 
-After Flatpak installation, Settings -> Apps remains the authority for per-app network/home overrides.
+When both sources provide the same application, merge only with strong identity:
+
+1. exact AppStream component ID
+2. exact desktop ID
+3. reviewed alias mapping
+
+Nixpkgs remains the default variant.
+
+The detail page can expose Flathub as an alternative sandboxed source.
+
+Do not merge applications only because names are similar.
+
+### disabling Flathub
+
+Turning off Flathub discovery stops catalogue refreshes and hides Flathub-only discovery.
+
+It must not silently uninstall installed Flatpaks.
+
+Installed Flatpaks retain a usable update path until explicitly removed.
 
 ## adaptive icon integration
 
-Do not run the entire Store catalogue through adaptive-icon AI generation.
+Do not run adaptive-icon AI jobs for every Store catalogue entry.
 
-Before install, use normal AppStream/catalogue artwork.
+Before installation:
 
-After install, the real desktop entry appears and the existing Vesper adaptive-icon pipeline takes ownership as usual.
+- show AppStream/catalogue icon
+- keep it read-only
+- do not create icon conversion jobs
 
-There is one adaptive-icon source of truth.
+After installation:
 
-## backend shape
+- the real desktop entry appears
+- existing Vesper adaptive-icon discovery resolves it
+- the normal adaptive icon pipeline takes over
 
-The Store application should be split into small Rust modules rather than one huge command file.
+There is one installed adaptive-icon system, not a separate Store icon system.
 
-Likely shape:
+## installed reconciliation
+
+Store does not trust only its own manifest when deciding what is installed.
+
+Installed inventory reconciles:
+
+- visible desktop entries
+- Store Nix manifest/profile
+- installed Flatpaks
+- known Vesper-config package ownership
+- existing app identity data
+
+A native app present outside Store state is shown as config/external-managed rather than falsely claimed by Store.
+
+A Store manifest entry whose desktop identity disappears becomes a reconciliation warning instead of being silently forgotten.
+
+## Rust backend shape
+
+Prefer a reusable Rust crate/core shared by the Store executable and thin Vesper control commands where useful.
+
+Suggested repository shape:
 
 ```text
 home/yargc/packages/vesper-store/
+├── default.nix
 ├── Cargo.toml
 ├── src/
 │   ├── main.rs
-│   ├── app.rs
 │   ├── catalog.rs
 │   ├── identity.rs
 │   ├── nix.rs
-│   ├── transactions.rs
 │   ├── flatpak.rs
-│   └── state.rs
-├── resources/
-│   ├── io.vesper.Store.desktop
-│   ├── io.vesper.Store.metainfo.xml
-│   ├── style.css
-│   └── icons/
-└── ui/
-    └── GTK composite templates or narrowly scoped UI resources
+│   ├── manifest.rs
+│   └── transaction.rs
+├── qml/
+│   ├── Main.qml
+│   ├── DiscoverPage.qml
+│   ├── AppDetailPage.qml
+│   ├── InstalledPage.qml
+│   ├── UpdatesPage.qml
+│   ├── SourcesPage.qml
+│   └── components/
+└── data/
+    ├── io.vesper.Store.desktop
+    └── io.vesper.Store.metainfo.xml
+
+home/yargc/packages/marketplace-catalog.nix
 ```
 
-Exact layout may change to match the selected gtk-rs architecture.
+Exact placement may change to keep the package clean. Do not scatter Store implementation across unrelated QML patches.
 
-Keep business logic testable without constructing GTK widgets.
+`vesper-control` only needs integration commands if Settings cannot activate/deep-link the Store directly.
 
-## Settings integration implementation
+## update semantics
 
-The existing Caelestia Apps QML remains QML because it belongs to the existing Quickshell shell.
+### Nixpkgs apps
 
-That is not permission to use Qt/QML for the Store itself.
+Store-managed Nix updates follow the Vesper nixpkgs lock.
 
-`VesperAppsSettings.qml` should gain a normal `Find New Apps` action that launches `vesper-store`.
+Vesper Store never becomes an independent faster-moving unstable channel.
 
-Per-app controls may gain `Open in Vesper Store` when identity resolution is reliable.
+An update exists after Vesper moves to a new locked nixpkgs revision and a managed app resolves to a new package/store path.
 
-This is a shell integration exception to the first-party standalone-app GTK rule.
+### Flatpak apps
 
-## updates
+Flatpak updates may move independently after Flathub is enabled because Flatpak owns that source.
 
-Nix Store-owned applications update only when Vesper moves to a new locked nixpkgs revision and the resolved package changes.
+Global system/update aggregation still belongs in the existing `System -> Updates` surface once integrated.
 
-Vesper Store must not independently chase nixpkgs unstable ahead of the system lock.
-
-Flatpak updates may move independently after Flathub opt-in because Flatpak owns that source.
-
-Global system/component update presentation remains under `System -> Updates`. Vesper Store may still show app-level update state and its own Installed/Updates section.
+The Store may also have an Installed/Updates view for applications it manages, but must not pretend it owns NixOS system upgrades.
 
 ## network and privacy
 
-Nixpkgs discovery is local.
+Nixpkgs search works from the local catalogue without network access.
 
-Network is used only for actions such as:
+Network is used for:
 
-- package installation/update through configured Nix substituters
-- lazy screenshot/media fetches
-- optional Flathub metadata refresh after opt-in
-- Flatpak installation/update after opt-in
+- Nix installs/updates through configured substituters
+- uncached screenshots
+- optional catalogue artifact refresh if implemented
+- Flatpak metadata/transactions after Flathub opt-in
 
-No telemetry, popularity beacon, recommendation tracking or remote search-query logging is needed.
+Do not add telemetry, popularity beacons or recommendation tracking.
 
-Keep screenshot/media caching bounded.
+Do not send each search string to a web service.
 
-## security
+Use a bounded screenshot/media cache.
 
-Vesper Store is not a new trust root.
+## security and trust
+
+Vesper Store is not a new package trust root.
 
 For Nix:
 
 - use locked nixpkgs
 - use existing substituters
 - use existing trusted keys
-- respect broken/platform/insecure policy
-- never auto-add binary caches
+- respect platform/broken/insecure rules
+- never auto-add caches
 
 For Flatpak:
 
 - use configured remote trust
-- add Flathub only after explicit opt-in
-- do not execute arbitrary `.flatpakref` URLs from catalogue descriptions
+- Flathub only after opt-in
+- do not execute arbitrary `.flatpakref` URLs from catalogue text
 
 For recipes:
 
-- executable Nix lives only in reviewed local repository files
-- remote metadata maps only to known local recipe IDs
+- recipe code lives in Vesper Git
+- remote metadata cannot provide executable Nix
 
-Never execute shell commands copied from application descriptions.
+No application description may be treated as a shell command.
 
 ## failure behavior
 
-Catalogue missing:
+### catalogue missing
 
-- Store opens with a clear local catalogue error
-- Settings -> Apps still works
+Store opens into a real error state with retry/diagnostic information.
 
-Revision mismatch:
+Settings -> Apps still works independently.
 
-- browsing may remain available with a stale warning
-- block Nix mutations until backend/catalogue revisions agree
+### revision mismatch
 
-Nix unavailable:
+If Store catalogue and Store backend are built for different nixpkgs revisions, block Nix mutations until reconciled.
 
-- report the integrity failure
-- never fall back to curl installers
+Browsing may continue with a clear stale state only when schema compatibility is known.
 
-Flathub unavailable:
+### Nix unavailable
 
-- Nixpkgs remains fully usable
+Show the integrity error. Never fall back to curl installers.
 
-Build failure:
+### Flathub unavailable
 
-- keep previous Store generation active
-- retain useful error details
+Nixpkgs Store remains fully usable.
 
-Corrupted manifest:
+### build/install failure
 
-- refuse mutations
-- preserve the bad file
-- offer repair instead of silently replacing it with an empty manifest
+Keep previous Store state active and offer retry/details.
+
+### corrupted manifest
+
+Preserve the file, block mutation and offer repair diagnostics.
+
+Never replace unreadable state with an empty manifest automatically.
 
 ## performance targets
 
-- Store launch must not perform a full nixpkgs evaluation
-- local search should feel immediate
-- scrolling must not spawn one process per row
+- opening Store does not evaluate all nixpkgs
+- local search feels immediate
+- result scrolling does not spawn one process per row
 - screenshots load lazily
-- install time is controlled by Nix/network, so show real phases instead of fake percentages
-
-Transaction phases may include:
-
-```text
-planning
-resolving
-fetching
-building
-installing
-reconciling
-complete
-failed
-```
+- search remains usable while media loads
+- transaction work happens off the UI thread
+- long Nix operations never freeze the Qt event loop
+- no resident daemon is added until measurement proves it is needed
 
 ## implementation phases
 
-### phase 0 - upstream and catalogue proof
+### phase 0: upstream and identity proof
 
-Prove against the current lock:
+Before building the full UI:
 
-- attr -> AppStream identity
-- attr -> desktop ID
-- attr -> icon
-- duplicate variants
-- unfree app
-- missing AppStream data
-- local-build case
-- dedicated Store profile surviving reboot and GC
+- verify `flake-info`/Nixpkgs metadata extraction against the locked revision
+- verify AppStream generation/mapping with real desktop packages
+- verify package attr -> AppStream ID -> desktop ID
+- verify missing-icon and missing-screenshot behavior
+- verify unfree and insecure package states
+- verify a package requiring local build
+- verify Store profile survives reboot and garbage collection
 
-### phase 1 - native GTK Store shell
+### phase 1: native Store shell and read-only catalogue
 
 Implement:
 
-- `vesper-store` Rust package
-- GTK4/libadwaita application/window
-- `.desktop` and AppStream metainfo
-- Vesper GTK CSS/theme adapter
-- local catalogue open/search
-- Discover/Categories/detail navigation
-- launcher integration
-- `Find New Apps` in Settings -> Apps
+- Qt 6/QML application package
+- `.desktop` and AppStream metadata for Vesper Store itself
+- Vesper application theme adapter
+- local SQLite catalogue
+- FTS search
+- categories
+- app detail
+- installed detection
+- Settings `Find New Apps`
+- Settings `Open in Vesper Store`
 
-No install button until identity mapping is reliable.
+Acceptance:
 
-### phase 2 - Nix transactions
+- Vesper Store launches independently
+- launcher/dock sees it as a normal app
+- Nixpkgs search needs no network
+- no full nixpkgs evaluation per query
+- config-managed apps are identified correctly
+
+### phase 2: Nix transactions
 
 Implement:
 
 - Store manifest
-- dedicated Nix profile
+- dedicated profile
 - transaction lock
 - dry-run planning
-- install/remove
+- install
+- remove
 - rollback
-- installed-app reconciliation
-- adaptive-icon handoff
+- installed reconciliation
+- adaptive-icon handoff after install
 
-### phase 3 - updates
+Acceptance:
+
+- failed install preserves previous state
+- Store never rewrites `apps.nix`
+- Store never deploys unrelated dirty repo work
+- installed apps use Store/Vesper locked nixpkgs revision
+- normal package install is user-level
+
+### phase 3: updates and generations
 
 Implement:
 
-- lock/catalogue/profile comparison
+- revision comparison
 - update availability
-- reconcile after Vesper nixpkgs updates
+- bulk Store reconcile after Vesper lock update
 - retained generations
-- integration with System Updates where useful
+- System Updates integration where appropriate
 
-### phase 4 - optional Flathub
+### phase 4: optional Flathub
 
-Only after the Nix path is stable:
+Only after Nix path is stable:
 
 - Sources UI
-- explicit opt-in
-- user Flathub remote management
-- local normalized Flatpak/AppStream cache
-- strong-identity deduplication
+- explicit Flathub opt-in
+- user remote management
+- local normalized AppStream cache
+- strong-identity dedup
 - Flatpak install/remove/update
-- Settings permission handoff
+- handoff to existing Apps permission controls
 
-### phase 5 - reviewed recipes
+Acceptance:
 
-Only for real apps that prove package-only installation is insufficient.
+- fresh Vesper has no Flathub remote added by Store
+- no Flathub metadata before opt-in
+- Nixpkgs remains default for duplicates
+- disabling discovery never removes installed Flatpaks
 
-### phase 6 - polish
+### phase 5: reviewed recipes
+
+Only for real apps that prove package-only install insufficient.
+
+Each recipe needs:
+
+- stable ID
+- reviewed local Nix code
+- preview of system changes
+- rollback path
+- full Vesper validation
+
+### phase 6: polish
+
+After data and transactions are reliable:
 
 - keyboard navigation
-- accessibility
+- responsive/narrow layout
+- screenshot cache
+- accessible labels and focus order
 - reduced motion
-- media cache controls
-- diagnostics
-- empty/error states
-- source comparison details
+- transaction history
+- catalogue diagnostics
+- source badges
 
-Do not prioritize ratings, recommendation feeds or decorative complexity over install reliability.
+Do not prioritize ratings, recommendations or decorative feeds over install reliability.
 
-## validation
+## test matrix
 
-Implementation must follow the normal Vesper repository checklist plus Store-specific checks.
+### catalogue
 
-Required:
+- exact name search
+- package attr search
+- keyword search
+- Unicode names
+- duplicate IDs
+- missing icon
+- missing description
+- missing screenshot
+- unsupported platform
+- broken package
+- insecure package
+- unfree package
+
+### Nix transactions
+
+- cached install
+- large closure
+- local build required
+- build failure
+- network failure
+- cancellation before final switch
+- remove
+- update after nixpkgs lock change
+- rollback
+- concurrent mutation attempt
+- corrupted manifest
+- garbage collection with active generations
+
+### installed identity
+
+- app in `home.packages`
+- app installed by Store
+- app from another Nix profile
+- Flatpak app
+- app with multiple desktop files
+- hidden helper desktop entries
+
+### Flathub
+
+- absent on fresh system
+- enable source
+- metadata refresh failure
+- install Flatpak
+- permission controls after install
+- duplicate Nixpkgs/Flatpak app
+- disable source while installed Flatpak remains
+
+### Qt/QML UI
+
+- independent native launch
+- single-instance activation
+- Settings `Find New Apps`
+- deep link to known app
+- unknown deep link
+- keyboard-only navigation
+- narrow window
+- long application name
+- long translated description
+- no screenshots
+- offline search
+- install failure
+- stale catalogue
+- active transaction while switching pages
+- long transaction does not block UI thread
+
+## validation against Vesper rules
+
+Implementation must still pass the repository change checklist.
+
+In particular:
 
 - no first-party Python
-- no Qt/QML in the standalone Store implementation
-- compile all Store Rust code
-- build the Store derivation
-- validate `.desktop` and AppStream metainfo
-- test GTK launch under Wayland
-- test search without network
-- test install/remove/rollback
-- test active Store generations against GC
-- build Caelestia when Settings integration QML changes
-- build the full Vesper system
+- parse changed Nix
+- compile first-party Rust
+- validate Qt/QML resources at build time
+- build Vesper Store package
+- build configured Caelestia after Settings integration changes
+- run `nix flake metadata --no-write-lock-file`
+- evaluate Home Manager activation
+- build full Vesper system
+- keep lock changes intentional
 
 ## decisions locked for v1
 
+These are implementation constraints unless a concrete technical failure forces a change:
+
 - product name is `Vesper Store`
-- Vesper Store is a separate native application
-- standalone Store UI is GTK4 + libadwaita
-- backend is Rust
-- Qt/QML is forbidden in the Store implementation
-- Caelestia Settings integration remains QML because it is part of the existing shell
-- Settings -> Apps contains `Find New Apps`
-- installed apps may deep-link to Vesper Store by stable ID
-- Nixpkgs is the primary/default source
-- catalogue search is local
-- catalogue/package revision follows Vesper's lock
-- normal Store packages are user-level Nix installs in Store-owned state
-- Store never edits hand-maintained `apps.nix` for normal installs
-- existing config-managed apps are not silently migrated
-- Flathub is opt-in and absent from discovery by default
-- Nixpkgs wins duplicate-source preference
+- Vesper Store is a separate native desktop application
+- Store standard UI stack is Qt 6 + Qt Quick/QML
+- backend/core is Rust
+- GTK/libadwaita is not globally banned
+- Store is not embedded inside Settings
+- Settings -> Apps has `Find New Apps`
+- known installed apps can expose `Open in Vesper Store`
+- Nixpkgs is primary/default
+- local catalogue is tied to Vesper's locked nixpkgs revision
+- core search is local
+- use upstream Nix/AppStream tooling instead of rebuilding ecosystems
+- Store-owned Nix apps use isolated manifest/profile state
+- Vesper-config apps are never silently migrated
+- Flatpak service availability does not enable Flathub
+- Flathub is opt-in and disabled by default
+- Nixpkgs wins duplicate source preference
 - no PackageKit
 - no apt/rpm conversion
 - no AI requirement for search
 - no automatic third-party caches
 - no remote executable recipes
-- no fake sandbox controls for native Nix apps
+- no fake sandbox controls for native Nix
 - no duplicate adaptive-icon pipeline
-- upstream package/index/cache mechanisms are reused instead of reimplemented
 
 ## research references
 
-Primary upstream references for implementation:
+Primary upstream references for this design:
 
-- `NixOS/nixos-search`
-- `snowfallorg/nix-software-center`
-- `snowfallorg/nixos-appstream-data`
-- Nix reference and profile/build/substituter documentation
-- GTK4 documentation
-- libadwaita documentation
-- gtk-rs and libadwaita-rs documentation
-- AppStream specification
-- Flatpak command and repository documentation
-- freedesktop Desktop Entry specification
+- Nixpkgs reference manual: https://nixos.org/manual/nixpkgs/unstable/
+- Nix profile reference: https://nix.dev/manual/nix/2.35/command-ref/new-cli/nix3-profile-add.html
+- Nix build reference: https://nix.dev/manual/nix/2.35/command-ref/new-cli/nix3-build.html
+- Nix substituter configuration: https://nix.dev/manual/nix/2.33/command-ref/conf-file
+- NixOS Search: https://github.com/NixOS/nixos-search
+- Nix Software Center: https://github.com/snowfallorg/nix-software-center
+- NixOS AppStream data: https://github.com/snowfallorg/nixos-appstream-data
+- Flatpak command reference: https://docs.flatpak.org/en/latest/flatpak-command-reference.html
+- Flatpak repository documentation: https://docs.flatpak.org/en/latest/repositories.html
+- Flatpak AppStream conventions: https://docs.flatpak.org/en/latest/conventions.html
+- Flathub user installation: https://docs.flathub.org/docs/for-users/installation
+- desktop entry specification: https://specifications.freedesktop.org/desktop-entry/latest/
