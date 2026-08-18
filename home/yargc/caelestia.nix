@@ -54,6 +54,12 @@ let
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperNavLocations.qml} modules/nexus/navpane/NavLocations.qml
+      substituteInPlace modules/nexus/PageRegistry.qml \
+        --replace-fail 'label: qsTr("Wallpaper & style")' 'label: qsTr("Appearance")' \
+        --replace-fail 'description: qsTr("Wallpaper, fonts, colours")' 'description: qsTr("Wallpaper, colours, icons")' \
+        --replace-fail 'description: qsTr("Wi-Fi, ethernet, VPN")' 'description: qsTr("Wi-Fi, ethernet, VPN, proxy")' \
+        --replace-fail 'description: qsTr("Default apps, favourites, hidden apps")' 'description: qsTr("Defaults, permissions, wellbeing, icons")'
       ${pkgs.coreutils}/bin/install -Dm644 ${./packages/SystemMonitor.qml} modules/bar/components/SystemMonitor.qml
     '';
   });
