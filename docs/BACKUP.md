@@ -1,8 +1,10 @@
 # Vesper backups
 
+Status: **current**
+
 Vesper uses Restic for real backups and Snapper for short-term local recovery. They solve different problems: Snapper helps with local mistakes; Restic survives loss of the machine when its repository is elsewhere.
 
-## What the service backs up
+## what the service backs up
 
 `vesper-backup.service` backs up the user home plus a staging directory for consistent MariaDB dumps. Obvious caches, downloads, container storage and package-manager caches are excluded.
 
@@ -18,7 +20,7 @@ Retention is:
 
 The repository is checked monthly with `restic check`.
 
-## Keep backup credentials out of Nix
+## keep backup credentials out of Nix
 
 The configuration deliberately does not put repository credentials or passwords in the Nix store. Create them locally on Vesper.
 
@@ -60,7 +62,7 @@ sudo chmod 0600 /etc/vesper/restic.env
 sudo chown root:root /etc/vesper/restic.env
 ```
 
-## Initialize once
+## initialize once
 
 After the destination exists:
 
@@ -93,7 +95,7 @@ The daily and monthly timers are already declarative:
 systemctl list-timers 'vesper-backup*'
 ```
 
-## Restore test
+## restore test
 
 A backup is not trusted until a restore has been tested. Periodically restore a small directory into a scratch path:
 
@@ -109,8 +111,18 @@ sudo bash -c '
 
 Confirm a few real files open correctly, then delete the scratch restore.
 
-## Secrets
+## secrets
 
 The Restic repository is encrypted, but a repository containing a full home directory can still contain SSH keys, browser profiles, app credentials and other sensitive state. Protect the Restic password as seriously as the laptop itself.
 
-Vesper already ships `age` and `sops` CLI tools. A declarative sops-nix/agenix layer should only be added once there is an actual secret that needs to be consumed by a NixOS service; adding a secret framework with no secrets would just add another abstraction.
+Vesper already has `sops-nix` for declarative Home Manager/user-service secrets, but Restic intentionally does not consume those secrets today.
+The backup service is system-owned and its credentials remain in root-owned machine-local files:
+
+```text
+/etc/vesper/restic.env
+/root/.config/restic/vesper-pass
+```
+
+Do not move these credentials into sops-nix merely for consistency. Change the secret mechanism only if the backup service ownership and consumption path are intentionally redesigned together.
+
+See `SECRETS.md` for the repository-wide secret ownership split.
