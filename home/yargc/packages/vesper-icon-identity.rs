@@ -1,0 +1,507 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::thread;
+use std::time::Duration;
+
+#[derive(Clone, Debug)]
+struct App {
+    id: String,
+    icon_key: String,
+    startup_wm_class: String,
+    exec: String,
+    flatpak_id: String,
+}
+
+#[derive(Clone, Debug)]
+struct Mapping {
+    desktop_id: String,
+    theme_icon: String,
+    evidence: String,
+}
+
+fn home() -> PathBuf {
+    env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/nonexistent"))
+}
+
+fn state_root() -> PathBuf {
+    env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/state"))
+        .join("vesper/adaptive-icons")
+}
+
+fn data_home() -> PathBuf {
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/share"))
+}
+
+fn inventory_path() -> PathBuf {
+    state_root().join("inventory.tsv")
+}
+
+fn identity_path() -> PathBuf {
+    state_root().join("identity.json")
+}
+
+fn json_escape(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 16);
+    for ch in value.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+fn write_atomic(path: &Path, data: impl AsRef<[u8]>) -> Result<(), String> {
+    let parent = path.parent().ok_or_else(|| "invalid identity path".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let tmp = parent.join(format!(".identity.{}.tmp", std::process::id()));
+    fs::write(&tmp, data).map_err(|error| error.to_string())?;
+    fs::rename(&tmp, path).map_err(|error| error.to_string())
+}
+
+fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
+}
+
+fn data_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    push_unique(&mut dirs, data_home());
+    for path in env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string())
+        .split(':')
+        .filter(|value| !value.is_empty())
+    {
+        push_unique(&mut dirs, PathBuf::from(path));
+    }
+    if let Ok(profiles) = env::var("NIX_PROFILES") {
+        for profile in profiles.split_whitespace() {
+            push_unique(&mut dirs, PathBuf::from(profile).join("share"));
+        }
+    }
+    for path in [
+        home().join(".nix-profile/share"),
+        home().join(".local/share/flatpak/exports/share"),
+        PathBuf::from("/var/lib/flatpak/exports/share"),
+        PathBuf::from("/run/current-system/sw/share"),
+    ] {
+        if path.exists() {
+            push_unique(&mut dirs, path);
+        }
+    }
+    if let Ok(user) = env::var("USER") {
+        let path = PathBuf::from("/etc/profiles/per-user").join(user).join("share");
+        if path.exists() {
+            push_unique(&mut dirs, path);
+        }
+    }
+    dirs
+}
+
+fn collect_desktop_files(root: &Path, current: &Path, out: &mut Vec<(String, PathBuf)>) {
+    let Ok(entries) = fs::read_dir(current) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_desktop_files(root, &path, out);
+        } else if path.extension().and_then(|value| value.to_str()) == Some("desktop") {
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            let id = relative
+                .to_string_lossy()
+                .replace(std::path::MAIN_SEPARATOR, "-");
+            out.push((id, path));
+        }
+    }
+}
+
+fn effective_desktops() -> BTreeMap<String, PathBuf> {
+    let mut files = BTreeMap::new();
+    for dir in data_dirs() {
+        let root = dir.join("applications");
+        if !root.is_dir() {
+            continue;
+        }
+        let mut found = Vec::new();
+        collect_desktop_files(&root, &root, &mut found);
+        found.sort_by(|a, b| a.0.cmp(&b.0));
+        for (id, path) in found {
+            files.entry(id).or_insert(path);
+        }
+    }
+    files
+}
+
+fn inventory_icons() -> BTreeMap<String, String> {
+    let mut icons = BTreeMap::new();
+    let content = fs::read_to_string(inventory_path()).unwrap_or_default();
+    for line in content.lines() {
+        let parts = line.split('\t').collect::<Vec<_>>();
+        if parts.len() < 9 || parts[7] == "1" {
+            continue;
+        }
+        icons.insert(parts[0].to_string(), parts[1].to_string());
+    }
+    icons
+}
+
+fn parse_desktop(id: String, path: &Path, icon_key: String) -> Option<App> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut section = false;
+    let mut kind = String::new();
+    let mut hidden = false;
+    let mut no_display = false;
+    let mut startup = String::new();
+    let mut exec = String::new();
+    let mut flatpak = String::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line == "[Desktop Entry]";
+            continue;
+        }
+        if !section || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        match key.trim() {
+            "Type" => kind = value.to_string(),
+            "Hidden" => hidden = value.eq_ignore_ascii_case("true"),
+            "NoDisplay" => no_display = value.eq_ignore_ascii_case("true"),
+            "StartupWMClass" => startup = value.to_string(),
+            "Exec" => exec = value.to_string(),
+            "X-Flatpak" => flatpak = value.to_string(),
+            _ => {}
+        }
+    }
+    if kind != "Application" || hidden || no_display {
+        return None;
+    }
+    Some(App {
+        id,
+        icon_key,
+        startup_wm_class: startup,
+        exec,
+        flatpak_id: flatpak,
+    })
+}
+
+fn theme_icon(icon_key: &str, id: &str) -> String {
+    let path = Path::new(icon_key);
+    if !path.is_absolute() && !icon_key.contains('/') {
+        if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+            if !stem.is_empty() {
+                return stem.to_string();
+            }
+        }
+    }
+    id.strip_suffix(".desktop").unwrap_or(id).to_string()
+}
+
+fn clean_token(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_end_matches(';')
+        .to_string()
+}
+
+fn is_field_code(value: &str) -> bool {
+    let value = value.trim();
+    value.len() == 2 && value.starts_with('%')
+}
+
+fn generic_runtime(value: &str) -> bool {
+    matches!(
+        value.to_ascii_lowercase().as_str(),
+        "env"
+            | "electron"
+            | "electron-wayland"
+            | "wine"
+            | "wine64"
+            | "steam"
+            | "flatpak"
+            | "sh"
+            | "bash"
+            | "zsh"
+    )
+}
+
+fn basename(value: &str) -> String {
+    Path::new(value)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(value)
+        .to_string()
+}
+
+fn extract_flag(tokens: &[String], name: &str) -> Option<String> {
+    let prefix = format!("{name}=");
+    for (index, token) in tokens.iter().enumerate() {
+        if let Some(value) = token.strip_prefix(&prefix) {
+            let value = clean_token(value);
+            if !value.is_empty() {
+                return Some(value);
+            }
+        }
+        if token == name {
+            if let Some(value) = tokens.get(index + 1) {
+                let value = clean_token(value);
+                if !value.is_empty() && !value.starts_with('-') {
+                    return Some(value);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn steam_id(exec: &str, tokens: &[String]) -> Option<String> {
+    if let Some(index) = exec.find("steam://rungameid/") {
+        let rest = &exec[index + "steam://rungameid/".len()..];
+        let digits = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect::<String>();
+        if !digits.is_empty() {
+            return Some(digits);
+        }
+    }
+    for (index, token) in tokens.iter().enumerate() {
+        if token == "-applaunch" {
+            if let Some(value) = tokens.get(index + 1) {
+                let digits = value.chars().take_while(|ch| ch.is_ascii_digit()).collect::<String>();
+                if !digits.is_empty() {
+                    return Some(digits);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn flatpak_from_exec(tokens: &[String]) -> Option<String> {
+    let run = tokens.iter().position(|value| basename(value) == "flatpak")?;
+    let run_kw = tokens.iter().skip(run + 1).position(|value| value == "run")? + run + 1;
+    for token in tokens.iter().skip(run_kw + 1) {
+        let token = clean_token(token);
+        if token.starts_with('-') || token.is_empty() || is_field_code(&token) {
+            continue;
+        }
+        return Some(token);
+    }
+    None
+}
+
+fn add_alias(
+    aliases: &mut BTreeMap<String, Mapping>,
+    conflicts: &mut BTreeSet<String>,
+    alias: &str,
+    mapping: &Mapping,
+) {
+    let alias = alias.trim();
+    if alias.is_empty() || conflicts.contains(alias) {
+        return;
+    }
+    if let Some(existing) = aliases.get(alias) {
+        if existing.desktop_id != mapping.desktop_id {
+            aliases.remove(alias);
+            conflicts.insert(alias.to_string());
+        }
+        return;
+    }
+    aliases.insert(alias.to_string(), mapping.clone());
+}
+
+fn add_alias_with_normalized(
+    aliases: &mut BTreeMap<String, Mapping>,
+    conflicts: &mut BTreeSet<String>,
+    alias: &str,
+    mapping: &Mapping,
+) {
+    add_alias(aliases, conflicts, alias, mapping);
+    let lower = alias.to_ascii_lowercase();
+    if lower != alias {
+        add_alias(aliases, conflicts, &lower, mapping);
+    }
+}
+
+fn build_identity() -> BTreeMap<String, Mapping> {
+    let icons = inventory_icons();
+    let desktops = effective_desktops();
+    let mut aliases = BTreeMap::new();
+    let mut conflicts = BTreeSet::new();
+
+    for (id, icon_key) in icons {
+        let Some(path) = desktops.get(&id) else {
+            continue;
+        };
+        let Some(app) = parse_desktop(id.clone(), path, icon_key) else {
+            continue;
+        };
+        let icon = theme_icon(&app.icon_key, &app.id);
+        let base = Mapping {
+            desktop_id: app.id.clone(),
+            theme_icon: icon,
+            evidence: "desktop-id".to_string(),
+        };
+        add_alias_with_normalized(&mut aliases, &mut conflicts, &app.id, &base);
+        if let Some(stripped) = app.id.strip_suffix(".desktop") {
+            add_alias_with_normalized(&mut aliases, &mut conflicts, stripped, &base);
+        }
+
+        if !app.startup_wm_class.is_empty() {
+            let mut mapping = base.clone();
+            mapping.evidence = "StartupWMClass".to_string();
+            add_alias_with_normalized(
+                &mut aliases,
+                &mut conflicts,
+                &app.startup_wm_class,
+                &mapping,
+            );
+        }
+
+        let tokens = app
+            .exec
+            .split_whitespace()
+            .map(clean_token)
+            .filter(|value| !value.is_empty() && !is_field_code(value))
+            .collect::<Vec<_>>();
+
+        if let Some(value) = extract_flag(&tokens, "--class").or_else(|| extract_flag(&tokens, "--name")) {
+            let mut mapping = base.clone();
+            mapping.evidence = "exec-explicit-class".to_string();
+            add_alias_with_normalized(&mut aliases, &mut conflicts, &value, &mapping);
+        }
+        if let Some(value) = extract_flag(&tokens, "--app-id") {
+            let mut mapping = base.clone();
+            mapping.evidence = "pwa-app-id".to_string();
+            add_alias_with_normalized(&mut aliases, &mut conflicts, &value, &mapping);
+        }
+
+        if let Some(app_id) = steam_id(&app.exec, &tokens) {
+            let mut mapping = base.clone();
+            mapping.evidence = "steam-app-id".to_string();
+            add_alias(&mut aliases, &mut conflicts, &format!("steam:{app_id}"), &mapping);
+            add_alias(&mut aliases, &mut conflicts, &format!("steam_app_{app_id}"), &mapping);
+        }
+
+        let flatpak = if !app.flatpak_id.is_empty() {
+            Some(app.flatpak_id.clone())
+        } else {
+            flatpak_from_exec(&tokens)
+        };
+        if let Some(flatpak) = flatpak {
+            let mut mapping = base.clone();
+            mapping.evidence = "flatpak-app-id".to_string();
+            add_alias_with_normalized(&mut aliases, &mut conflicts, &flatpak, &mapping);
+        }
+
+        let mut command = None;
+        for token in &tokens {
+            if token.contains('=') && !token.starts_with('/') {
+                continue;
+            }
+            let name = basename(token);
+            if generic_runtime(&name) || name.starts_with('-') {
+                continue;
+            }
+            command = Some(name);
+            break;
+        }
+        if let Some(command) = command {
+            let mut mapping = base.clone();
+            mapping.evidence = "exact-executable".to_string();
+            add_alias_with_normalized(&mut aliases, &mut conflicts, &command, &mapping);
+        }
+    }
+
+    aliases
+}
+
+fn sync() -> Result<(), String> {
+    let aliases = build_identity();
+    let rows = aliases
+        .iter()
+        .map(|(alias, mapping)| {
+            format!(
+                "\"{}\":{{\"desktopId\":\"{}\",\"themeIcon\":\"{}\",\"evidence\":\"{}\"}}",
+                json_escape(alias),
+                json_escape(&mapping.desktop_id),
+                json_escape(&mapping.theme_icon),
+                json_escape(&mapping.evidence),
+            )
+        })
+        .collect::<Vec<_>>();
+    let body = format!(
+        "{{\"schemaVersion\":1,\"aliases\":{{{}}}}}\n",
+        rows.join(",")
+    );
+    write_atomic(&identity_path(), body)
+}
+
+fn resolve(value: &str) -> Result<(), String> {
+    let aliases = build_identity();
+    let direct = aliases.get(value).or_else(|| aliases.get(&value.to_ascii_lowercase()));
+    if let Some(mapping) = direct {
+        println!(
+            "{{\"resolved\":true,\"desktopId\":\"{}\",\"themeIcon\":\"{}\",\"evidence\":\"{}\"}}",
+            json_escape(&mapping.desktop_id),
+            json_escape(&mapping.theme_icon),
+            json_escape(&mapping.evidence),
+        );
+    } else {
+        println!("{{\"resolved\":false}}");
+    }
+    Ok(())
+}
+
+fn daemon() -> Result<(), String> {
+    loop {
+        if let Err(error) = sync() {
+            eprintln!("adaptive icon identity sync failed: {error}");
+        }
+        thread::sleep(Duration::from_secs(10));
+    }
+}
+
+fn usage() -> ! {
+    eprintln!(
+        "vesper-icon-identity\n\
+         commands:\n\
+           sync\n\
+           resolve <runtime-id>\n\
+           daemon"
+    );
+    std::process::exit(2);
+}
+
+fn main() {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    let result = match args.as_slice() {
+        [command] if command == "sync" => sync(),
+        [command, value] if command == "resolve" => resolve(value),
+        [command] if command == "daemon" => daemon(),
+        _ => usage(),
+    };
+    if let Err(error) = result {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
