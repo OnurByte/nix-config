@@ -31,6 +31,7 @@ let
     nativeBuildInputs = [ gnupatch ];
     postPatch = ''
       patch vesper-icons.rs < ${./vesper-icons-source-guard.patch}
+      patch vesper-icons.rs < ${./vesper-icons-material-axis.patch}
     '';
     doCheck = false;
   };
