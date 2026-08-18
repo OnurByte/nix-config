@@ -112,14 +112,16 @@ updatedAt
 source
 ```
 
-Health may use the most constrained reliable window:
+Health classification follows `AI-ANALYTICS.md`:
 
-- `critical` — provider error/critical state or <= 10% remaining
-- `warning` — <= 25% remaining
-- `healthy` — reliable data above warning threshold
-- `unknown` — no trustworthy quota information
+- `critical` — provider critical/error state or <= 10% reliable remaining
+- `warning` — provider warning state or <= 25% reliable remaining
+- `ok` — reliable status/quota evidence is healthy
+- `unknown` — no trustworthy health/quota evidence
 
-`unknown` is not `healthy`.
+`unknown` is not `ok`.
+
+Provider health and quota pressure are separate facts. The Hub must keep `overallHealth` separate from `mostConstrainedQuota` rather than making an unrelated quota provider appear to own another provider's failure.
 
 If refresh fails:
 
