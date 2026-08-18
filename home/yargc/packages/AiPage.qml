@@ -13,7 +13,7 @@ PageBase {
 
     property var control: ({ credentials: [], skills: { count: 0, items: [] }, mcp: { count: 0, items: [] }, hermesRegistry: false })
     property var hub: ({ summary: {}, agents: {}, hermes: {}, providers: [], stale: true })
-    property var icons: ({ enabled: false, mode: "original", provider: "openai", providerConfigured: false, followPalette: true, discovered: 0, canonical: 0, pending: 0, failed: 0, excluded: 0, active: 0, aiTransport: "pending" })
+    property var icons: ({ enabled: false, automatic: true, remoteConsent: false, provider: "openai", model: "gpt-5.6", providerConfigured: false, discovered: 0, canonical: 0, pending: 0, running: 0, retry: 0, failed: 0, blocked: 0, active: 0, queuePaused: false, progress: "" })
     property string loadError: ""
     property string iconMessage: ""
 
@@ -49,7 +49,7 @@ PageBase {
     Component.onCompleted: refresh()
 
     Timer {
-        interval: 30000
+        interval: 15000
         repeat: true
         running: root.visible
         onTriggered: root.refresh()
@@ -78,7 +78,7 @@ PageBase {
                 try {
                     root.hub = JSON.parse(text);
                 } catch (e) {
-                    // The settings inventory remains useful even if the usage backend is stale.
+                    // Credential and icon controls remain available if usage telemetry is stale.
                 }
             }
         }
@@ -165,59 +165,86 @@ PageBase {
         }
 
         ToggleRow {
-            text: qsTr("Automatic adaptive icons")
-            subtext: qsTr("clean local SVGs are canonicalized automatically; raster AI conversion is not active yet")
+            text: qsTr("Use adaptive icons")
+            subtext: qsTr("serve accepted Vesper icons with packaged icons as fallback")
             checked: root.icons.enabled || false
             disabled: iconChange.running
             onToggled: root.runIcon([checked ? "enable" : "disable"])
         }
 
+        ToggleRow {
+            text: qsTr("Automatic canonicalization")
+            subtext: qsTr("discover changed app icons and process the persistent conversion queue")
+            checked: root.icons.automatic ?? true
+            disabled: iconChange.running
+            onToggled: root.runIcon(["automatic", checked ? "on" : "off"])
+        }
+
+        ToggleRow {
+            text: qsTr("Allow remote icon analysis")
+            subtext: qsTr("send eligible app icon artwork to the selected AI provider for semantic decomposition")
+            checked: root.icons.remoteConsent || false
+            disabled: iconChange.running
+            onToggled: root.runIcon(["consent", checked ? "on" : "off"])
+        }
+
         InfoRow {
             icon: "smart_toy"
             label: qsTr("Conversion provider")
-            subtext: root.icons.providerConfigured ? qsTr("existing Secret Service credential available") : qsTr("API key is not configured")
+            subtext: root.icons.providerConfigured ? qsTr("reuses the existing Secret Service credential") : qsTr("API key is not configured")
             value: root.providerName(root.icons.provider || "openai")
         }
 
         InfoRow {
-            icon: "apps"
-            label: qsTr("Discovered apps")
-            subtext: qsTr("resolved from effective XDG desktop entries")
-            value: String(root.icons.discovered || 0)
+            icon: "neurology"
+            label: qsTr("Conversion model")
+            subtext: qsTr("image input + strict structured output")
+            value: root.icons.model || qsTr("Auto")
         }
 
         InfoRow {
-            icon: "verified"
-            label: qsTr("Canonical icons")
-            subtext: qsTr("locally validated vector assets")
-            value: String(root.icons.canonical || 0)
+            icon: "apps"
+            label: qsTr("Conversion progress")
+            subtext: qsTr("%1 discovered · %2 active").arg(root.icons.discovered || 0).arg(root.icons.active || 0)
+            value: root.icons.progress || qsTr("0 / 0 canonicalized")
         }
 
         InfoRow {
             icon: "hourglass_top"
-            label: qsTr("Pending conversion")
-            subtext: root.icons.aiTransport === "pending" ? qsTr("raster/provider transport is the next engine stage") : qsTr("waiting for semantic conversion")
-            value: String(root.icons.pending || 0)
+            label: qsTr("Queue")
+            subtext: qsTr("%1 running · %2 retry · %3 blocked").arg(root.icons.running || 0).arg(root.icons.retry || 0).arg(root.icons.blocked || 0)
+            value: qsTr("%1 pending").arg(root.icons.pending || 0)
         }
 
         InfoRow {
             icon: "error"
             label: qsTr("Failed")
-            subtext: qsTr("original packaged icons remain as fallback")
+            subtext: qsTr("last-known-good or packaged icons stay active")
             value: String(root.icons.failed || 0)
         }
 
-        InfoRow {
-            icon: "palette"
-            label: qsTr("Active Vesper icons")
-            subtext: qsTr("compiled into the generated freedesktop theme")
-            value: String(root.icons.active || 0)
+        RowButton {
+            icon: root.icons.queuePaused ? "play_arrow" : "pause"
+            text: root.icons.queuePaused ? qsTr("Resume conversion queue") : qsTr("Pause conversion queue")
+            subtext: qsTr("local appearance switching and existing icons are unaffected")
+            trailingIcon: root.icons.queuePaused ? "play_arrow" : "pause"
+            disabled: iconChange.running
+            onClicked: root.runIcon(["queue", root.icons.queuePaused ? "resume" : "pause"])
+        }
+
+        RowButton {
+            icon: "restart_alt"
+            text: qsTr("Retry failed icons")
+            subtext: qsTr("reset failed conversion jobs without discarding accepted canonical packages")
+            trailingIcon: "refresh"
+            disabled: iconChange.running
+            onClicked: root.runIcon(["retry-failed"])
         }
 
         RowButton {
             icon: "sync"
             text: qsTr("Reconcile icon inventory")
-            subtext: qsTr("rescan desktop entries, validate sources and rebuild the local theme")
+            subtext: qsTr("rescan XDG apps, sources and exact runtime identities")
             trailingIcon: "refresh"
             disabled: iconChange.running
             onClicked: root.runIcon(["reconcile"])
@@ -225,8 +252,8 @@ PageBase {
 
         RowButton {
             icon: "restart_alt"
-            text: qsTr("Rebuild canonical assets")
-            subtext: qsTr("discard the local canonical cache and validate installed sources again")
+            text: qsTr("Regenerate canonical library")
+            subtext: qsTr("discard accepted .vicon packages and enqueue eligible sources again")
             trailingIcon: "refresh"
             disabled: iconChange.running
             onClicked: root.runIcon(["rebuild-canonical"])
