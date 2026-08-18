@@ -17,10 +17,6 @@ in
   home.packages = [
     inputs.codexbar.packages.${pkgs.system}.default
 
-    # Focused cloud/provider agent workflow. Browser control comes from the
-    # Helium and Zen MCP servers in dev.nix rather than another browser layer.
-    agents.bb-app
-
     # Official xAI Grok Build package from nixpkgs.
     pkgs.grok-build
 
@@ -37,16 +33,4 @@ in
     # downloadable extensions and language-server binaries usable on NixOS.
     pkgs.zed-editor.fhs
   ];
-
-  # Use store-qualified commands so desktop launch does not depend on whatever
-  # PATH a display manager happened to inherit.
-  xdg.desktopEntries.bb = {
-    name = "bb";
-    genericName = "Agent IDE";
-    comment = "Control plane for Codex, Claude Code, OpenCode and Hermes";
-    exec = "${agents.bb-app}/bin/bb-app";
-    icon = "applications-development";
-    terminal = false;
-    categories = [ "Development" "Utility" ];
-  };
 }
