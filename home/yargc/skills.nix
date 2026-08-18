@@ -19,6 +19,7 @@ let
     xlsx = "${anthropicSkills.outPath}/skills/xlsx";
     pptx = "${anthropicSkills.outPath}/skills/pptx";
 
+    agent-orchestration = ./skills/agent-orchestration;
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
     vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
@@ -31,6 +32,12 @@ let
     ".codex/skills"
     ".claude/skills"
     ".config/opencode/skills"
+  ];
+
+  # Qwen Code requires skill metadata in SKILL.md. Expose only reviewed skills
+  # that satisfy that contract instead of linking the whole mixed-format tree.
+  qwenSkillNames = [
+    "agent-orchestration"
   ];
 
   # Hermes keeps its own bundled/agent-created skill tree. Expose only Vesper's
@@ -62,6 +69,13 @@ let
     )
   );
 
+  qwenLinks = builtins.listToAttrs (
+    map (skill: {
+      name = ".qwen/skills/${skill}";
+      value.source = config.lib.file.mkOutOfStoreSymlink "${config.home.homeDirectory}/${canonicalRoot}/${skill}";
+    }) qwenSkillNames
+  );
+
   hermesLinks = builtins.listToAttrs (
     map (skill: {
       name = ".hermes/skills/vesper/${skill}";
@@ -70,7 +84,7 @@ let
   );
 in
 {
-  home.file = canonicalLinks // agentLinks // hermesLinks // {
+  home.file = canonicalLinks // agentLinks // qwenLinks // hermesLinks // {
     # Cron sessions are isolated and do not receive built-in Hermes memory by
     # default, so lane state must remain durable outside the agent session.
     ".local/state/vesper/research/.keep".text = "";
