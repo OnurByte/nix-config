@@ -115,10 +115,10 @@ fn task_extra(task: &str) -> String {
         ),
         "project-archaeologist" => "Inspect only bounded local roots such as ~/Documents, ~/Projects, ~/Code and ~/src. Use Git status/log/branches directly; ignore node_modules, target, vendor, .cache, .direnv and virtual environments.".to_string(),
         "ai-usage-economist" => format!(
-            "Local accounting snapshots (commands may be unavailable):\nccusage:\n{}\nCodexBar:\n{}\nTurnLens help:\n{}",
-            output_allow_failure("ccusage", &["--json"]),
-            output_allow_failure("codexbar-status", &[]),
-            output_allow_failure("turnlens", &["--help"])
+            "Local accounting snapshots (commands may be unavailable):\nccusage (last 7 days, by agent):\n{}\nCodexBar live dashboard:\n{}\nTurnLens report (last 7 days):\n{}",
+            output_allow_failure("ccusage", &["daily", "--last", "7", "--by-agent", "--json"]),
+            output_allow_failure("codexbar", &["dashboard", "--identity", "redacted"]),
+            output_allow_failure("turnlens", &["report", "--last", "7d", "--json"])
         ),
         _ => String::new(),
     }
