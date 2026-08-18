@@ -40,6 +40,21 @@ fn sync_vicons() -> Result<(), String> {
     }
 }
 
+fn sync_identity() -> Result<(), String> {
+    let status = Command::new("vesper-icon-identity")
+        .arg("sync")
+        .status()
+        .map_err(|error| format!("failed to run vesper-icon-identity: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "vesper-icon-identity sync exited with {}",
+            status.code().unwrap_or(-1)
+        ))
+    }
+}
+
 fn retry_queue_app(id: &str) {
     let _ = Command::new("vesper-icon-queue")
         .args(["retry-app", id])
@@ -76,13 +91,20 @@ fn daemon() -> Result<(), String> {
             return Err(format!("failed to start icon worker: {error}"));
         }
     };
+    let mut identity = match Command::new("vesper-icon-identity").arg("daemon").spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            stop_all(&mut [&mut engine, &mut queue, &mut worker]);
+            return Err(format!("failed to start icon identity resolver: {error}"));
+        }
+    };
 
     loop {
         if let Some(status) = engine
             .try_wait()
             .map_err(|error| format!("failed to poll icon engine: {error}"))?
         {
-            stop_all(&mut [&mut queue, &mut worker]);
+            stop_all(&mut [&mut queue, &mut worker, &mut identity]);
             return Err(format!(
                 "icon engine exited with {}",
                 status.code().unwrap_or(-1)
@@ -92,7 +114,7 @@ fn daemon() -> Result<(), String> {
             .try_wait()
             .map_err(|error| format!("failed to poll icon queue: {error}"))?
         {
-            stop_all(&mut [&mut engine, &mut worker]);
+            stop_all(&mut [&mut engine, &mut worker, &mut identity]);
             return Err(format!(
                 "icon queue exited with {}",
                 status.code().unwrap_or(-1)
@@ -102,9 +124,19 @@ fn daemon() -> Result<(), String> {
             .try_wait()
             .map_err(|error| format!("failed to poll icon worker: {error}"))?
         {
-            stop_all(&mut [&mut engine, &mut queue]);
+            stop_all(&mut [&mut engine, &mut queue, &mut identity]);
             return Err(format!(
                 "icon worker exited with {}",
+                status.code().unwrap_or(-1)
+            ));
+        }
+        if let Some(status) = identity
+            .try_wait()
+            .map_err(|error| format!("failed to poll icon identity resolver: {error}"))?
+        {
+            stop_all(&mut [&mut engine, &mut queue, &mut worker]);
+            return Err(format!(
+                "icon identity resolver exited with {}",
                 status.code().unwrap_or(-1)
             ));
         }
@@ -140,23 +172,29 @@ fn main() {
     if matches!(args.as_slice(), [command] if command == "queue-resume") {
         passthrough("vesper-icon-queue", &["resume".to_string()]);
     }
-    if let [command, id] = args.as_slice() {
+    if let [command, value] = args.as_slice() {
         if command == "queue-app-status" {
             passthrough(
                 "vesper-icon-queue",
-                &["app-status".to_string(), id.to_string()],
+                &["app-status".to_string(), value.to_string()],
+            );
+        }
+        if command == "identity-resolve" {
+            passthrough(
+                "vesper-icon-identity",
+                &["resolve".to_string(), value.to_string()],
             );
         }
         if command == "export-app" {
             passthrough(
                 "vesper-icon-worker",
-                &["export-app".to_string(), id.to_string()],
+                &["export-app".to_string(), value.to_string()],
             );
         }
         if command == "export-all" {
             passthrough(
                 "vesper-icon-worker",
-                &["export-all".to_string(), id.to_string()],
+                &["export-all".to_string(), value.to_string()],
             );
         }
     }
@@ -193,6 +231,9 @@ fn main() {
             eprintln!("warning: {error}");
         }
         if let Err(error) = sync_vicons() {
+            eprintln!("warning: {error}");
+        }
+        if let Err(error) = sync_identity() {
             eprintln!("warning: {error}");
         }
     }
