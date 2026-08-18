@@ -99,9 +99,6 @@ in
     # Start Hermes agent
     hermes
 
-    # Start the bb multi-agent control plane
-    bb-app
-
     % vesper, nixos
 
     # Test the configured Vesper NixOS generation
