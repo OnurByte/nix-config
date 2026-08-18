@@ -1299,3 +1299,426 @@ The feature is complete only when all of these are true:
 52. exported files can never become future source inputs;
 53. disabling adaptive icons returns immediately to the configured fallback/original icon theme;
 54. no first-party Python service or script is introduced for the feature.
+
+## final Linux implementation contract
+
+This section completes the implementation design for Linux. It is normative. If an earlier example in this document is narrower than this section, follow this section. Do not create another icon design document for these decisions.
+
+### build and dependency boundary
+
+The current prototype `vesper-icon-engine` is a single Rust source compiled directly with `rustc`. That is acceptable scaffolding but not the final dependency boundary for this feature.
+
+Move the adaptive-icon engine into one small first-party Cargo crate once external Rust libraries are introduced. Build it declaratively with Nix using `rustPlatform.buildRustPackage` or an equivalent pinned Cargo/Nix path. Commit `Cargo.lock`. Do not run Cargo dynamically at user runtime and do not use unpinned Git dependencies.
+
+Keep the executable narrow. One crate can contain modules for discovery, identity, parsing, rendering, queueing and provider work; do not split the feature into a forest of tiny daemons or scripts.
+
+Preferred implementation stack, unless a clearly better compatible alternative is justified during coding:
+
+- `freedesktop-desktop-entry` for spec-aware Desktop Entry parsing, effective default paths/locales and path provenance;
+- `usvg` + `resvg` for static SVG parsing, normalization and reproducible safe preview/static rendering;
+- `image` for bounded raster decoding, resizing, alpha analysis and PNG output, with `default-features = false` and only the formats Vesper actually needs enabled;
+- `vtracer` only as an optional local raster-to-vector candidate generator, never as identity authority or automatic final canonical artwork;
+- `notify` plus an appropriate debouncer for Linux inotify-backed application/icon directory watching;
+- `serde`/`serde_json` for versioned `.vicon`, queue status and manifest schemas;
+- `rusqlite` with a Nix-provided SQLite path for the small durable state/queue database, unless an equally small transactional embedded store is proven cleaner;
+- one Rust HTTP client/provider abstraction for remote AI work rather than shelling out through ad-hoc `curl` commands.
+
+Use third-party projects as implementation references, not code to copy blindly. In particular, do not add Python because Hardcode-Tray or Protontricks happen to be written in Python.
+
+Do not take a direct dependency on AGPL tooling such as `dssim` merely for perceptual validation without an explicit license decision. Its multiscale perceptual-comparison approach is useful as a research reference, but the normal Vesper dependency set should remain compatible with the repository's licensing. Prefer compatible libraries or small internal metrics for the required validation signals.
+
+### bounded input decoding
+
+Treat every installed icon as untrusted local input even before AI is involved.
+
+For raster input:
+
+- inspect dimensions before allocating the full decoded image when the format permits it;
+- enforce a versioned maximum pixel budget and byte budget to reject decompression bombs;
+- preserve alpha;
+- normalize accepted working data to sRGB/RGBA for the current renderer path;
+- enable only required raster decoders rather than the full `image` default feature set;
+- support PNG, JPEG, WebP, ICO and other formats actually encountered and covered by the chosen decoder;
+- handle legacy XPM through a small bounded Rust decoder or pinned compatible crate instead of handing arbitrary text to a shell pipeline;
+- reject unsupported/corrupt formats into the normal resolver/fallback path rather than crashing the worker.
+
+For SVG input, use the static SVG model supplied by `usvg`/`resvg` as the safe rendering baseline. Vesper's own sanitizer still owns external-resource policy, node/path limits, dimensions and canonical-content rules. A parser being memory-safe does not make an arbitrarily complex SVG acceptable.
+
+### explicit vector and raster canonical layers
+
+Vector remains preferred, but the final `.vicon` schema must not lie about artwork that cannot be safely reconstructed as vector.
+
+Each canonical artwork layer has an explicit asset kind equivalent to:
+
+```json
+{
+  "id": "primary-mark",
+  "assetType": "vector",
+  "asset": "primary-mark.svg"
+}
+```
+
+or:
+
+```json
+{
+  "id": "preserved-artwork",
+  "assetType": "raster",
+  "asset": "preserved-artwork.png",
+  "effects": "limited"
+}
+```
+
+Rules:
+
+- canonical raster layers are separate package assets, never base64 blobs hidden inside SVG;
+- use lossless PNG with alpha as the normal retained-raster canonical representation;
+- raster retention is allowed only when vector reconstruction would materially damage identity or source fidelity;
+- retained raster layers default to no or limited refraction/specular treatment;
+- the package still uses the shared 1024-square coordinate system and explicit bounds/alignment metadata;
+- AI may recommend retaining a raster layer, but local validation decides;
+- a future successful vector reconstruction can replace a retained raster layer without changing application identity.
+
+### property inheritance and overrides
+
+Make appearance and rendering overrides explicit instead of storing three unrelated copies of every property.
+
+Every background/group/layer may have a base property set with sparse overrides for `dark` and `mono`. Renderer-target and size-class overrides may exist for material/runtime behavior when required.
+
+Resolve properties deterministically in this order:
+
+```text
+base canonical property
+    ↓
+appearance override (default / dark / mono)
+    ↓
+renderer-target override (live / static) when allowed
+    ↓
+size-class material override
+    ↓
+explicit per-app user escape hatch, if any
+```
+
+Target and size-class overrides must normally change material/compositing behavior, not trademark geometry. Geometry may vary only for a validated small-size simplification or another explicit identity-safe exception.
+
+Do not duplicate a complete SVG merely because one fill, opacity or blend mode differs in Dark or Mono.
+
+### size-aware material recipes
+
+Material rendering is pixel-size aware. Do not take one 256px glass recipe and numerically shrink it to 16px.
+
+Renderer recipes must define bounded size classes. Exact thresholds live in the versioned renderer recipe, but the behavior should be equivalent to:
+
+```text
+tiny     → status-like / very small app presentation
+small    → launcher/task-switcher scale
+regular  → app grid / normal large icon
+large    → preview/export scale
+```
+
+As rendered size decreases:
+
+- reduce or disable refraction;
+- reduce blur radius/spread;
+- narrow or simplify specular response;
+- reduce shadow spread and depth separation;
+- increase contour/luminance clarity where necessary;
+- combine material surfaces locally when separate surfaces no longer survive the target size;
+- never change the recognizable silhouette merely to preserve an effect.
+
+For static freedesktop output, use size-specific fixed directories/assets where a single scalable SVG cannot preserve the required material behavior. Do not create unnecessary size variants when the scalable output is already equivalent.
+
+### renderer regression preview
+
+Developer/debug tooling should be able to render the same accepted `.vicon` through the current and previous renderer recipes side by side. This is local and never triggers AI.
+
+Use it to catch changes in optical footprint, contrast, specular strength, refraction and small-size behavior before changing the active renderer revision.
+
+Keep normal icon output in sRGB until Vesper has a verified end-to-end wide-gamut/HDR path through Qt, compositor and export consumers. HDR icon export is not a completion requirement for the Linux implementation.
+
+### deterministic identity matching
+
+Treat icon identity matching and application launching as separate concerns.
+
+Use a scored exact-match resolver with precedence equivalent to:
+
+1. exact desktop id;
+2. exact Flatpak/Snap/package app id when applicable;
+3. exact Wayland `app_id` / Electron desktop name / `StartupWMClass` relationship;
+4. exact X11 `WM_CLASS` relationship;
+5. safe case-folded exact match when the raw identifiers differ only by case;
+6. explicit persisted alias learned from trustworthy package/runtime metadata;
+7. exact executable mapping when unambiguous;
+8. otherwise unresolved.
+
+Never choose a launcher by alphabetic-first prefix match or broad fuzzy display-name match. An icon mapping heuristic must never become permission to execute an arbitrary similarly named `.desktop` file.
+
+Keep at least these identities separate in state:
+
+```text
+canonicalAppId
+launchDesktopId
+runtimeIds[]
+iconAliases[]
+```
+
+This prevents the class of failure where `thunar` accidentally resolves to `thunar-bulk-rename.desktop`, and it handles case mismatches such as an Electron Wayland `app_id` differing from its desktop filename without turning matching into uncontrolled fuzziness.
+
+### Caelestia identity integration
+
+Current Caelestia helpers may use `DesktopEntries.heuristicLookup()` for generic application icons. Adaptive icons must not rely on that heuristic as the authoritative Vesper mapping.
+
+Patch the smallest shared application-icon resolution point so Vesper-owned surfaces resolve:
+
+```text
+runtime/window identity
+    ↓
+Vesper canonical identity inventory
+    ↓
+active .vicon / live renderer asset
+    ↓ if unknown
+existing Caelestia/Quickshell heuristic fallback
+```
+
+Do not fork the entire launcher/dock stack merely to change icon lookup.
+
+The Vesper identity inventory is produced by Rust and consumed by QML. QML must not independently rediscover application identities with a second conflicting algorithm.
+
+### Steam local identity and icon recovery
+
+Steam identity resolution is local-first and does not require a Steam Web API.
+
+Implement the useful behavior demonstrated by mature Linux tooling such as Protontricks in Rust:
+
+- detect native Steam roots plus relevant Flatpak/Snap roots;
+- read local Steam library metadata and `libraryfolders.vdf` to discover multiple libraries;
+- parse `steamapps/appmanifest_<appid>.acf` for app id, name, install directory and update identity;
+- map Proton `compatdata/<appid>` using the same app id rather than treating the numeric directory as meaningless;
+- when the exported desktop icon is missing, inspect Steam's local `appcache/librarycache` icon locations as a local source-recovery candidate;
+- prefer an existing trustworthy exported desktop/package icon over lower-quality cache artwork;
+- do not fetch SteamGridDB or another remote logo service during normal canonicalization;
+- keep non-Steam shortcuts separate from real Steam app ids and only parse their local metadata when needed.
+
+A package install type must not collapse identities across native, Flatpak and Snap Steam roots.
+
+### Wine, Proton, Electron and PWA tests
+
+Add regression fixtures for the hard identity cases rather than handling them only with production heuristics.
+
+At minimum fixtures must cover:
+
+- multiple `.desktop` files sharing a prefix but launching different actions/apps;
+- Electron app-id case mismatch between Wayland and desktop filename;
+- generic `electron`, `wine` and `wine64` process names that must not become canonical app ids;
+- two PWAs installed from one browser;
+- Steam client plus multiple games;
+- the same executable name in two Wine prefixes;
+- a Flatpak application whose desktop id and process metadata use different forms.
+
+### absolute `Icon=` and hardcoded icon paths
+
+Freedesktop allows an `Icon=` value to be an absolute path. Such an entry bypasses normal icon-theme lookup, so a generated theme alone cannot override it.
+
+Do not edit the packaged desktop file. Use this escalation policy:
+
+1. Vesper-owned surfaces always use the canonical Vesper identity/icon regardless of the upstream absolute `Icon=`;
+2. if the effective upstream `.desktop` comes from a lower-precedence package/system/export path, Vesper may generate a synchronized user-level shadow entry under `$XDG_DATA_HOME/applications` with the same desktop id and the generated theme icon name;
+3. the shadow must be regenerated from the current upstream entry whenever the upstream fingerprint changes;
+4. preserve `Exec`, `DBusActivatable`, actions, MIME types, `TryExec`, visibility keys and all unrelated data byte-for-byte/semantically unchanged except necessary Vesper metadata and the main icon override;
+5. mark the shadow with private `X-Vesper-*` metadata so it is identifiable and removable;
+6. remove the shadow immediately when adaptive icons are disabled, the upstream app disappears or the source becomes normally themeable;
+7. never overwrite a user-authored entry already living in `$XDG_DATA_HOME/applications`;
+8. if `Exec` uses `%i`, do not automatically shadow the desktop entry because changing `Icon=` also changes `%i` expansion; keep the Vesper-surface override and report `freedesktop-override-unavailable` unless a separately validated compatibility rule exists.
+
+Generated shadow entries are Vesper-owned output and are part of the self-ingestion exclusion set.
+
+### generated freedesktop theme layout
+
+Publish a thin overlay theme, not a copy of Papirus or another complete theme.
+
+Each accepted generation contains only Vesper-generated application icons, aliases needed for exact application identities and its own `index.theme`. Set `Inherits` to the configured maintained fallback and allow normal `hicolor` fallback semantics.
+
+Generate into a versioned staging directory first. Validate the full changed generation, then publish it atomically. Retain the previous known-good generation for rollback and garbage-collect older generations conservatively.
+
+Where toolkit caching makes stable-path replacement unreliable, prefer a generation-specific active theme name such as `Vesper-Adaptive-g<generation>` and atomically update the configured GTK/Qt/Caelestia theme reference. A stable convenience symlink may exist for inspection, but must not be the only cache-invalidation strategy.
+
+If `gtk-update-icon-cache` or another compatible cache builder is available in the declarative runtime, build the cache after the generation is complete, never while files are still being written. Cache creation is an optimization, not canonical state.
+
+Do not signal or restart arbitrary applications merely to force an icon refresh. Reload Vesper-owned surfaces explicitly; external applications may pick up the new theme through normal toolkit settings/cache behavior.
+
+### filesystem watcher semantics
+
+Use inotify through the Rust watcher/debouncer layer, but treat events as invalidation hints rather than a complete database of truth.
+
+Watch relevant parent directories and profile/export roots so atomic rename/replace operations are observed. Debounce package-manager bursts and then reconcile the affected subtree or inventory.
+
+On watcher overflow, backend error, watched-directory replacement or uncertain rename sequences, schedule a bounded full rescan. The periodic recovery scan remains a correctness backstop.
+
+NixOS/Home Manager profile symlink changes must cause reconciliation even when the eventual icon bytes live under immutable Nix store paths.
+
+### transactional state and queue storage
+
+Use one small transactional state database under the documented Vesper XDG state root for inventory/identity/queue metadata. Canonical `.vicon` artwork and compiled generations remain normal files under the data root.
+
+The database should provide tables or equivalent records for:
+
+- applications and exact identity evidence;
+- source provenance/fingerprints;
+- canonical work keys and reference counts;
+- conversion jobs;
+- attempts/backoff/next-run time;
+- provider readiness blocking reason;
+- active/previous theme generation;
+- Vesper-generated shadow desktop entries.
+
+Queue insertion and state transitions must be transactions. Enforce a unique canonical work key so two discovery paths cannot race into two AI requests.
+
+Use a lease/heartbeat-or-equivalent field for running remote work. On startup, expired running leases return to a recoverable queue state rather than being considered successful or permanently stuck.
+
+A framework such as Apalis is a useful reference for durable job semantics, but Vesper does not need to adopt a general distributed-job framework for a single-user local icon worker. Prefer the smaller state model unless real requirements justify more machinery.
+
+### local vectorization role
+
+`vtracer` or an equivalent local vectorizer may produce candidate shapes for simple raster inputs. It is evidence for the canonicalizer, not the final decision maker.
+
+Pipeline:
+
+```text
+raster source
+    ↓
+bounded decode + alpha/core analysis
+    ↓
+optional local vector candidate
+    ↓
+vision model sees original + candidate when useful
+    ↓
+semantic reconciliation
+    ↓
+validated vector layers or explicit retained raster layer
+```
+
+Never replace a detailed recognizable logo with a poor trace merely because vector output exists.
+
+### perceptual and identity validation implementation
+
+Keep validation multi-signal. No single similarity score is authoritative.
+
+Use deterministic geometry signals already required by this spec plus compatible perceptual-image metrics where useful. Compare normalized source/reference renders and candidate renders at multiple sizes, but account for intentional background/enclosure/material differences before scoring.
+
+Validation should combine:
+
+- silhouette/alpha overlap;
+- edge/contour similarity;
+- optical centroid and occupied area;
+- color/luminance structure where the appearance preserves color;
+- small-size recognition;
+- AI semantic identity assessment;
+- neighboring-icon style consistency.
+
+A perceptual metric may reject an obvious drift but must not reject a valid layered reconstruction solely because glass/background pixels differ from the original flattened source.
+
+### Caelestia live renderer implementation
+
+Do not create another compositor, GTK renderer or desktop shell for live adaptive icons.
+
+Use the rendering primitives already present in the Caelestia/Qt Quick stack:
+
+- QML items/images for validated local vector/raster layers;
+- `QtQuick.Effects.MultiEffect` for masks, bounded shadows and blur where it is sufficient;
+- `ShaderEffectSource` for sampling lower icon groups and, where available, the existing Vesper/Caelestia backdrop;
+- small precompiled QSB `ShaderEffect` assets for selective refraction/specular behavior that `MultiEffect` cannot represent cleanly;
+- `Loader`/component activation so expensive live material work exists only for visible icons that actually need it.
+
+Rust must validate and normalize all assets before QML sees them. QML consumes only local safe asset URLs plus bounded schema values; it does not parse raw provider output or implement another sanitizer.
+
+Keep the live renderer bounded by the canonical one-to-four group limit. Reuse/cache group textures where practical. Do not create an unbounded offscreen texture chain per icon.
+
+### performance and GameMode degradation
+
+Live Liquid Glass must degrade gracefully under Linux GPU/load constraints.
+
+Follow the same performance philosophy already used by Caelestia for expensive backdrop blur:
+
+- honor `GameMode.enabled` by disabling live backdrop sampling/refraction and switching to a cheaper Standard or preflattened adaptive representation;
+- enable live effects only for visible delegates/items;
+- avoid continuous animation when nothing relevant changes;
+- cache material-independent geometry/textures;
+- use the size-aware material recipe to eliminate expensive effects that are visually meaningless at tiny sizes;
+- ensure disabling Glass never changes canonical identity or forces AI work.
+
+A performance fallback is a renderer state, not a degraded canonical icon.
+
+### tray implementation boundary
+
+Keep Caelestia's existing `Quickshell.Services.SystemTray` path as the owner of tray items. Do not replace StatusNotifier handling with the adaptive app-icon engine.
+
+When a maintained tray icon is supplied, keep using it. If an optional symbolic derivative is needed, route only the resolved tray icon through the small symbolic derivation path and preserve the existing item id/activation behavior. The app `.vicon` squircle is never the tray fallback.
+
+### application-icon scope boundary
+
+"Every icon" in this specification means every eligible **application identity/icon** exposed by launchers, app grids, task/dock/switcher surfaces and the generated application icon theme.
+
+It does not mean rewriting every toolbar/action/mimetype/file icon inside arbitrary applications. Applications such as LibreOffice can ship and select their own internal icon packs independently from the desktop application icon theme.
+
+Vesper may theme general symbolic UI icons through its existing GTK/Qt/Caelestia theme systems, but that is a separate feature and must not be coupled to `.vicon` AI canonicalization.
+
+### research references for Linux implementation
+
+Use these as concrete implementation references while keeping Vesper's architecture independent:
+
+- Pop!_OS `freedesktop-desktop-entry` for Rust Desktop Entry parsing and effective paths;
+- Linebender `usvg`/`resvg` for static safe SVG preprocessing and reproducible rendering;
+- `image-rs/image` for bounded common raster decoding/processing;
+- Vision Cortex `vtracer` for optional local raster vector candidates;
+- `notify-rs/notify` and its debouncers for inotify-backed change detection;
+- `rusqlite` for a small transactional local state database; Apalis only as a durable-job semantics reference;
+- current Caelestia shell code for `MultiEffect`, `ShaderEffectSource`, `SystemTray` and GameMode behavior;
+- Protontricks for local Steam library/appmanifest/compatdata/icon-discovery edge cases, reimplemented in Rust rather than copied;
+- nwg-dock-hyprland's wrong-desktop-file issue as a regression case against prefix/first-match identity resolution;
+- Electron's Wayland `app_id` versus X11/desktop-name mismatch reports as identity normalization fixtures;
+- Papirus as a reference for broad Linux icon-theme inheritance/alias coverage, not an asset source to copy;
+- Hardcode-Tray as evidence of real hardcoded icon paths, not as a dependency;
+- Reddit Linux/Linux-gaming reports only as operational evidence: Steam app ids and manifests are locally discoverable, and application-internal icon packs are distinct from the desktop app icon theme.
+
+Do not copy third-party icon artwork into the canonical library merely because a reference project contains it.
+
+## final acceptance additions
+
+The Linux implementation is not complete until these also hold:
+
+55. `vesper-icon-engine` has a pinned Cargo/Nix dependency boundary rather than accumulating external behavior around a direct single-file `rustc` build;
+56. runtime operation does not invoke Cargo, Python or an unpinned downloader;
+57. SVG parsing/rendering uses a bounded static pipeline and raster decoding enforces byte/pixel limits;
+58. canonical layers explicitly distinguish vector and retained-raster assets;
+59. retained raster assets are separate lossless package files and are never hidden as base64 inside SVG;
+60. property inheritance resolves base → appearance → renderer target → size class deterministically;
+61. Dark/Mono differences can override individual fill/opacity/blend/material properties without duplicating whole artwork unnecessarily;
+62. material recipes are size-aware and small icons automatically reduce blur/refraction/shadow/specular complexity;
+63. developer tooling can compare current and previous renderer recipes without AI;
+64. normal Linux output stays sRGB until a verified color-managed wide-gamut/HDR path exists;
+65. identity resolution prefers exact matches and never launches an alphabetic/prefix/fuzzy `.desktop` match;
+66. icon identity and launch desktop id are stored separately;
+67. Caelestia's generic heuristic lookup is only fallback after Vesper's canonical identity resolver for Vesper-owned application surfaces;
+68. Steam identity can be reconstructed locally across multiple native/Flatpak/Snap libraries using local VDF/ACF metadata without a web API;
+69. Steam cache artwork is only source-recovery fallback behind a better exported/package icon;
+70. regression fixtures cover multi-desktop-prefix, Electron case mismatch, Steam, Wine/Proton, PWA and Flatpak identity edge cases;
+71. an absolute upstream `Icon=` path cannot silently defeat Vesper-owned surfaces;
+72. a package/system absolute-Icon desktop may use a synchronized Vesper user shadow without modifying the package;
+73. Vesper never overwrites a user-authored `$XDG_DATA_HOME/applications` desktop file;
+74. desktop entries using `%i` are not automatically shadowed in a way that changes launch semantics;
+75. generated shadow desktop files disappear on disable/uninstall and can never become canonical source input;
+76. the generated freedesktop theme is a thin overlay with explicit inheritance rather than a copied full third-party theme;
+77. theme generations are staged, validated and switchable/rollback-safe with a cache-invalidation strategy that does not depend only on replacing files behind a stable path;
+78. filesystem watch events are treated as invalidation hints and watcher overflow/uncertain events trigger recovery reconciliation;
+79. Nix/Home Manager profile generation changes are detected even though underlying store assets are immutable;
+80. queue/inventory metadata uses transactional durable state with unique work keys and crash recovery for leased/running jobs;
+81. local vector tracing can never bypass semantic/identity validation;
+82. perceptual similarity is one validation signal rather than the sole acceptance rule;
+83. no incompatible-license validation dependency is introduced casually merely for a similarity score;
+84. Caelestia live adaptive icons use the existing Qt Quick effect/shader architecture rather than a second compositor or shell;
+85. raw AI output never reaches QML before Rust validation/sanitization;
+86. live effects are bounded to visible items and the one-to-four canonical group model;
+87. GameMode can disable expensive live icon glass without changing canonical assets or invoking AI;
+88. existing Quickshell SystemTray activation/id behavior remains authoritative for tray items;
+89. application-internal toolbar/action/mimetype icon packs are explicitly outside `.vicon` canonicalization scope;
+90. all Linux implementation references remain references only: no third-party theme artwork, Python helper or private remote-logo service becomes a hidden runtime dependency.
