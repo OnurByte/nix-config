@@ -28,6 +28,7 @@ Upstream skills:
 Vesper-local skills:
 
 - `agent-orchestration`
+- `external-review-handoff`
 - `vesper-maintainer`
 - `vesper-adaptive-icons`
 - `hermes-research-radar`
@@ -64,7 +65,8 @@ Local skill source files live under `home/yargc/skills/` in this repository.
 
 Use one skill for one procedural boundary.
 
-- `agent-orchestration` — supervisor/worker decomposition, model routing, isolated parallelism, fan-in and independent review across compatible agent runtimes
+- `agent-orchestration` — supervisor/worker/reviewer decomposition, policy-driven model routing, isolated parallelism, evidence gates and final fan-in
+- `external-review-handoff` — secret-safe static code snapshots for deep external review plus mandatory verification against the live repository before implementation
 - `vesper-maintainer` — repository/workstation maintenance rules
 - `vesper-adaptive-icons` — adaptive icon pipeline operations governed by `docs/ADAPTIVE-ICONS.md`
 - `hermes-research-radar` — scheduled research lanes and discovery behavior
@@ -72,9 +74,57 @@ Use one skill for one procedural boundary.
 
 Do not duplicate repository-wide rules from `AGENTS.md` into every skill. A local skill should add workflow-specific instructions and defer to `AGENTS.md` for global guardrails.
 
-`agent-orchestration` is intentionally model-agnostic. Codex, Claude Code or OpenCode may host the orchestration workflow, while Qwen-family, GLM, DeepSeek, Claude, Gemini, OpenAI or other configured models may fill supervisor, worker or reviewer roles when the active runtime/provider exposes model routing. The skill keeps one accountable supervisor, bounded concurrency, isolated writing work and final independent verification rather than hard-coding a vendor hierarchy.
+## orchestration routing
 
-Use the native delegation, isolation and model-selection primitives exposed by the active runtime. Missing capabilities must degrade safely rather than being emulated with uncontrolled nested processes.
+`agent-orchestration` is intentionally model-agnostic. Codex, Claude Code or OpenCode may host the orchestration workflow, while Qwen-family, GLM, DeepSeek, Claude, Gemini, OpenAI or other configured models may fill supervisor, worker or reviewer roles when the active runtime/provider exposes them.
+
+The skill supports three routing policies:
+
+```text
+auto       supervisor chooses from already configured models by difficulty/cost/risk
+preferred  ordered per-role preferences with an explicit fallback rule
+fixed      exact per-role models; no silent substitution
+```
+
+An explicit operator model choice for a scoped task overrides the current policy for that task only.
+
+Routing is decided before a worker is spawned. When the runtime exposes provider/model metadata, the actual route is checked against the intended one. Silent fallback to another provider, paid route or model is a failure rather than a successful lane.
+
+Delegated work uses explicit ownership, `must-not-touch` boundaries, acceptance checks and bounded permissions. A worker reporting success is only a claim; the supervisor independently runs or reproduces the acceptance evidence before integration.
+
+Concurrency is based on actual provider and machine headroom rather than a copied fleet size. Many-process fleets must account for duplicated MCP/tool-server memory and cold-start pressure; in-process fan-out is preferred when it provides equivalent isolation at lower overhead.
+
+## external deep review
+
+`external-review-handoff` is for a strong reviewer that sees uploaded/static source rather than the live tree.
+
+The workflow is:
+
+```text
+scope -> subsystem snapshot -> secret gate -> prompt -> external report -> live verification -> implementation
+```
+
+Snapshots are split by architecture, keep tests and authoritative docs, exclude build/cache/dependency output and private data, and abort on likely live credentials before anything leaves the machine.
+
+Every report is treated as snapshot evidence. File/line references are re-anchored in the live code, executable claims are reproduced when practical, invariants are checked again and findings are triaged into `implement`, `needs-decision`, `discard` or `unresolved` before any patch is made.
+
+Handoff artifacts live outside Git by default under:
+
+```text
+~/.local/share/vesper/review-handoffs/
+```
+
+## Hermes research modes
+
+`hermes-research-radar` distinguishes research intent before it starts:
+
+```text
+audit        tight verification; important findings keep VERIFIED/HYPOTHESIS state
+exploration  broad discovery; seeds are a floor, not a fence
+blended      tight verification objectives plus open exploration objectives
+```
+
+Hard invariants and evidence quality stay fixed in every mode. Exploration may challenge the initial framing; audit must confirm, refute or narrow it against current evidence rather than echoing the seed hypotheses.
 
 ## Hermes daily research lanes
 
@@ -136,6 +186,7 @@ use frontend-design for this page
 use webapp-testing to test the local app
 use mcp-builder to design this MCP server
 use agent-orchestration for this multi-part coding task
+use external-review-handoff to prepare this subsystem for a deep external audit
 use vesper-maintainer to diagnose and repair this workstation issue
 use vesper-adaptive-icons for adaptive icon pipeline work
 use hermes-research-radar for this scheduled research program

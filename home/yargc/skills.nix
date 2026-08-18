@@ -20,6 +20,7 @@ let
     pptx = "${anthropicSkills.outPath}/skills/pptx";
 
     agent-orchestration = ./skills/agent-orchestration;
+    external-review-handoff = ./skills/external-review-handoff;
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
     vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
