@@ -1,0 +1,13 @@
+--- a/vesper-icon-queue.rs
++++ b/vesper-icon-queue.rs
+@@ -369,7 +369,11 @@ fn desired_jobs(items: &[InventoryItem], provider: &str, consent: bool) -> BTree
+     };
+     let mut jobs = BTreeMap::<String, QueueJob>::new();
+     for item in items {
+-        if item.excluded || item.fingerprint.is_empty() || item.canonical_state != "pending-ai" {
++        let needs_remote_semantics = item.canonical_state == "pending-ai"
++            || (item.canonical_state == "validated" && item.source_kind == "svg");
++        if item.excluded || item.fingerprint.is_empty() || !needs_remote_semantics {
+             continue;
+         }
+         let entry = jobs.entry(item.fingerprint.clone()).or_insert_with(|| QueueJob {
