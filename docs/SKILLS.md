@@ -1,5 +1,7 @@
 # agent skills
 
+Status: **current**
+
 Vesper keeps one canonical active skill tree at `~/.agents/skills`.
 Codex, Claude Code and OpenCode expose their normal skill paths as links back into that tree so there is one active copy to reason about.
 
@@ -26,6 +28,7 @@ Upstream skills:
 Vesper-local skills:
 
 - `vesper-maintainer`
+- `vesper-adaptive-icons`
 - `hermes-research-radar`
 - `vesper-obsidian-second-brain`
 
@@ -43,16 +46,29 @@ Agent compatibility paths:
 ~/.config/opencode/skills/<skill> -> ~/.agents/skills/<skill>
 ```
 
-Vesper's local workflow skills are also exposed to Hermes under:
+Vesper's Hermes-compatible workflow skills are also exposed under:
 
 ```text
 ~/.hermes/skills/vesper/<skill> -> ~/.agents/skills/<skill>
 ```
 
-Hermes keeps its own bundled skills alongside these links. In particular, Hermes already ships its upstream `obsidian` skill for reading, searching, creating and editing Obsidian notes. `vesper-obsidian-second-brain` complements that skill with Vesper's memory, research-ingestion, reflection and skill-promotion policy rather than replacing it.
+Not every active Vesper skill must be linked into Hermes. `home/yargc/skills.nix` is authoritative for the actual Hermes subset.
+
+Hermes keeps its own bundled skills alongside these links. Its upstream `obsidian` skill handles ordinary Obsidian operations. `vesper-obsidian-second-brain` adds Vesper's memory, research-ingestion, reflection and skill-promotion policy rather than replacing it.
 
 The active shared tree is Home Manager owned. Do not edit generated links directly.
 Local skill source files live under `home/yargc/skills/` in this repository.
+
+## skill ownership
+
+Use one skill for one procedural boundary.
+
+- `vesper-maintainer` — repository/workstation maintenance rules
+- `vesper-adaptive-icons` — adaptive icon pipeline operations governed by `docs/ADAPTIVE-ICONS.md`
+- `hermes-research-radar` — scheduled research lanes and discovery behavior
+- `vesper-obsidian-second-brain` — durable knowledge consolidation and skill-promotion workflow
+
+Do not duplicate repository-wide rules from `AGENTS.md` into every skill. A local skill should add workflow-specific instructions and defer to `AGENTS.md` for global guardrails.
 
 ## Hermes daily research lanes
 
@@ -114,6 +130,7 @@ use frontend-design for this page
 use webapp-testing to test the local app
 use mcp-builder to design this MCP server
 use vesper-maintainer to diagnose and repair this workstation issue
+use vesper-adaptive-icons for adaptive icon pipeline work
 use hermes-research-radar for this scheduled research program
 use vesper-obsidian-second-brain to consolidate durable research into Obsidian
 ```
