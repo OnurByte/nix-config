@@ -26,7 +26,7 @@ impl Default for Config {
             appearance: "automatic".into(),
             material: "standard".into(),
             provider: "openai".into(),
-            model: "gpt-5".into(),
+            model: "gpt-5.6".into(),
             follow_palette: true,
             scheme_mode: "dark".into(),
             accent: "#7aa2f7".into(),
