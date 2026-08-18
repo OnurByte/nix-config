@@ -1,5 +1,7 @@
 # Hermes research source registry
 
+Status: **current**
+
 Vesper keeps one compact evidence-backed source registry for research URLs:
 
 ```text
