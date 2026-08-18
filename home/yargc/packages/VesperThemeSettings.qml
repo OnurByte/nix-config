@@ -16,7 +16,7 @@ ColumnLayout {
     spacing: Tokens.spacing.extraSmall
 
     property string currentVariant: "tonalspot"
-    property var icons: ({ enabled: false, mode: "original", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
+    property var icons: ({ enabled: false, appearance: "automatic", material: "standard", followPalette: true, theme: "Vesper-Adaptive", active: 0, canonical: 0, discovered: 0, schemeMode: "dark", accent: "" })
     property string iconMessage: ""
 
     function setScheme(name: string, flavour: string): void {
@@ -167,42 +167,51 @@ ColumnLayout {
         }
     ]
 
-    property list<MenuItem> iconModeItems: [
+    property list<MenuItem> iconAppearanceItems: [
         MenuItem {
-            objectName: "original"
-            text: qsTr("Original")
-            icon: "image"
-            onClicked: root.runIcon(["mode", "original"])
+            objectName: "automatic"
+            text: qsTr("Automatic")
+            icon: "brightness_auto"
+            onClicked: root.runIcon(["appearance", "automatic"])
         },
         MenuItem {
-            objectName: "light"
-            text: qsTr("Light")
+            objectName: "default"
+            text: qsTr("Default")
             icon: "light_mode"
-            onClicked: root.runIcon(["mode", "light"])
+            onClicked: root.runIcon(["appearance", "default"])
         },
         MenuItem {
             objectName: "dark"
             text: qsTr("Dark")
             icon: "dark_mode"
-            onClicked: root.runIcon(["mode", "dark"])
-        },
-        MenuItem {
-            objectName: "tinted"
-            text: qsTr("Tinted")
-            icon: "palette"
-            onClicked: root.runIcon(["mode", "tinted"])
+            onClicked: root.runIcon(["appearance", "dark"])
         },
         MenuItem {
             objectName: "clear"
             text: qsTr("Clear")
             icon: "blur_on"
-            onClicked: root.runIcon(["mode", "clear"])
+            onClicked: root.runIcon(["appearance", "clear"])
+        },
+        MenuItem {
+            objectName: "tinted"
+            text: qsTr("Tinted")
+            icon: "palette"
+            onClicked: root.runIcon(["appearance", "tinted"])
+        }
+    ]
+
+    property list<MenuItem> iconMaterialItems: [
+        MenuItem {
+            objectName: "standard"
+            text: qsTr("Standard")
+            icon: "layers"
+            onClicked: root.runIcon(["material", "standard"])
         },
         MenuItem {
             objectName: "glass"
             text: qsTr("Glass")
             icon: "auto_awesome"
-            onClicked: root.runIcon(["mode", "glass"])
+            onClicked: root.runIcon(["material", "glass"])
         }
     ]
 
@@ -236,9 +245,10 @@ ColumnLayout {
 
     Process {
         id: iconChange
+        stdout: StdioCollector { id: iconOutput }
         stderr: StdioCollector { id: iconError }
         onExited: (code, status) => {
-            root.iconMessage = code === 0 ? "" : iconError.text.trim();
+            root.iconMessage = code === 0 ? iconOutput.text.trim() : iconError.text.trim();
             root.refreshIcons();
         }
     }
@@ -305,16 +315,25 @@ ColumnLayout {
 
     SelectRow {
         label: qsTr("Appearance")
-        subtext: qsTr("recompiles canonical assets locally without another AI request")
+        subtext: qsTr("switches canonical appearances locally without another provider request")
         fallbackIcon: "palette"
-        fallbackText: root.icons.mode || "original"
-        menuItems: root.iconModeItems
-        active: root.iconModeItems.find(item => item.objectName === root.icons.mode) ?? null
+        fallbackText: root.icons.appearance || "automatic"
+        menuItems: root.iconAppearanceItems
+        active: root.iconAppearanceItems.find(item => item.objectName === root.icons.appearance) ?? null
+    }
+
+    SelectRow {
+        label: qsTr("Material")
+        subtext: qsTr("Glass is a rendering material, separate from colour appearance")
+        fallbackIcon: "layers"
+        fallbackText: root.icons.material || "standard"
+        menuItems: root.iconMaterialItems
+        active: root.iconMaterialItems.find(item => item.objectName === root.icons.material) ?? null
     }
 
     ToggleRow {
         text: qsTr("Follow Caelestia palette")
-        subtext: qsTr("Tinted and Glass consume the current generated accent")
+        subtext: qsTr("Tinted and Glass rendering consume the current generated accent")
         checked: root.icons.followPalette ?? true
         disabled: iconChange.running
         onToggled: root.runIcon(["follow-palette", checked ? "on" : "off"])
@@ -337,17 +356,26 @@ ColumnLayout {
     RowButton {
         icon: "sync"
         text: qsTr("Rebuild application icon theme")
-        subtext: qsTr("rescan sources and atomically replace the generated freedesktop theme")
+        subtext: qsTr("recompile the local overlay without regenerating canonical artwork")
         trailingIcon: "refresh"
         disabled: iconChange.running
         onClicked: root.runIcon(["reconcile"])
+    }
+
+    RowButton {
+        icon: "archive"
+        text: qsTr("Export all icons")
+        subtext: qsTr("create a complete local archive with canonical packages and all appearance/material variants")
+        trailingIcon: "download"
+        disabled: iconChange.running
+        onClicked: root.runIcon(["export-all", "complete"])
     }
 
     StyledText {
         Layout.fillWidth: true
         visible: root.iconMessage
         text: root.iconMessage
-        color: Colours.palette.m3error
+        color: Colours.palette.m3primary
         font: Tokens.font.body.small
         wrapMode: Text.WordWrap
     }
