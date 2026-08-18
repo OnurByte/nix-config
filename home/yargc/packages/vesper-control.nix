@@ -28,6 +28,10 @@ let
     version = "1.0.0";
     src = lib.cleanSource ./.;
     cargoLock.lockFile = ./Cargo.lock;
+    nativeBuildInputs = [ gnupatch ];
+    postPatch = ''
+      patch vesper-icons.rs < ${./vesper-icons-source-guard.patch}
+    '';
     doCheck = false;
   };
 in
@@ -61,6 +65,7 @@ stdenv.mkDerivation {
     install -Dm755 ${iconEngine}/bin/vesper-icon-engine-core $out/bin/vesper-icon-engine-core
     install -Dm755 ${iconEngine}/bin/vesper-icon-queue $out/bin/vesper-icon-queue
     install -Dm755 ${iconEngine}/bin/vesper-icon-worker $out/bin/vesper-icon-worker
+    install -Dm755 ${iconEngine}/bin/vesper-icon-identity $out/bin/vesper-icon-identity
 
     runtimePath=${lib.makeBinPath [
       bluez
@@ -92,6 +97,8 @@ stdenv.mkDerivation {
     wrapProgram $out/bin/vesper-icon-queue \
       --prefix PATH : "$out/bin:$runtimePath"
     wrapProgram $out/bin/vesper-icon-worker \
+      --prefix PATH : "$out/bin:$runtimePath"
+    wrapProgram $out/bin/vesper-icon-identity \
       --prefix PATH : "$out/bin:$runtimePath"
     runHook postInstall
   '';
