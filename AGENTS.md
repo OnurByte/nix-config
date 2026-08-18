@@ -92,6 +92,9 @@ Do not put decrypted values in Nix source, Git, shell history, process arguments
 
 - Monero GUI/CLI, Feather and Eigenwallet are first-class privacy tools. Cuprate remains opt-in/experimental and must not replace `monerod` silently.
 - Keep the system Tor client available separately from Tor Browser's bundled Tor.
+- Privacy HUD must report system Tor from an ownership-specific system signal such as `tor.service`; a generic `pgrep tor` must not make Tor Browser's bundled process look like the system client.
+- Privacy HUD microphone attention must mean real capture/recording activity. Default-source muted/unmuted state alone is device readiness, not proof that an application is using the microphone.
+- Privacy/system HUD backends should prefer event-driven or cached state. A short QML refresh timer must not cause every expensive process, Git, device and system probe to rerun at the same cadence when the underlying state changes more slowly.
 - Do not auto-enable blockchain nodes, mining or P2Pool.
 - Podman and Distrobox are the container stack; libvirt + virt-manager provide local virtual machines.
 - Bottles is a Windows-compatibility utility, not permission to restore a gaming stack.
