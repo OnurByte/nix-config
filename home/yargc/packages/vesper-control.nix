@@ -57,7 +57,6 @@ stdenv.mkDerivation {
     cp ${./vesper-control.rs} vesper-control.rs
     cp ${./vesper-control-router.rs} vesper-control-router.rs
     patch vesper-control.rs < ${./vesper-control-wifi-qr.patch}
-    patch vesper-control.rs < ${./vesper-control-remove-legacy-icons.patch}
     rustc --edition=2021 -C opt-level=2 vesper-control.rs -o vesper-control-core
     rustc --edition=2021 -C opt-level=2 vesper-control-router.rs -o vesper-control
     runHook postBuild
