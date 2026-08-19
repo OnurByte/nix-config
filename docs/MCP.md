@@ -89,7 +89,7 @@ For manual startup/diagnostics:
 vesper-hypruse-mcp
 ```
 
-`Super + Shift + Backspace` is the emergency stop. It kills the active Hypruse process immediately so an agent loses desktop input capability without needing to interact with the MCP client first.
+`Super + Shift + Backspace` is the emergency stop. It runs `vesper-hypruse-mcp stop`, which targets the PID advertised by Hypruse's runtime beacon and follows the upstream graceful shutdown path so held input state is cleaned up before the server exits.
 
 Use it for real desktop QA where browser-only MCPs are insufficient. Prefer semantic desktop/accessibility state before screenshots when the target exposes it.
 
