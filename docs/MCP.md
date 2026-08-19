@@ -64,7 +64,7 @@ The supported communications transport is `agent-messenger/agent-messenger`, but
 
 Vesper does not install the unrestricted upstream `agent-messenger` CLI in the normal user PATH. Human account setup uses `vesper-agent-messenger-auth`, which can enter only the `auth` command family for WhatsApp, Telegram, Discord and Instagram. The scheduled Rust communications intake sees only `vesper-agent-messenger-read`, whose command grammar admits the audited read operations needed for account status, chat/message retrieval and Discord unread DM/mention discovery.
 
-The analysis model is separated again from transport. The `communications-radar` cron lane shadows Hermes with a safe-mode invocation using the empty built-in `context_engine` toolset, so the normalized message batch is analyzed without exposing the shared MCP registry or ordinary Hermes shell/browser/file tools.
+The analysis model is separated again from transport. `run_communications_radar` itself invokes Hermes with safe mode and the empty built-in `context_engine` toolset, so the normalized message batch is analyzed without exposing the shared MCP registry or ordinary Hermes shell/browser/file tools. This boundary does not depend on PATH ordering or on the cron wrapper used to reach the lane.
 
 Do not add a second WhatsApp, Telegram, Discord or Instagram MCP as a fallback. A failed source is reported as degraded/unavailable; transport switching is not an availability strategy.
 
