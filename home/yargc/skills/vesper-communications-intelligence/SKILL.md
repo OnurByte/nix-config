@@ -41,6 +41,14 @@ Vesper state should keep only what is operationally necessary:
 - derived briefings and evidence references
 - bounded alert state
 
+### provider privacy boundary
+
+A local Beeper API does not imply local AI analysis. The normalized current batch is included in the Hermes model request.
+
+If the configured Hermes provider/model is remote, the message text and the bounded identity metadata present in that batch are sent to that provider for inference. Never describe this workflow as fully local unless the selected inference provider is actually local.
+
+Keep the batch minimal and purpose-bound. Do not add unrelated profile/account metadata merely because the source exposes it. If a future privacy mode requires local-only communications analysis, enforce that in provider routing rather than pretending the local connector alone provides it.
+
 ## analysis model
 
 Analyze conversations at several levels rather than producing one generic summary.
