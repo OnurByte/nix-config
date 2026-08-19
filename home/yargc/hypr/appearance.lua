@@ -68,6 +68,16 @@ hl.config({
     },
 })
 
+-- Hypruse tags every window it launches as `hypruse-owned`. Keep that
+-- automation boundary visible even when its runtime-injected rule does not
+-- render on a particular Hyprland build/configuration.
+hl.window_rule({
+    name = "vesper-hypruse-owned",
+    match = { tag = "hypruse-owned" },
+    border_size = 2,
+    border_color = "rgba(ff5555ee)",
+})
+
 hl.curve("vesper", {
     type = "bezier",
     points = { { 0.16, 1.0 }, { 0.3, 1.0 } },
