@@ -99,6 +99,8 @@ jobs:
           nix shell nixpkgs#rustc nixpkgs#jq -c bash -c '
             set -euo pipefail
             rustc --edition=2021 home/yargc/packages/hermes-rs/main.rs -o /tmp/vesper-hermes-core
+            rustc --edition=2021 --test home/yargc/packages/hermes-rs/main.rs -o /tmp/vesper-hermes-tests
+            /tmp/vesper-hermes-tests
             ln -sf /tmp/vesper-hermes-core /tmp/vesper-hermes
             ln -sf /tmp/vesper-hermes-core /tmp/vesper-hermes-automations
             ln -sf /tmp/vesper-hermes-core /tmp/vesper-research
