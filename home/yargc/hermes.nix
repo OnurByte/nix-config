@@ -9,69 +9,16 @@ let
   home = config.home.homeDirectory;
   jobs = import ./hermes-jobs.nix;
   hermesAgent = import ./packages/hermes-agent.nix { inherit inputs pkgs; };
+  agentMessenger = import ./packages/agent-messenger.nix { inherit pkgs home; };
   hermesCore = pkgs.callPackage ./packages/hermes-core.nix {
     inherit hermesAgent;
-  };
-  beeperMcpUrl = "http://127.0.0.1:23373/v0/mcp";
-  beeperHermesProfile = "vesper-social";
-
-  # Keep Beeper's mutation-capable MCP out of the default Hermes profile used
-  # by Vesper cron jobs. The explicit social profile is cloned once from the
-  # default profile so it inherits the operator's model/provider setup, then
-  # owns its MCP/OAuth state independently under ~/.hermes/profiles/.
-  hermesBeeperMcp = pkgs.writeShellApplication {
-    name = "vesper-hermes-beeper-mcp";
-    text = ''
-      set -euo pipefail
-
-      hermes=${hermesAgent}/bin/hermes
-      profile=${lib.escapeShellArg beeperHermesProfile}
-
-      ensure_profile() {
-        if ! "$hermes" profile show "$profile" >/dev/null 2>&1; then
-          "$hermes" profile create "$profile" \
-            --clone-from default \
-            --no-alias \
-            --description "Interactive Vesper social profile for the local Beeper MCP."
-        fi
-      }
-
-      case "''${1:-status}" in
-        setup)
-          ensure_profile
-          exec "$hermes" -p "$profile" mcp add beeper \
-            --url ${lib.escapeShellArg beeperMcpUrl} \
-            --auth oauth
-          ;;
-        login)
-          ensure_profile
-          exec "$hermes" -p "$profile" mcp login beeper
-          ;;
-        test)
-          ensure_profile
-          exec "$hermes" -p "$profile" mcp test beeper
-          ;;
-        chat)
-          ensure_profile
-          exec "$hermes" -p "$profile" chat
-          ;;
-        status|list)
-          ensure_profile
-          exec "$hermes" -p "$profile" mcp list
-          ;;
-        *)
-          echo "usage: vesper-hermes-beeper-mcp {setup|login|test|chat|status}" >&2
-          exit 2
-          ;;
-      esac
-    '';
+    agentMessengerRead = agentMessenger.readOnly;
   };
 
   researchEnv = ''
     export VESPER_REDDIT_SEEDS="opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev"
     export VESPER_REDDIT_COMMENT_SEEDS="MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec"
-    export VESPER_BEEPER_BASE_URL="http://127.0.0.1:23373"
-    export VESPER_BEEPER_TOKEN_FILE="${home}/.config/vesper/beeper.token"
+    export AGENT_MESSENGER_CONFIG_DIR="${home}/.config/agent-messenger"
     export VESPER_COMMUNICATIONS_STATE_DIR="${home}/.local/state/vesper/communications"
   '';
 
@@ -141,17 +88,15 @@ in
 {
   home.packages = [
     hermesCore
-    hermesBeeperMcp
+    agentMessenger.full
   ];
 
   home.sessionVariables = {
     VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
     VESPER_REDDIT_SEEDS = "opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev";
     VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
-    VESPER_BEEPER_BASE_URL = "http://127.0.0.1:23373";
-    VESPER_BEEPER_MCP_URL = beeperMcpUrl;
+    AGENT_MESSENGER_CONFIG_DIR = "${home}/.config/agent-messenger";
     VESPER_COMMUNICATIONS_STATE_DIR = "${home}/.local/state/vesper/communications";
-    VESPER_BEEPER_TOKEN_FILE = "${home}/.config/vesper/beeper.token";
   };
 
   home.file.".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
