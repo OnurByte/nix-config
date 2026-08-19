@@ -147,6 +147,14 @@ in
           command = "${hypruseMcp}/bin/vesper-hypruse-mcp";
         };
 
+        semgrep = {
+          command = "${pkgs.semgrep}/bin/semgrep";
+          args = [ "mcp" ];
+          env = {
+            SEMGREP_SEND_METRICS = "off";
+          };
+        };
+
         "helium-devtools" = {
           command = bunx;
           args = [
@@ -255,6 +263,7 @@ in
       # Shell / systems
       shellcheck
       shfmt
+      semgrep
       gcc
       clangFrontends
       gdb
