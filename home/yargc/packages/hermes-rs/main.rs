@@ -6,7 +6,10 @@ mod util;
 
 use std::{env, fs, path::Path};
 
-use communications::{commit_batch, maybe_notify, prepare_batch, status_json as communications_status_json};
+use communications::{
+    commit_batch, maybe_notify, prepare_batch, sanitize_report,
+    status_json as communications_status_json,
+};
 use cron::{dispatch, job_for, sync_cron, tor_fetch, validate_registry, watch};
 use prompts::{adhoc_contract, communications_contract, research_contract, ALL_TASKS, FRONTIER_TASKS};
 use state::{
@@ -162,7 +165,8 @@ fn run_communications_radar() -> Result<String, String> {
     let durable = task_context("communications-radar", 36_000);
     let prompt = communications_contract(&communications_skill(), &durable, &batch);
     let raw = invoke_agent(&prompt, false)?;
-    let report = save_report("communications-radar", &raw)?;
+    let sanitized = sanitize_report(&batch, &raw)?;
+    let report = save_report("communications-radar", &sanitized)?;
     commit_batch(&batch)?;
     maybe_notify(&report)?;
     Ok(report)
