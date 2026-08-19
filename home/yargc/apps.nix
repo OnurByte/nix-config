@@ -53,6 +53,7 @@ in
 
     sessionDesktop
     telegram-desktop
+    beeper
 
     ghostty
     thunar
