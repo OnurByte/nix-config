@@ -23,7 +23,7 @@ After a switch:
 nh os switch
 ```
 
-Codex, Claude Code and OpenCode pick the servers up from Home Manager automatically. There is no separate per-agent MCP setup.
+Codex, Claude Code and OpenCode pick the servers up from Home Manager automatically. There is no separate per-agent MCP setup for those three clients.
 
 Useful requests are ordinary agent requests:
 
@@ -82,9 +82,19 @@ Setup:
 4. run `nh os switch`
 5. start Codex, Claude Code or OpenCode and authenticate the `beeper` MCP when prompted
 
+Hermes uses its own native MCP client rather than the Home Manager client registry. Vesper keeps the full Beeper MCP out of Hermes' default cron profile and exposes it only through a dedicated interactive profile:
+
+```bash
+vesper-hermes-beeper-mcp setup
+vesper-hermes-beeper-mcp test
+vesper-hermes-beeper-mcp chat
+```
+
+The first `setup` creates `vesper-social` by cloning the default Hermes profile's model/provider setup, then installs Beeper there with Hermes' OAuth flow. The profile stays independent afterwards and is never made the sticky default. `vesper-hermes-beeper-mcp login` re-runs OAuth when necessary.
+
 The shared MCP surface can expose mutation tools such as sending or reacting. Those are interactive agent capabilities and must be treated as externally visible actions.
 
-This does **not** weaken Hermes' scheduled communications boundary. `communications-radar` remains read-only and continues to use Vesper's first-party Rust REST intake path; it does not call the Beeper MCP and does not send, reply, react, draft or mark messages read.
+This does **not** weaken Hermes' scheduled communications boundary. `communications-radar` remains on the default profile, stays read-only and continues to use Vesper's first-party Rust REST intake path; it does not call the Beeper MCP and does not send, reply, react, draft or mark messages read.
 
 ## Hypruse
 
