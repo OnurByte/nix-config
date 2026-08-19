@@ -23,11 +23,11 @@ Use one normalized communications stream:
 
 ```text
 WhatsApp / Telegram / Discord / Instagram
-        -> Agent Messenger CLI
+        -> Agent Messenger CLI transport
         -> Vesper read-only command allowlist
         -> normalized Vesper intake
         -> bounded delta batch
-        -> Hermes analysis
+        -> tool-less Hermes analysis lane
         -> local alert + durable briefing
         -> Obsidian second-brain promotion
 ```
@@ -48,9 +48,17 @@ Agent Messenger is the only communications transport for this workflow.
 
 Do not add per-network connectors, secondary transports or fallback ingestion paths for WhatsApp, Telegram, Discord or Instagram. If one network cannot authenticate or be read, keep that source degraded/unavailable and report it honestly instead of silently switching transports.
 
-Agent Messenger itself includes mutation-capable commands. The scheduled Vesper communications intake must never receive the full CLI surface. It uses the separate `vesper-agent-messenger-read` executable whose command grammar is an audited read allowlist. The full `agent-messenger` command exists for human-driven authentication and explicit manual use, not for the communications-radar execution path.
+Agent Messenger itself includes mutation-capable commands. Vesper does not install the unrestricted upstream `agent-messenger` CLI in the normal user PATH. Interactive account setup uses `vesper-agent-messenger-auth`, which can reach only the `auth` command family for the four supported networks. Scheduled intake uses the separate `vesper-agent-messenger-read` executable whose command grammar is an audited read allowlist.
 
-The scheduled intake may use only the read operations required to observe account state, chats, messages, unread Discord DMs and unread Discord mentions. Sending, reacting, editing, deleting, acknowledging/marking read, changing account selection, logging out and other mutations are outside its executable interface.
+The scheduled intake may use only the read operations required to observe account state, chats, messages, unread Discord DMs and unread Discord mentions. Sending, reacting, editing, deleting, acknowledging/marking read and other messaging mutations are outside its executable interface.
+
+### analysis capability boundary
+
+The communications model receives the complete normalized bounded batch in its prompt, so it does not need shell, browser, MCP, messaging or file tools.
+
+Only the `communications-radar` cron wrapper shadows `hermes` with a constrained invocation that enables Hermes safe mode plus the empty built-in `context_engine` toolset. This suppresses user plugins, MCP servers, rules/hooks and custom context-engine extensions for the analysis lane while leaving other Hermes research jobs unchanged.
+
+Do not weaken this into a prompt-only "never send" rule. If Hermes gains a first-class explicit no-tools mode, prefer that primitive over the current safe-mode + empty-toolset wrapper.
 
 ### provider privacy boundary
 
