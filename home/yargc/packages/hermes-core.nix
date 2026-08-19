@@ -1,4 +1,5 @@
 {
+  agentMessengerRead,
   coreutils,
   curl,
   ghostty,
@@ -37,6 +38,7 @@ stdenv.mkDerivation {
     install -Dm755 vesper-hermes-core $out/bin/vesper-hermes-core
     wrapProgram $out/bin/vesper-hermes-core \
       --prefix PATH : ${lib.makeBinPath [
+        agentMessengerRead
         coreutils
         curl
         ghostty
