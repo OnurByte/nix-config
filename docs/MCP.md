@@ -9,6 +9,7 @@ Configured servers:
 - `nixos` — NixOS, nixpkgs and Home Manager package/option lookup through `mcp-nixos`
 - `context7` — current library and API documentation through Context7
 - `github` — GitHub repositories, issues, pull requests and Actions through GitHub's official MCP server
+- `hypruse` — Hyprland-native desktop inspection and confined GUI control
 - `helium-devtools` — Chrome DevTools MCP pointed at the Nix-managed Helium binary
 - `zen-devtools` — Mozilla Firefox DevTools MCP pointed at the Nix-managed Zen beta binary
 
@@ -28,6 +29,7 @@ Useful requests are ordinary agent requests:
 use the nixos MCP to find the correct Home Manager option for this
 use context7 for the current Next.js API before changing this code
 use the github MCP to inspect the failing Actions run and related pull request
+use hypruse to launch Vesper Settings and inspect the real Hyprland UI
 use helium-devtools to inspect this page's network requests and console
 use zen-devtools to open this site and reproduce the Firefox-side bug
 ```
@@ -51,6 +53,39 @@ vesper-github-mcp
 ```
 
 The command is normally started by the agent and speaks MCP over stdio, so running it manually is only useful for startup/auth errors.
+
+## Hypruse
+
+`hypruse` runs upstream `hypruse==0.9.4` through an isolated `uvx` wrapper instead of adding Python or uv to the normal user toolchain.
+
+It talks directly to the active Hyprland session through `hyprctl`, native Wayland input, `wtype`, `grim` and AT-SPI. It does not require `ydotool`, a root daemon or a RemoteDesktop portal.
+
+Vesper does not expose it unconstrained. The wrapper sets:
+
+```text
+HYPRUSE_CONFINE=launched
+HYPRUSE_AUTH_GUARD=strict
+HYPRUSE_STRICT=1
+HYPRUSE_MARK=1
+```
+
+This means input is limited to windows launched by the MCP, authentication dialogs remain guarded, an unexpected human/focus change forces the agent to re-observe before acting and agent-owned windows are marked when supported. Clipboard access is not enabled.
+
+Confinement is an input boundary, not a privacy boundary. Desktop state and screenshots can still reveal visible information, and an MCP client still decides whether to approve tool calls. Do not treat Hypruse inventory as a stronger sandbox than the enforcement it actually provides.
+
+The first run may populate the isolated uv cache at:
+
+```text
+~/.cache/vesper-mcp/uv
+```
+
+For manual startup/diagnostics:
+
+```bash
+vesper-hypruse-mcp
+```
+
+Use it for real desktop QA where browser-only MCPs are insufficient. Prefer semantic desktop/accessibility state before screenshots when the target exposes it.
 
 ## Context7
 
