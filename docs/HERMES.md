@@ -95,7 +95,7 @@ Daily lanes currently use a 36-hour window, communications uses a 90-minute fres
 | `09:30` | `agenda` | compact current agenda |
 | `10:00` | `morning-check` | local projects + research + useful communications → Telegram |
 | `15:00` | `upstream-edge-radar` | upstream change radar |
-| every 15 min, `:04/:19/:34/:49` | `communications-radar` | Agent Messenger read-only delta → analysis; local alert only for validated high/critical signal |
+| every 15 min, `:04/:19/:34/:49` | `communications-radar` | Agent Messenger read-only delta → isolated analysis; local alert only for validated high/critical signal |
 | every 15 min, offset | `vesper-health-watch` | internal health/freshness + optional external dead-man ping |
 | every 6 h | `cron-skill-integrity-watch` | scheduler/registry/script integrity |
 | `23:30` | `second-brain-dream` | durable research + communications/person context consolidation |
@@ -120,12 +120,16 @@ The source messaging networks remain the message-history authority. Agent Messen
 
 ### capability boundary
 
-Upstream Agent Messenger exposes both read and mutation commands. Vesper deliberately separates two executable surfaces:
+Upstream Agent Messenger exposes both read and mutation commands. Vesper exposes only two narrowed wrappers:
 
 ```text
-agent-messenger              human-driven authentication / explicit manual use
+vesper-agent-messenger-auth  human authentication/setup only
 vesper-agent-messenger-read  scheduled communications intake only
 ```
+
+The unrestricted upstream `agent-messenger` executable is not installed in the normal Vesper user PATH.
+
+`vesper-agent-messenger-auth` accepts only the four communications platforms and always routes into that platform's `auth` command family. It can create, inspect, switch or remove local authentication state when the human explicitly uses it, but it cannot route to message send/edit/delete/react commands.
 
 `vesper-agent-messenger-read` has a hard command allowlist. The scheduled Rust control plane can query only:
 
@@ -137,13 +141,27 @@ discord dm unread
 discord mention unread
 ```
 
-Send, reply, react, edit, delete, acknowledge/mark-read, logout, account switching and other mutation operations are outside that executable grammar. The full Agent Messenger CLI is not placed on the scheduled intake path.
+Send, reply, react, edit, delete, acknowledge/mark-read and other messaging mutations are outside that executable grammar.
 
 Agent Messenger is also not added to Vesper's shared MCP registry. Communications intelligence therefore does not grant Codex, Claude Code or OpenCode a messaging MCP merely because the scheduled radar exists.
 
+### analysis capability boundary
+
+The normalized bounded batch is already included in the communications prompt, so the analysis model does not need shell, browser, MCP, messaging or file tools.
+
+Only the `communications-radar` cron wrapper shadows the `hermes` executable. That wrapper invokes the pinned Hermes agent with:
+
+```text
+--safe-mode -t context_engine
+```
+
+For the pinned Hermes release, safe mode suppresses user plugins/MCP/rules/customizations before agent startup and the built-in `context_engine` toolset is empty. This prevents a configured plugin context engine from re-introducing recovery tools into the communications lane. Other Hermes research jobs keep their normal tool surfaces.
+
+The provider and model remain explicit command-line arguments from the Vesper Rust control plane. Do not replace this enforcement with a prompt-only "never send" instruction. If upstream Hermes gains a first-class explicit no-tools mode, prefer that primitive.
+
 ### package/runtime boundary
 
-Vesper selects Agent Messenger `2.36.0` exactly. The wrapper runs that package through Bun's package runner and keeps its package cache under:
+Vesper selects Agent Messenger `2.36.0` exactly. The wrappers run that package through Bun's package runner and keep its package cache under:
 
 ```text
 ~/.cache/vesper-agent-messenger/bun
@@ -161,13 +179,13 @@ or the path selected by `AGENT_MESSENGER_CONFIG_DIR`.
 
 ### setup
 
-After `nh os switch`, authenticate the networks you want observed with the full human-facing CLI. Current upstream entry points include:
+After `nh os switch`, authenticate the networks you want observed through the auth-only Vesper wrapper:
 
 ```bash
-agent-messenger whatsapp auth login --qr
-agent-messenger telegram auth login
-agent-messenger discord auth extract
-agent-messenger instagram auth extract
+vesper-agent-messenger-auth whatsapp login --qr
+vesper-agent-messenger-auth telegram login
+vesper-agent-messenger-auth discord extract
+vesper-agent-messenger-auth instagram extract
 ```
 
 Authentication is interactive and may require the corresponding logged-in app/browser/session or platform-specific credentials. Do not put extracted credentials, cookies, tokens or session files in Git or Nix source.
@@ -447,10 +465,10 @@ vesper-hermes inbox
 vesper-hermes run unknown-frontier-ai
 vesper-hermes run communications-radar
 
-agent-messenger whatsapp auth login --qr
-agent-messenger telegram auth login
-agent-messenger discord auth extract
-agent-messenger instagram auth extract
+vesper-agent-messenger-auth whatsapp login --qr
+vesper-agent-messenger-auth telegram login
+vesper-agent-messenger-auth discord extract
+vesper-agent-messenger-auth instagram extract
 
 vesper-hermes-automations jobs
 vesper-hermes-automations validate-registry
