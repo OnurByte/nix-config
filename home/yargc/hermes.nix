@@ -13,36 +13,54 @@ let
     inherit hermesAgent;
   };
   beeperMcpUrl = "http://127.0.0.1:23373/v0/mcp";
+  beeperHermesProfile = "vesper-social";
 
-  # Hermes owns its mutable MCP/OAuth state under ~/.hermes. Do not generate
-  # config.yaml from Home Manager: that file also contains user-selected model
-  # and provider settings. This small Nix-managed entrypoint delegates setup,
-  # login and diagnostics to Hermes' native MCP lifecycle commands instead.
-  # Setup is intentionally explicit because Beeper's MCP contains externally
-  # visible mutation tools, while Vesper's scheduled communications lane must
-  # remain on the separate first-party read-only REST path.
+  # Keep Beeper's mutation-capable MCP out of the default Hermes profile used
+  # by Vesper cron jobs. The explicit social profile is cloned once from the
+  # default profile so it inherits the operator's model/provider setup, then
+  # owns its MCP/OAuth state independently under ~/.hermes/profiles/.
   hermesBeeperMcp = pkgs.writeShellApplication {
     name = "vesper-hermes-beeper-mcp";
     text = ''
       set -euo pipefail
 
+      hermes=${hermesAgent}/bin/hermes
+      profile=${lib.escapeShellArg beeperHermesProfile}
+
+      ensure_profile() {
+        if ! "$hermes" profile show "$profile" >/dev/null 2>&1; then
+          "$hermes" profile create "$profile" \
+            --clone-from default \
+            --no-alias \
+            --description "Interactive Vesper social profile for the local Beeper MCP."
+        fi
+      }
+
       case "''${1:-status}" in
         setup)
-          exec ${hermesAgent}/bin/hermes mcp add beeper \
+          ensure_profile
+          exec "$hermes" -p "$profile" mcp add beeper \
             --url ${lib.escapeShellArg beeperMcpUrl} \
             --auth oauth
           ;;
         login)
-          exec ${hermesAgent}/bin/hermes mcp login beeper
+          ensure_profile
+          exec "$hermes" -p "$profile" mcp login beeper
           ;;
         test)
-          exec ${hermesAgent}/bin/hermes mcp test beeper
+          ensure_profile
+          exec "$hermes" -p "$profile" mcp test beeper
+          ;;
+        chat)
+          ensure_profile
+          exec "$hermes" -p "$profile" chat
           ;;
         status|list)
-          exec ${hermesAgent}/bin/hermes mcp list
+          ensure_profile
+          exec "$hermes" -p "$profile" mcp list
           ;;
         *)
-          echo "usage: vesper-hermes-beeper-mcp {setup|login|test|status}" >&2
+          echo "usage: vesper-hermes-beeper-mcp {setup|login|test|chat|status}" >&2
           exit 2
           ;;
       esac
@@ -132,8 +150,8 @@ in
     VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
     VESPER_BEEPER_BASE_URL = "http://127.0.0.1:23373";
     VESPER_BEEPER_MCP_URL = beeperMcpUrl;
-    VESPER_BEEPER_TOKEN_FILE = "${home}/.config/vesper/beeper.token";
     VESPER_COMMUNICATIONS_STATE_DIR = "${home}/.local/state/vesper/communications";
+    VESPER_BEEPER_TOKEN_FILE = "${home}/.config/vesper/beeper.token";
   };
 
   home.file.".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
