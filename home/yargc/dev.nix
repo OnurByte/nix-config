@@ -10,7 +10,9 @@ let
   helium = inputs.helium.packages.${pkgs.system}.default;
   zen = inputs.zen-browser.packages.${pkgs.system}.default;
   bunx = "${pkgs.bun}/bin/bunx";
-  mcpCache = "${config.home.homeDirectory}/.cache/vesper-mcp/bun";
+  mcpCacheRoot = "${config.home.homeDirectory}/.cache/vesper-mcp";
+  bunMcpCache = "${mcpCacheRoot}/bun";
+  uvMcpCache = "${mcpCacheRoot}/uv";
 
   # GCC is the global system toolchain. Keep Clang's compiler frontends
   # available without adding Clang's entire wrapper output to Home Manager:
@@ -55,6 +57,31 @@ let
       exec github-mcp-server stdio --toolsets=context,repos,issues,pull_requests,actions
     '';
   };
+
+  # Hypruse is an upstream Python MCP, not first-party Vesper runtime code.
+  # Keep uv scoped to this wrapper instead of adding a mutable Python toolchain
+  # to the user environment. Confinement allows input only in windows the MCP
+  # launched itself; auth dialogs remain guarded and clipboard stays disabled.
+  hypruseMcp = pkgs.writeShellApplication {
+    name = "vesper-hypruse-mcp";
+    runtimeInputs = [
+      pkgs.uv
+      pkgs.grim
+      pkgs.wtype
+      pkgs.imagemagick
+      pkgs.systemd
+    ];
+    text = ''
+      export UV_CACHE_DIR="${uvMcpCache}"
+      export HYPRUSE_CONFINE="launched"
+      export HYPRUSE_AUTH_GUARD="strict"
+      export HYPRUSE_STRICT="1"
+      export HYPRUSE_MARK="1"
+      unset HYPRUSE_CLIPBOARD
+
+      exec uvx --from hypruse==0.9.4 hypruse
+    '';
+  };
 in
 {
   programs = {
@@ -71,12 +98,16 @@ in
             "@upstash/context7-mcp@4.0.2"
           ];
           env = {
-            BUN_INSTALL_CACHE_DIR = mcpCache;
+            BUN_INSTALL_CACHE_DIR = bunMcpCache;
           };
         };
 
         github = {
           command = "${githubMcp}/bin/vesper-github-mcp";
+        };
+
+        hypruse = {
+          command = "${hypruseMcp}/bin/vesper-hypruse-mcp";
         };
 
         "helium-devtools" = {
@@ -89,7 +120,7 @@ in
             "--performance-crux=false"
           ];
           env = {
-            BUN_INSTALL_CACHE_DIR = mcpCache;
+            BUN_INSTALL_CACHE_DIR = bunMcpCache;
             CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS = "1";
           };
         };
@@ -106,7 +137,7 @@ in
             "developer"
           ];
           env = {
-            BUN_INSTALL_CACHE_DIR = mcpCache;
+            BUN_INSTALL_CACHE_DIR = bunMcpCache;
           };
         };
       };
@@ -228,5 +259,6 @@ in
     ++ [
       plannotator
       githubMcp
+      hypruseMcp
     ];
 }
