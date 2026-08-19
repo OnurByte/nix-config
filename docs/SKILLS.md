@@ -34,6 +34,7 @@ Vesper-local skills:
 - `vesper-adaptive-icons`
 - `hermes-research-radar`
 - `vesper-obsidian-second-brain`
+- `vesper-communications-intelligence`
 
 Canonical paths:
 
@@ -57,7 +58,7 @@ Vesper's Hermes-compatible workflow skills are also exposed under:
 
 Not every active Vesper skill must be linked into Hermes. `home/yargc/skills.nix` is authoritative for the actual Hermes subset.
 
-Hermes keeps its own bundled skills alongside these links. Its upstream `obsidian` skill handles ordinary Obsidian operations. `vesper-obsidian-second-brain` adds Vesper's memory, research-ingestion, reflection and skill-promotion policy rather than replacing it.
+Hermes keeps its own bundled skills alongside these links. Its upstream `obsidian` skill handles ordinary Obsidian operations. `vesper-obsidian-second-brain` adds Vesper's memory, research/communications ingestion, reflection and skill-promotion policy rather than replacing it.
 
 The active shared tree is Home Manager owned. Do not edit generated links directly.
 Local skill source files live under `home/yargc/skills/` in this repository.
@@ -94,7 +95,8 @@ Use one skill for one procedural boundary.
 - `vesper-maintainer` — repository/workstation maintenance rules
 - `vesper-adaptive-icons` — adaptive icon pipeline operations governed by `docs/ADAPTIVE-ICONS.md`
 - `hermes-research-radar` — scheduled research lanes and discovery behavior
-- `vesper-obsidian-second-brain` — durable knowledge consolidation and skill-promotion workflow
+- `vesper-communications-intelligence` — read-only messaging triage, salience, commitments, evidence-backed person/group/topic context and concrete communication-risk analysis
+- `vesper-obsidian-second-brain` — durable research/communications knowledge consolidation and skill-promotion workflow
 
 Do not duplicate repository-wide rules from `AGENTS.md` into every skill. A local skill should add workflow-specific instructions and defer to `AGENTS.md` for global guardrails.
 
@@ -200,6 +202,25 @@ free-ai-radar
 
 Each lane keeps independent state, scoring and output so a mainstream agenda item does not dilute hidden-gem discovery and vice versa.
 
+## communications intelligence
+
+`vesper-communications-intelligence` treats chat platforms as read-only evidence sources for the user, not autonomous social surfaces.
+
+Its contract is:
+
+```text
+read / normalize / analyze / brief / remember / local-alert
+never send / reply / react / draft / mark-read
+```
+
+The connector layer enforces that boundary with a GET-only Beeper Desktop intake rather than trusting a prompt to avoid write-capable MCP tools.
+
+The skill separates salience, commitments/open loops, people/source identities, groups/topics and concrete communication-risk signals. High/critical findings require source message IDs. Risk analysis describes observable behavior such as urgency, credential/payment requests, impersonation, coercion, suspicious-link pressure or relevant contradiction; it is not a personality or mental-health diagnosis.
+
+Identity resolution is conservative. Similar display names do not merge people. Uncertain cross-platform identities remain separate until stable evidence supports a canonical link.
+
+Raw chat history remains in Beeper. Vesper stores bounded operational state and durable derived findings; Obsidian receives only promoted knowledge rather than transcript dumps.
+
 ## Hermes drafts and skill lifecycle
 
 Hermes may discover a reusable method while running scheduled research.
@@ -254,9 +275,9 @@ Obsidian is the larger long-term knowledge graph/durable context.
 Runtime state is job/session continuity.
 Skills are procedural memory.
 
-The Vesper second-brain workflow promotes only durable findings, useful relationships, important corrections, open questions and high-value source knowledge into Obsidian instead of dumping the entire scrape corpus into the vault.
+The Vesper second-brain workflow promotes only durable findings, useful relationships, important corrections, open questions, evidence-backed person/group context and high-value source knowledge into Obsidian instead of dumping scrape corpora or chat transcripts into the vault.
 
-A later reflection/consolidation pass may connect the day's research, update durable notes, save only compact critical facts to Hermes memory and stage reusable procedures as skill drafts. Open items are preserved until evidence actually closes them rather than disappearing because the newest summary omitted them.
+A later reflection/consolidation pass may connect the day's research and communications reports, update durable notes, save only compact critical facts to Hermes memory and stage reusable procedures as skill drafts. Open items are preserved until evidence actually closes them rather than disappearing because the newest summary omitted them.
 
 ## use them
 
@@ -272,7 +293,8 @@ use external-review-handoff to prepare this subsystem for a deep external audit
 use vesper-maintainer to diagnose and repair this workstation issue
 use vesper-adaptive-icons for adaptive icon pipeline work
 use hermes-research-radar for this scheduled research program
-use vesper-obsidian-second-brain to consolidate durable research into Obsidian
+use vesper-communications-intelligence to triage this read-only communications batch
+use vesper-obsidian-second-brain to consolidate durable research and communications context into Obsidian
 ```
 
 Hermes may also use its approved bundled helpers directly when the task needs them:
