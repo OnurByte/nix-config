@@ -149,13 +149,13 @@ Agent Messenger is also not added to Vesper's shared MCP registry. Communication
 
 The normalized bounded batch is already included in the communications prompt, so the analysis model does not need shell, browser, MCP, messaging or file tools.
 
-Only the `communications-radar` cron wrapper shadows the `hermes` executable. That wrapper invokes the pinned Hermes agent with:
+The isolation is enforced inside the Rust `run_communications_radar` call path. Its Hermes invocation includes:
 
 ```text
 --safe-mode -t context_engine
 ```
 
-For the pinned Hermes release, safe mode suppresses user plugins/MCP/rules/customizations before agent startup and the built-in `context_engine` toolset is empty. This prevents a configured plugin context engine from re-introducing recovery tools into the communications lane. Other Hermes research jobs keep their normal tool surfaces.
+This does not depend on PATH shadowing or on being launched by a particular cron wrapper, so direct/manual execution of `communications-radar` receives the same capability boundary. For the pinned Hermes release, safe mode suppresses user plugins/MCP/rules/customizations before agent startup and the built-in `context_engine` toolset is empty. This prevents a configured plugin context engine from re-introducing recovery tools into the communications lane. Other Hermes research jobs keep their normal tool surfaces.
 
 The provider and model remain explicit command-line arguments from the Vesper Rust control plane. Do not replace this enforcement with a prompt-only "never send" instruction. If upstream Hermes gains a first-class explicit no-tools mode, prefer that primitive.
 
