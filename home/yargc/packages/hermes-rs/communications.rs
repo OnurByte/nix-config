@@ -373,6 +373,12 @@ pub fn sanitize_report(batch: &str, report: &str) -> Result<String, String> {
           | unique;
         def evidence_bound($valid):
           .evidenceMessageIds = valid_evidence($valid);
+        def semantic_grounds:
+          [(.semanticGrounds // [])[]?
+            | select(type == "string")
+            | . as $ground
+            | select((["direct_request","deadline","credential_request","money_request","impersonation","coercion","threat","boundary_pressure","material_contradiction","sensitive_account_action","material_decision","other"] | index($ground)) != null)]
+          | unique;
 
         (((.batch.messages // []) + (.batch.contextMessages // []))
           | map(.id // empty)
@@ -384,7 +390,10 @@ pub fn sanitize_report(batch: &str, report: &str) -> Result<String, String> {
         | .alerts = [(.alerts // [])[]?
             | select(type == "object")
             | evidence_bound($valid)
+            | .semanticGrounds = semantic_grounds
             | select((.evidenceMessageIds | length) > 0)
+            | select((.semanticGrounds | length) > 0)
+            | select((.basis // "") == "semantic" or (.basis // "") == "fused")
             | select((.severity // "") == "high" or (.severity // "") == "critical")]
         | .strategy = [(.strategy // [])[]?
             | select(type == "object")
@@ -423,7 +432,8 @@ pub fn sanitize_report(batch: &str, report: &str) -> Result<String, String> {
               validMessageIds: ($valid | length),
               droppedAlerts: ($alertsBefore - ((.alerts // []) | length)),
               droppedManipulationSignals: ($manipulationBefore - ((.manipulationSignals // []) | length)),
-              priorityRequiresValidatedAlert: true
+              priorityRequiresValidatedAlert: true,
+              alertRequiresSemanticGrounds: true
             }
           })
         "#,
@@ -541,7 +551,7 @@ mod tests {
           "title":"test",
           "summary":"test",
           "priority":"critical",
-          "alerts":[{"severity":"critical","reason":"invented","evidenceMessageIds":["missing"]}],
+          "alerts":[{"severity":"critical","reason":"invented","basis":"semantic","semanticGrounds":["credential_request"],"evidenceMessageIds":["missing"]}],
           "strategy":[{"action":"verify","evidenceMessageIds":["m1","missing"]}],
           "manipulationSignals":[{"kind":"unicode_obfuscation","evidenceMessageIds":["missing"]}],
           "people":[{"identityKey":"p1","facts":[{"claim":"supported","evidenceMessageIds":["m0","missing"]}],"riskSignals":[]}]
@@ -567,17 +577,40 @@ mod tests {
     }
 
     #[test]
+    fn evidence_gate_rejects_presentation_only_alerts() {
+        let batch = r#"{"messages":[{"id":"m1","presentationSignals":["zero_width_unicode"]}],"contextMessages":[]}"#;
+        let report = r#"{
+          "title":"test",
+          "summary":"unicode only",
+          "priority":"high",
+          "alerts":[{"severity":"high","reason":"invisible unicode","basis":"fused","semanticGrounds":[],"evidenceMessageIds":["m1"]}],
+          "manipulationSignals":[{"kind":"unicode_obfuscation","observation":"zero width","evidenceMessageIds":["m1"]}]
+        }"#;
+
+        let clean = sanitize_report(batch, report).expect("report should sanitize");
+        assert_eq!(jq_raw(&clean, ".priority").unwrap().trim(), "normal");
+        assert_eq!(jq_raw(&clean, ".alerts | length").unwrap().trim(), "0");
+        assert_eq!(jq_raw(&clean, ".manipulationSignals | length").unwrap().trim(), "1");
+    }
+
+    #[test]
     fn evidence_gate_keeps_valid_high_alert() {
         let batch = r#"{"messages":[{"id":"m1"}],"contextMessages":[]}"#;
         let report = r#"{
           "title":"test",
           "summary":"test",
           "priority":"high",
-          "alerts":[{"severity":"high","reason":"credential request","evidenceMessageIds":["m1"]}]
+          "alerts":[{"severity":"high","reason":"credential request","basis":"semantic","semanticGrounds":["credential_request"],"evidenceMessageIds":["m1"]}]
         }"#;
 
         let clean = sanitize_report(batch, report).expect("report should sanitize");
         assert_eq!(jq_raw(&clean, ".priority").unwrap().trim(), "high");
         assert_eq!(jq_raw(&clean, ".alerts | length").unwrap().trim(), "1");
+        assert_eq!(
+            jq_raw(&clean, ".alerts[0].semanticGrounds | join(\",\")")
+                .unwrap()
+                .trim(),
+            "credential_request"
+        );
     }
 }
