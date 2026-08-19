@@ -143,13 +143,6 @@ in
           command = "${githubMcp}/bin/vesper-github-mcp";
         };
 
-        # Beeper Desktop exposes one local, open-source MCP surface for the
-        # connected WhatsApp, Instagram, Telegram and Discord accounts. Keep
-        # it loopback-only; authentication is handled by Beeper's MCP OAuth.
-        beeper = {
-          url = "http://127.0.0.1:23373/v0/mcp";
-        };
-
         hypruse = {
           command = "${hypruseMcp}/bin/vesper-hypruse-mcp";
         };
