@@ -1,19 +1,19 @@
 ---
 name: vesper-obsidian-second-brain
-description: Turn Hermes research, memories and recurring insights into a durable Obsidian second brain without bloating short-term memory.
+description: Turn Hermes research, communications intelligence, memories and recurring insights into a durable Obsidian second brain without bloating short-term memory.
 platforms: [linux]
 ---
 
 # Vesper Obsidian Second Brain
 
-Use Obsidian as the durable knowledge layer behind Hermes research.
+Use Obsidian as the durable knowledge layer behind Hermes research and communications intelligence.
 
 Do not collapse every persistence mechanism into `memory`:
 
 ```text
 runtime state    -> jobs, retries, logs, temporary artifacts and resume state
 semantic memory  -> compact associative recall when the runtime provides it
-durable context  -> decisions, rationale, projects and evidence in human-readable notes
+durable context  -> decisions, rationale, projects, people and evidence in human-readable notes
 skills           -> reviewed procedural memory loaded for a class of work
 ```
 
@@ -38,6 +38,11 @@ Hermes/
 │   ├── Unknown Frontier/
 │   ├── Agenda/
 │   └── Free AI/
+├── Communications/
+│   ├── Briefings/
+│   ├── Groups/
+│   └── Topics/
+├── People/
 ├── Sources/
 ├── Concepts/
 ├── Projects/
@@ -49,7 +54,7 @@ Reuse an equivalent existing structure if the vault already has one. Do not dupl
 
 ## ingestion rules
 
-Do not mirror the scrape corpus into Obsidian. Promote only information worth keeping:
+Do not mirror the scrape corpus or chat transcripts into Obsidian. Promote only information worth keeping:
 
 - final daily lane reports
 - genuinely useful unknown-frontier discoveries
@@ -59,8 +64,12 @@ Do not mirror the scrape corpus into Obsidian. Promote only information worth ke
 - unresolved research questions worth revisiting
 - high-signal source profiles that repeatedly produce discoveries
 - procedures that may later become skills
+- evidence-backed facts about people that materially affect future interaction
+- commitments, decisions and open loops worth remembering
+- meaningful changes in a group/project conversation
+- dated security, trust-boundary or manipulation-risk observations with evidence
 
-For each promoted research note, preserve enough provenance to retrace the finding. Prefer YAML frontmatter for stable metadata and normal Markdown for the note body.
+For each promoted research or communications note, preserve enough provenance to retrace the finding. Prefer YAML frontmatter for stable metadata and normal Markdown for the note body.
 
 Suggested metadata when relevant:
 
@@ -79,15 +88,43 @@ tags:
 ---
 ```
 
+Communications notes should prefer source network/chat/message IDs and timestamps over copying message bodies. Short excerpts are acceptable only when they are necessary to preserve meaning.
+
 Use `[[wikilinks]]` when a stable concept/project/person note already exists or deserves its own durable page. Avoid link spam.
+
+## people and communications
+
+A person note is durable relationship context, not an AI personality dossier.
+
+Prefer one evolving `Hermes/People/<person>.md` note per resolved person. Keep source identities/aliases explicit so WhatsApp, Telegram, Discord, Instagram or other handles are not merged merely because display names are similar.
+
+Useful sections when supported by evidence:
+
+```text
+Identity / aliases
+Current context
+Open loops
+Important facts
+Recent meaningful changes
+Risk / trust-boundary observations
+Evidence references
+```
+
+For every non-trivial claim, keep a source message ID/date or an explicit confidence marker. Facts and inferences must remain distinguishable.
+
+Do not infer protected or sensitive traits, medical/mental-health status, sexuality, religion or similar attributes from communication behavior. Do not turn one ambiguous exchange into a permanent negative profile. Record concrete behavior, date it, preserve later corrections and lower confidence when evidence conflicts.
+
+Group and topic notes should capture decisions, owners, commitments, important changes and unresolved questions rather than chronological chatter.
 
 ## deduplication and evolution
 
-Before creating a note, search the vault for the same URL, repository, title, concept and close semantic equivalents.
+Before creating a note, search the vault for the same URL, repository, title, concept, person/source identity and close semantic equivalents.
 
 When new evidence extends an existing note, update it instead of creating another copy. Add a dated `Updates` section when the history matters.
 
 When a claim becomes false or obsolete, keep the historical context but mark its current status clearly. Dirty/anomalous historical observations should be marked rather than silently deleted when the history explains later decisions.
+
+For people, identity merges require stable evidence. If two source identities may be the same person but the link is uncertain, keep them separate and note the possible relationship instead of silently collapsing them.
 
 ## memory boundary
 
@@ -99,8 +136,9 @@ Use built-in Hermes memory for compact durable facts such as:
 - stable project/environment facts
 - a source or technique that has repeatedly proven valuable
 - an unresolved objective that must survive between sessions
+- a small relationship fact that repeatedly affects future decisions
 
-Use Obsidian for details, evidence, long explanations, research trails and knowledge graphs.
+Use Obsidian for details, evidence, long explanations, research trails, person histories and knowledge graphs.
 
 When saving a memory fact that has a richer Obsidian note, keep the memory concise and point conceptually to the second-brain topic rather than copying the entire note.
 
@@ -120,28 +158,30 @@ At the end of meaningful work, leave enough durable state to answer:
 
 If a session ends without a clean handoff, a later scheduled consolidation may recover it. Use an overlap wider than the scheduler interval when collecting recent sessions so timing jitter creates deduplicatable overlap rather than gaps. Preserve previously-open items that the newest window does not explicitly close.
 
-Provenance matters when several agents/runtimes write context. Keep enough source metadata to distinguish operator statements from agent-produced synthesis.
+Provenance matters when several agents/runtimes write context. Keep enough source metadata to distinguish operator statements from agent-produced synthesis and communications-derived inference.
 
 ## dream / reflection cycle
 
-Vesper's `dream` behavior is a research-memory consolidation workflow. Do not assume Hermes has a built-in `dreaming=true` configuration flag.
+Vesper's `dream` behavior is a research-and-communications memory consolidation workflow. Do not assume Hermes has a built-in `dreaming=true` configuration flag.
 
-After a meaningful daily research cycle, or during a later quiet scheduled run:
+After a meaningful daily cycle, or during a later quiet scheduled run:
 
-1. read that day's `unknown-frontier-ai`, `agenda` and `free-ai-radar` reports
+1. read that day's `unknown-frontier-ai`, `agenda`, `free-ai-radar` and recent `communications-radar` reports
 2. compare them with existing Obsidian notes and durable Hermes memory
-3. deduplicate repeated claims and sources
-4. identify genuinely durable facts, connections, contradictions and open questions
-5. update or create the smallest useful set of Obsidian notes
-6. save only compact critical facts to Hermes memory
-7. stage repeatable procedures as candidate skill drafts under `$VESPER_SKILL_DRAFT_DIR`
-8. write a short reflection note under `Hermes/Memory/Dreams/` only when there was meaningful synthesis
+3. deduplicate repeated claims, sources, person identities, commitments and risk observations
+4. identify genuinely durable facts, connections, contradictions, open questions and relationship/context changes
+5. update or create the smallest useful set of research, project, people, group and topic notes
+6. close or change open loops only when evidence supports the state transition
+7. save only compact critical facts to Hermes memory
+8. stage repeatable procedures as candidate skill drafts under `$VESPER_SKILL_DRAFT_DIR`
+9. write a short reflection note under `Hermes/Memory/Dreams/` only when there was meaningful synthesis
 
 A dream note should not be a transcript summary. It should capture higher-level synthesis such as:
 
 - what new pattern emerged
 - what changed in the knowledge graph
 - what previous belief was corrected
+- which relationship/open loop materially changed
 - which source path became more valuable
 - which question should be investigated next
 - which repeated workflow may deserve promotion to a skill
