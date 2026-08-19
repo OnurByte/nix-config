@@ -75,10 +75,14 @@ fn extract_json_object(text: &str) -> Result<String, String> {
     Err("Hermes did not return a valid report JSON object".to_string())
 }
 
-fn invoke_agent(prompt: &str, web_only: bool) -> Result<String, String> {
+fn invoke_agent(prompt: &str, web_only: bool, isolated: bool) -> Result<String, String> {
     let provider = env::var("HERMES_RESEARCH_PROVIDER").unwrap_or_else(|_| "xai-oauth".to_string());
     let model = env::var("HERMES_RESEARCH_MODEL").unwrap_or_else(|_| "grok-4.5".to_string());
-    let mut args: Vec<&str> = vec!["-z", prompt, "--provider", provider.as_str(), "-m", model.as_str(), "--yolo"];
+    let mut args: Vec<&str> = Vec::new();
+    if isolated {
+        args.extend(["--safe-mode", "-t", "context_engine"]);
+    }
+    args.extend(["-z", prompt, "--provider", provider.as_str(), "-m", model.as_str(), "--yolo"]);
     if web_only {
         args.extend(["-t", "web"]);
     }
@@ -164,7 +168,7 @@ fn run_communications_radar() -> Result<String, String> {
 
     let durable = task_context("communications-radar", 36_000);
     let prompt = communications_contract(&communications_skill(), &durable, &batch);
-    let raw = invoke_agent(&prompt, false)?;
+    let raw = invoke_agent(&prompt, false, true)?;
     let sanitized = sanitize_report(&batch, &raw)?;
     let report = save_report("communications-radar", &sanitized)?;
     commit_batch(&batch)?;
@@ -187,7 +191,7 @@ fn run_single_task(task: &str) -> Result<String, String> {
     }
     let durable = task_context(task, 42_000);
     let prompt = research_contract(task, &research_skill(), &durable, &task_extra(task));
-    let raw = invoke_agent(&prompt, is_web_only(task))?;
+    let raw = invoke_agent(&prompt, is_web_only(task), false)?;
     let report = save_report(task, &raw)?;
 
     if task == "morning-check" {
@@ -411,7 +415,7 @@ fn research_cli(args: &[String]) -> Result<i32, String> {
         .unwrap_or_else(|| (pages / 12).clamp(12, 80))
         .clamp(1, 120);
     let prompt = adhoc_contract(query, pages, deep_reads, &research_skill(), &source_registry_text());
-    let raw = invoke_agent(&prompt, false)?;
+    let raw = invoke_agent(&prompt, false, false)?;
     println!("{}", save_report("adhoc-research", &raw)?);
     Ok(0)
 }
