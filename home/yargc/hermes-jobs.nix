@@ -86,7 +86,7 @@
     task = "communications-radar";
     deliver = "local";
     freshnessMinutes = 90;
-    description = "read-only Beeper communications triage with high-signal local alerts";
+    description = "read-only Agent Messenger communications triage with high-signal local alerts";
   };
 
   vesper-health-watch = {
