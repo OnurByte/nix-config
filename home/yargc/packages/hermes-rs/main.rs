@@ -75,19 +75,60 @@ fn extract_json_object(text: &str) -> Result<String, String> {
     Err("Hermes did not return a valid report JSON object".to_string())
 }
 
-fn invoke_agent(prompt: &str, web_only: bool, isolated: bool) -> Result<String, String> {
-    let provider = env::var("HERMES_RESEARCH_PROVIDER").unwrap_or_else(|_| "xai-oauth".to_string());
-    let model = env::var("HERMES_RESEARCH_MODEL").unwrap_or_else(|_| "grok-4.5".to_string());
+#[derive(Clone, Copy)]
+enum AgentMode {
+    Standard,
+    WebOnly,
+    Communications,
+}
+
+fn agent_args<'a>(prompt: &'a str, provider: &'a str, model: &'a str, mode: AgentMode) -> Vec<&'a str> {
     let mut args: Vec<&str> = Vec::new();
-    if isolated {
+    if matches!(mode, AgentMode::Communications) {
         args.extend(["--safe-mode", "-t", "context_engine"]);
     }
-    args.extend(["-z", prompt, "--provider", provider.as_str(), "-m", model.as_str(), "--yolo"]);
-    if web_only {
+    args.extend(["-z", prompt, "--provider", provider, "-m", model, "--yolo"]);
+    if matches!(mode, AgentMode::WebOnly) {
         args.extend(["-t", "web"]);
     }
+    args
+}
+
+fn invoke_agent(prompt: &str, mode: AgentMode) -> Result<String, String> {
+    let provider = env::var("HERMES_RESEARCH_PROVIDER").unwrap_or_else(|_| "xai-oauth".to_string());
+    let model = env::var("HERMES_RESEARCH_MODEL").unwrap_or_else(|_| "grok-4.5".to_string());
+    let args = agent_args(prompt, provider.as_str(), model.as_str(), mode);
     let output = run("hermes", &args, None)?;
     extract_json_object(&output)
+}
+
+#[cfg(test)]
+mod agent_mode_tests {
+    use super::{agent_args, AgentMode};
+
+    #[test]
+    fn communications_mode_is_safe_and_tool_less() {
+        let args = agent_args("batch", "provider", "model", AgentMode::Communications);
+        assert_eq!(&args[..3], ["--safe-mode", "-t", "context_engine"]);
+        assert!(!args.contains(&"web"));
+        assert!(args.windows(2).any(|pair| pair == ["--provider", "provider"]));
+        assert!(args.windows(2).any(|pair| pair == ["-m", "model"]));
+    }
+
+    #[test]
+    fn web_mode_does_not_inherit_communications_isolation() {
+        let args = agent_args("query", "provider", "model", AgentMode::WebOnly);
+        assert!(!args.contains(&"--safe-mode"));
+        assert!(args.windows(2).any(|pair| pair == ["-t", "web"]));
+        assert!(!args.contains(&"context_engine"));
+    }
+
+    #[test]
+    fn standard_mode_has_no_explicit_toolset() {
+        let args = agent_args("query", "provider", "model", AgentMode::Standard);
+        assert!(!args.contains(&"--safe-mode"));
+        assert!(!args.contains(&"-t"));
+    }
 }
 
 fn task_extra(task: &str) -> String {
@@ -168,7 +209,7 @@ fn run_communications_radar() -> Result<String, String> {
 
     let durable = task_context("communications-radar", 36_000);
     let prompt = communications_contract(&communications_skill(), &durable, &batch);
-    let raw = invoke_agent(&prompt, false, true)?;
+    let raw = invoke_agent(&prompt, AgentMode::Communications)?;
     let sanitized = sanitize_report(&batch, &raw)?;
     let report = save_report("communications-radar", &sanitized)?;
     commit_batch(&batch)?;
@@ -191,7 +232,12 @@ fn run_single_task(task: &str) -> Result<String, String> {
     }
     let durable = task_context(task, 42_000);
     let prompt = research_contract(task, &research_skill(), &durable, &task_extra(task));
-    let raw = invoke_agent(&prompt, is_web_only(task), false)?;
+    let mode = if is_web_only(task) {
+        AgentMode::WebOnly
+    } else {
+        AgentMode::Standard
+    };
+    let raw = invoke_agent(&prompt, mode)?;
     let report = save_report(task, &raw)?;
 
     if task == "morning-check" {
@@ -415,7 +461,7 @@ fn research_cli(args: &[String]) -> Result<i32, String> {
         .unwrap_or_else(|| (pages / 12).clamp(12, 80))
         .clamp(1, 120);
     let prompt = adhoc_contract(query, pages, deep_reads, &research_skill(), &source_registry_text());
-    let raw = invoke_agent(&prompt, false, false)?;
+    let raw = invoke_agent(&prompt, AgentMode::Standard)?;
     println!("{}", save_report("adhoc-research", &raw)?);
     Ok(0)
 }
