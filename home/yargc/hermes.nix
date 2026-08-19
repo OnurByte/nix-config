@@ -16,6 +16,9 @@ let
   researchEnv = ''
     export VESPER_REDDIT_SEEDS="opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev"
     export VESPER_REDDIT_COMMENT_SEEDS="MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec"
+    export VESPER_BEEPER_BASE_URL="http://127.0.0.1:23373"
+    export VESPER_BEEPER_TOKEN_FILE="${home}/.config/vesper/beeper.token"
+    export VESPER_COMMUNICATIONS_STATE_DIR="${home}/.local/state/vesper/communications"
   '';
 
   # Hermes resolves cron script paths before enforcing containment under
@@ -88,6 +91,9 @@ in
     VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
     VESPER_REDDIT_SEEDS = "opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev";
     VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
+    VESPER_BEEPER_BASE_URL = "http://127.0.0.1:23373";
+    VESPER_BEEPER_TOKEN_FILE = "${home}/.config/vesper/beeper.token";
+    VESPER_COMMUNICATIONS_STATE_DIR = "${home}/.local/state/vesper/communications";
   };
 
   home.file.".config/vesper/hermes-jobs.json".text = builtins.toJSON jobs;
