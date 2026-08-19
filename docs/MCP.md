@@ -95,7 +95,9 @@ Use it for real desktop QA where browser-only MCPs are insufficient. Prefer sema
 
 ## Context7
 
-Context7 is pinned to `@upstash/context7-mcp@4.0.2`.
+Context7 is pinned to `@upstash/context7-mcp@4.0.2` and built into the Nix store.
+
+The workstation-wide nixpkgs revision still carries `context7-mcp 4.0.0`, so Vesper overrides only this package with the immutable source and pnpm dependency hashes from the newer nixpkgs recipe instead of moving the whole flake pin or downloading the npm package at MCP startup.
 
 Basic use does not require an API key. Ask the agent to `use context7` when a task depends on current framework or library documentation.
 
@@ -138,7 +140,7 @@ rm -rf ~/.local/share/vesper/helium-mcp
 rm -rf ~/.local/share/vesper/zen-mcp
 ```
 
-The browser and Context7 npm packages are version-pinned but launched through Bun's `bunx` because they are not currently part of the Vesper Nix package set.
+The browser DevTools MCP packages are version-pinned but launched through Bun's `bunx` because they are not currently part of the Vesper Nix package set.
 Their isolated Bun cache lives under:
 
 ```text
