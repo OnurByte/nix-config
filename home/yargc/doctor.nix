@@ -200,6 +200,24 @@ let
         record warn hermes_registry "Hermes job registry is unavailable: $hermes_registry"
       fi
 
+      comms_token="''${VESPER_BEEPER_TOKEN_FILE:-$HOME/.config/vesper/beeper.token}"
+      comms_state_root="''${VESPER_COMMUNICATIONS_STATE_DIR:-$HOME/.local/state/vesper/communications}"
+      comms_status="$comms_state_root/status.json"
+      if [ ! -s "$comms_token" ]; then
+        record info communications "communications intelligence is not configured yet: Beeper token is absent"
+      elif [ ! -r "$comms_status" ]; then
+        record warn communications "communications token exists but no intake status has been recorded yet"
+      else
+        comms_state="$(jq -r '.state // "unknown"' "$comms_status" 2>/dev/null || printf 'invalid')"
+        comms_detail="$(jq -r '.detail // "no detail"' "$comms_status" 2>/dev/null || printf 'invalid status record')"
+        case "$comms_state" in
+          ready) record ok communications "communications intake: $comms_detail" ;;
+          unconfigured) record warn communications "communications token exists but intake reports unconfigured: $comms_detail" ;;
+          unavailable) record warn communications "communications intake unavailable: $comms_detail" ;;
+          *) record warn communications "communications intake status is $comms_state: $comms_detail" ;;
+        esac
+      fi
+
       if [ -r /sys/power/mem_sleep ]; then
         record info suspend "suspend modes: $(cat /sys/power/mem_sleep)"
       fi
