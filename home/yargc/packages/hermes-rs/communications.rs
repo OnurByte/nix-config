@@ -135,6 +135,15 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
     let combined = format!("[{}]", pages.join(","));
     let filter = format!(
         r#"
+        def mixed_latin_confusable_script($s):
+          (($s // "") | explode) as $cp
+          | (([$cp[] | select((. >= 65 and . <= 90) or (. >= 97 and . <= 122))] | length) > 0)
+            and (([$cp[] | select((. >= 880 and . <= 1023) or (. >= 1024 and . <= 1327))] | length) > 0);
+
+        def suspicious_double_extension($name):
+          (($name // "") | ascii_downcase
+            | test("\\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|webp|zip|rar)\\.(exe|scr|com|bat|cmd|ps1|js|jse|vbs|vbe|sh|apk)$"));
+
         def presentation_signals($m):
           ([($m.text // "")]
             + [($m.links // [])[]? | (.title // ""), (.summary // ""), (.url // ""), (.originalURL // "")]
@@ -148,7 +157,13 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
               if ([$cp[] | select(. == 8206 or . == 8207 or (. >= 8234 and . <= 8238) or (. >= 8294 and . <= 8297))] | length) > 0
               then "bidi_control_unicode" else empty end,
               if ([($m.links // [])[]? | select((.originalURL // .url // "") != (.url // ""))] | length) > 0
-              then "redirected_link" else empty end
+              then "redirected_link" else empty end,
+              if ([($m.links // [])[]? | (.url // ""), (.originalURL // "") | select(mixed_latin_confusable_script(.))] | length) > 0
+              then "mixed_script_link" else empty end,
+              if ([($m.links // [])[]? | (.url // ""), (.originalURL // "") | ascii_downcase | select(contains("xn--"))] | length) > 0
+              then "punycode_link" else empty end,
+              if ([($m.attachments // [])[]? | .fileName // "" | select(suspicious_double_extension(.))] | length) > 0
+              then "suspicious_double_extension" else empty end
             ];
 
         (reduce .[] as $page ({{}}; . * ($page.chats // {{}}))) as $chats
@@ -386,7 +401,7 @@ mod tests {
     use crate::util::jq_raw;
 
     #[test]
-    fn presentation_preflight_flags_invisible_unicode_and_redirects() {
+    fn presentation_preflight_flags_deceptive_surfaces_without_scoring_them() {
         let page = r#"{
           "chats": {
             "chat-1": {
@@ -411,9 +426,14 @@ mod tests {
               "type": "TEXT",
               "links": [{
                 "title": "portal",
-                "url": "https://example.com/final",
-                "originalURL": "https://short.example/x",
+                "url": "https://exаmple.com/final",
+                "originalURL": "https://xn--exmple-cua.example/x",
                 "summary": "open portal"
+              }],
+              "attachments": [{
+                "type": "file",
+                "fileName": "invoice.pdf.exe",
+                "mimeType": "application/octet-stream"
               }]
             },
             {
@@ -433,7 +453,10 @@ mod tests {
             .expect("communications fixture should normalize");
         let first = jq_raw(&normalized, ".messages[0].presentationSignals | sort | join(\",\")")
             .expect("first signal list should parse");
-        assert_eq!(first.trim(), "redirected_link,zero_width_unicode");
+        assert_eq!(
+            first.trim(),
+            "mixed_script_link,punycode_link,redirected_link,suspicious_double_extension,zero_width_unicode"
+        );
         let second = jq_raw(&normalized, ".messages[1].presentationSignals | length")
             .expect("second signal list should parse");
         assert_eq!(second.trim(), "0");
