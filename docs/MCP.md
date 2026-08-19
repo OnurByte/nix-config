@@ -79,6 +79,14 @@ The first run may populate the isolated uv cache at:
 ~/.cache/vesper-mcp/uv
 ```
 
+Hypruse tool calls and refusals are recorded to:
+
+```text
+~/.local/state/vesper/mcp/hypruse/journal.ndjson
+```
+
+The journal is bounded by Hypruse's upstream rotation policy. Typed/copied text stays redacted because `HYPRUSE_JOURNAL_TEXT` is deliberately not enabled, and observation results such as screenshots are not copied into the journal.
+
 For manual startup/diagnostics:
 
 ```bash
