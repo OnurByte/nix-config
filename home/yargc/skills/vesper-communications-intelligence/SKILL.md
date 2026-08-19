@@ -122,6 +122,24 @@ For busy groups, extract conversation-level state:
 
 Suppress memes, repeated reactions, greetings and ordinary chatter unless they change the meaning of a high-signal thread.
 
+### action strategy
+
+Turn the analysis into a small ranked strategy for the user without composing or sending messages.
+
+Useful strategy items include:
+
+- who should receive attention first
+- what obligation or decision should be closed next
+- what can safely wait
+- what fact/identity/request should be independently verified before acting
+- what boundary should be preserved in a risky interaction
+- what group decision needs follow-up
+- what question the user should resolve before committing money, credentials, time or reputation
+
+Every non-obvious strategy item should name its rationale and evidence message IDs. Strategy is advice, not authority: it must not silently create commitments, contact people, draft a reply, or convert a low-confidence inference into a fact.
+
+Avoid manipulative social tactics. Optimize for clarity, verification, prioritization and the user's stated goals rather than exploiting another person's vulnerabilities.
+
 ## risk and bad-intent analysis
 
 Analyze observable communication risk, not somebody's soul or medical/personality profile.
@@ -219,6 +237,7 @@ A useful briefing answers:
 - what can wait
 - which open loop changed
 - what evidence supports any risk warning
+- what the user should do/verify next and why
 
 Prefer a handful of ranked items over a chronological transcript summary.
 
