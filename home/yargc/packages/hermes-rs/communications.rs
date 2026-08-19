@@ -135,6 +135,22 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
     let combined = format!("[{}]", pages.join(","));
     let filter = format!(
         r#"
+        def presentation_signals($m):
+          ([($m.text // "")]
+            + [($m.links // [])[]? | (.title // ""), (.summary // ""), (.url // ""), (.originalURL // "")]
+            + [($m.attachments // [])[]? | (.fileName // ""), (.transcription.transcription // "")]
+            | map(select(type == "string"))
+            | join("\n")
+            | explode) as $cp
+          | [
+              if ([$cp[] | select(. == 8203 or . == 8204 or . == 8205 or . == 8288 or . == 65279)] | length) > 0
+              then "zero_width_unicode" else empty end,
+              if ([$cp[] | select(. == 8206 or . == 8207 or (. >= 8234 and . <= 8238) or (. >= 8294 and . <= 8297))] | length) > 0
+              then "bidi_control_unicode" else empty end,
+              if ([($m.links // [])[]? | select((.originalURL // .url // "") != (.url // ""))] | length) > 0
+              then "redirected_link" else empty end
+            ];
+
         (reduce .[] as $page ({{}}; . * ($page.chats // {{}}))) as $chats
         | {{
             status: "ready",
@@ -160,28 +176,35 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
             messages: ([
                 .[] | .items[]?
                 | select((.isDeleted // false) == false and (.isHidden // false) == false)
+                | . as $m
                 | {{
-                    id: (.id // ""),
-                    accountID: (.accountID // ""),
-                    chatID: (.chatID // ""),
-                    senderID: (.senderID // ""),
-                    senderName: (.senderName // ""),
-                    isSender: (.isSender // false),
-                    timestamp: (.timestamp // ""),
-                    sortKey: (.sortKey // ""),
-                    text: (.text // ""),
-                    type: (.type // ""),
-                    isUnread: (.isUnread // false),
-                    attachments: ((.attachments // []) | map({{
+                    id: ($m.id // ""),
+                    accountID: ($m.accountID // ""),
+                    chatID: ($m.chatID // ""),
+                    senderID: ($m.senderID // ""),
+                    senderName: ($m.senderName // ""),
+                    isSender: ($m.isSender // false),
+                    timestamp: ($m.timestamp // ""),
+                    editedTimestamp: ($m.editedTimestamp // ""),
+                    sortKey: ($m.sortKey // ""),
+                    text: ($m.text // ""),
+                    type: ($m.type // ""),
+                    isUnread: ($m.isUnread // false),
+                    linkedMessageID: ($m.linkedMessageID // ""),
+                    mentions: ($m.mentions // []),
+                    presentationSignals: presentation_signals($m),
+                    attachments: (($m.attachments // []) | map({{
                         type: (.type // ""),
                         fileName: (.fileName // ""),
+                        fileSize: (.fileSize // 0),
                         mimeType: (.mimeType // ""),
                         isVoiceNote: (.isVoiceNote // false),
                         transcription: (.transcription.transcription // "")
                     }})),
-                    links: ((.links // []) | map({{
+                    links: (($m.links // []) | map({{
                         title: (.title // ""),
                         url: (.url // ""),
+                        originalURL: (.originalURL // ""),
                         summary: (.summary // "")
                     }}))
                 }}
