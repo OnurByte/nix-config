@@ -35,7 +35,7 @@ Do not restore removed components merely because an older document names them.
 
 ## desktop and UX contract
 
-- Caelestia is the only shell/bar and owns network, Bluetooth, audio, notifications, idle/lock, clipboard, capture, launcher and wallpaper UI.
+- Caelestia is the only shell/bar and owns network, Bluetooth, audio, notifications, idle/lock, clipboard, capture and wallpaper UI. Vicinae is the primary Spotlight-style application launcher and `Super + Space` entry point; do not restore Caelestia as the primary launcher while current code keeps Vicinae in that role.
 - Vesper Settings extends Caelestia Nexus. `docs/SETTINGS.md` owns the Settings information architecture and cross-page UX contract; do not create a second general settings application.
 - Settings should expose real Vesper-owned system capabilities instead of accumulating decorative toggles. NixOS state, recovery, privacy, AI, automation and system health are the distinguishing control-plane areas.
 - Do not turn Vesper Settings into a generic KDE-style systemd/package/config browser. Curate the capabilities Vesper actually owns and can enforce.
