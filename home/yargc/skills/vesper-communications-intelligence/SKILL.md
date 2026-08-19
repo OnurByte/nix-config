@@ -22,16 +22,17 @@ Vesper's connector layer must enforce that boundary technically where possible. 
 Use one normalized communications stream:
 
 ```text
-WhatsApp / Telegram / Discord / Instagram / other Beeper bridges
-        -> Beeper Desktop local API
-        -> Vesper GET-only intake
+WhatsApp / Telegram / Discord / Instagram
+        -> Agent Messenger CLI
+        -> Vesper read-only command allowlist
+        -> normalized Vesper intake
         -> bounded delta batch
         -> Hermes analysis
         -> local alert + durable briefing
         -> Obsidian second-brain promotion
 ```
 
-Beeper remains the message-history source of truth. Do not mirror the user's full chat history into Vesper state or Obsidian.
+The source networks remain the message-history source of truth. Agent Messenger owns transport/session state and reads from those networks; Vesper must not mirror the user's full chat history into its own state or Obsidian.
 
 Vesper state should keep only what is operationally necessary:
 
@@ -43,19 +44,21 @@ Vesper state should keep only what is operationally necessary:
 
 ### single-source boundary
 
-Beeper Desktop is the only communications ingress for this workflow.
+Agent Messenger is the only communications transport for this workflow.
 
-Do not add per-network connectors or fallback ingestion paths for WhatsApp, Telegram, Discord or Instagram. Keep one source of truth and one normalized message-identity space. If a Beeper network connection is degraded or unavailable, report that source honestly rather than silently switching connectors.
+Do not add per-network connectors, secondary transports or fallback ingestion paths for WhatsApp, Telegram, Discord or Instagram. If one network cannot authenticate or be read, keep that source degraded/unavailable and report it honestly instead of silently switching transports.
 
-Do not add Beeper's MCP surface to the shared agent registry. The Vesper control plane uses only the audited local GET intake paths needed for observation. A messaging platform being temporarily unavailable is an intake-state problem, not permission to introduce another connector or an outbound capability.
+Agent Messenger itself includes mutation-capable commands. The scheduled Vesper communications intake must never receive the full CLI surface. It uses the separate `vesper-agent-messenger-read` executable whose command grammar is an audited read allowlist. The full `agent-messenger` command exists for human-driven authentication and explicit manual use, not for the communications-radar execution path.
+
+The scheduled intake may use only the read operations required to observe account state, chats, messages, unread Discord DMs and unread Discord mentions. Sending, reacting, editing, deleting, acknowledging/marking read, changing account selection, logging out and other mutations are outside its executable interface.
 
 ### provider privacy boundary
 
-A local Beeper API does not imply local AI analysis. The normalized current batch is included in the Hermes model request.
+Local Agent Messenger transport does not imply local AI analysis. The normalized current batch is included in the Hermes model request.
 
 If the configured Hermes provider/model is remote, the message text and the bounded identity metadata present in that batch are sent to that provider for inference. Never describe this workflow as fully local unless the selected inference provider is actually local.
 
-Keep the batch minimal and purpose-bound. Do not add unrelated profile/account metadata merely because the source exposes it. If a future privacy mode requires local-only communications analysis, enforce that in provider routing rather than pretending the local connector alone provides it.
+Keep the batch minimal and purpose-bound. Do not add unrelated profile/account metadata merely because the source exposes it. If a future privacy mode requires local-only communications analysis, enforce that in provider routing rather than pretending a local transport alone provides it.
 
 ## analysis model
 
