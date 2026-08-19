@@ -56,9 +56,11 @@ The command is normally started by the agent and speaks MCP over stdio, so runni
 
 ## Hypruse
 
-`hypruse` runs upstream `hypruse==0.9.4` through an isolated `uvx` wrapper instead of adding Python or uv to the normal user toolchain.
+Vesper packages upstream `hypruse 0.9.4` from its published `py3-none-any` wheel with the wheel SHA-256 pinned in Nix. The package uses the pinned nixpkgs `mcp` Python SDK and runs entirely from the Nix store; starting the MCP does not download Python packages or depend on a mutable uv environment.
 
-It talks directly to the active Hyprland session through `hyprctl`, native Wayland input, `wtype`, `grim` and AT-SPI. It does not require `ydotool`, a root daemon or a RemoteDesktop portal.
+Upstream Python stays inside that external package. Vesper's first-party runtime/control-plane code remains Rust.
+
+Hypruse talks directly to the active Hyprland session through `hyprctl`, native Wayland input, `wtype`, `grim` and AT-SPI. It does not require `ydotool`, a root daemon or a RemoteDesktop portal.
 
 Vesper does not expose it unconstrained. The wrapper sets:
 
@@ -72,12 +74,6 @@ HYPRUSE_MARK=1
 This means input is limited to windows launched by the MCP, authentication dialogs remain guarded, an unexpected human/focus change forces the agent to re-observe before acting and agent-owned windows are marked when supported. Clipboard access is not enabled.
 
 Confinement is an input boundary, not a privacy boundary. Desktop state and screenshots can still reveal visible information, and an MCP client still decides whether to approve tool calls. Do not treat Hypruse inventory as a stronger sandbox than the enforcement it actually provides.
-
-The first run may populate the isolated uv cache at:
-
-```text
-~/.cache/vesper-mcp/uv
-```
 
 Hypruse tool calls and refusals are recorded to:
 
