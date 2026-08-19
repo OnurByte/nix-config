@@ -2,7 +2,7 @@
 
 Status: **current**
 
-Vesper uses Hermes cron as the only recurring scheduler. Vesper-owned scheduling, state, dispatch, watchdog and briefing logic stays in the existing Vesper control plane; reliability checks may call `vesper-doctor` as the workstation diagnostic backend rather than creating a second scheduler.
+Vesper uses Hermes cron as the only recurring scheduler. Vesper-owned scheduling, state, dispatch, watchdog, communications triage and briefing logic stays in the existing Vesper control plane; reliability checks may call `vesper-doctor` as the workstation diagnostic backend rather than creating a second scheduler.
 
 ```text
 Hermes cron
@@ -11,7 +11,7 @@ Hermes cron
     ↓
 vesper-hermes-automations trigger <job>
     ├─ watchdog → local checks → edge-triggered stdout
-    └─ research → systemd-run --user → vesper-hermes-automations execute <job>
+    └─ dispatch → systemd-run --user → vesper-hermes-automations execute <job>
                                       ↓
                                   Hermes agent
                                       ↓
@@ -26,6 +26,7 @@ First-party Vesper Hermes code is Rust:
 
 ```text
 home/yargc/packages/hermes-rs/
+├── communications.rs
 ├── main.rs
 ├── cron.rs
 ├── prompts.rs
@@ -50,7 +51,7 @@ Hermes is treated as an operational agent, not a long-lived chat session.
 The persistence layers are distinct:
 
 ```text
-runtime state    ~/.local/state/vesper/research/ and Hermes runtime state
+runtime state    ~/.local/state/vesper/research/ + ~/.local/state/vesper/communications/ + Hermes runtime state
 durable reports  ~/.local/share/vesper/briefings/
 semantic memory  Hermes/runtime memory when configured
 long context      Obsidian second brain
@@ -59,7 +60,7 @@ procedures        ~/.agents/skills/
 
 A controller timeout, shell exit or agent claim is not automatically the task result. Durable state/artifacts and postconditions are the source of truth for resumable work.
 
-The shared `agent-operations` skill owns the general reliability/governance contract. `hermes-research-radar` owns research-specific discovery and evidence behavior.
+The shared `agent-operations` skill owns the general reliability/governance contract. `hermes-research-radar` owns research-specific discovery/evidence behavior. `vesper-communications-intelligence` owns read-only communications triage, evidence-backed person/group context and the no-outbound-message boundary. `vesper-obsidian-second-brain` owns durable promotion into Obsidian.
 
 ## declarative registry
 
@@ -79,7 +80,7 @@ vesper-hermes-automations validate-registry
 
 Dispatch jobs may declare `freshnessMinutes`. This is an **absence detector**, not a schedule: `vesper-doctor` checks the durable latest run record and warns when a declared job has never produced a record, its latest run ended in `error`, or the last successful record exceeds the declared window.
 
-Daily lanes currently use a 36-hour window and weekly lanes an 8-day window. These are conservative operational defaults derived from the actual daily/weekly schedules, not universal constants. Tune them only from observed scheduling/availability behavior.
+Daily lanes currently use a 36-hour window, communications uses a 90-minute freshness window, and weekly lanes an 8-day window. These are conservative operational defaults derived from the actual schedules, not universal constants. Tune them only from observed scheduling/availability behavior.
 
 ## scheduled jobs
 
@@ -92,13 +93,132 @@ Daily lanes currently use a 36-hour window and weekly lanes an 8-day window. The
 | `08:50` | `free-ai-radar` | legitimate free/cheap coding-agent capability radar |
 | `09:10` | `unknown-frontier-synthesis` | scout synthesis + counter-review |
 | `09:30` | `agenda` | compact current agenda |
-| `10:00` | `morning-check` | local projects + research → Telegram |
+| `10:00` | `morning-check` | local projects + research + useful communications → Telegram |
 | `15:00` | `upstream-edge-radar` | upstream change radar |
+| every 15 min, `:04/:19/:34/:49` | `communications-radar` | read-only messaging delta → analysis; local alert only for high/critical signal |
 | every 15 min, offset | `vesper-health-watch` | internal health/freshness + optional external dead-man ping |
 | every 6 h | `cron-skill-integrity-watch` | scheduler/registry/script integrity |
-| `23:30` | `second-brain-dream` | durable knowledge consolidation |
+| `23:30` | `second-brain-dream` | durable research + communications/person context consolidation |
 
 Sunday also runs `user-pain-miner`, `project-archaeologist`, `skill-evolution-review` and `ai-usage-economist`.
+
+## communications intelligence
+
+The communications feature is an inbox-intelligence pipeline, **not** an autonomous correspondent.
+
+The hard boundary is:
+
+```text
+read → normalize → analyze → brief → remember → local alert
+
+never send / reply / react / draft / mark-read
+```
+
+Vesper deliberately does **not** add Beeper's MCP server to the shared Codex/Claude/OpenCode registry because that surface also contains mutation tools. Instead, first-party Rust calls only Beeper Desktop's local `GET /v1/messages/search` endpoint. There is no POST/PUT/DELETE message path in `communications.rs`.
+
+Beeper is the normalization layer for supported connected chat networks such as WhatsApp, Telegram, Discord and Instagram. It remains the message-history source of truth; Vesper does not create a second full chat archive.
+
+### local-only source boundary
+
+Vesper accepts the Beeper API only on loopback:
+
+```text
+http://127.0.0.1:<port>
+http://localhost:<port>
+```
+
+The default is:
+
+```text
+http://127.0.0.1:23373
+```
+
+A non-loopback `VESPER_BEEPER_BASE_URL` is rejected. Do not enable Beeper Desktop API Remote Access for this workflow.
+
+### setup
+
+Beeper Desktop is installed declaratively from pinned nixpkgs. After `nh os switch`:
+
+1. open Beeper and sign in
+2. connect the messaging accounts you want observed
+3. in Beeper, enable Desktop API and create an Approved Connection token under Settings → Integrations
+4. store the token outside Nix/Git:
+
+```bash
+install -d -m 700 ~/.config/vesper
+read -rsp 'Beeper token: ' BEEPER_TOKEN; printf '\n'
+umask 077
+printf '%s\n' "$BEEPER_TOKEN" > ~/.config/vesper/beeper.token
+unset BEEPER_TOKEN
+chmod 600 ~/.config/vesper/beeper.token
+```
+
+The Rust intake refuses a group/world-readable token file. The token is read at runtime and passed to `curl` through stdin/config, not as a command-line bearer header. Do not commit it or put it in a Nix expression.
+
+Check intake state with:
+
+```bash
+vesper-hermes comms-status
+```
+
+`unconfigured`, `unavailable`, `ready` and an empty delta are different states. Missing Beeper/token is not reported as an empty inbox and does not trigger a 15-minute error-notification storm.
+
+### delta and crash semantics
+
+The first configured run bootstraps a bounded recent window (default 6 hours). Later runs overlap the watermark by 10 minutes and deduplicate with recent source message IDs so scheduling jitter and timestamp ties do not create gaps.
+
+The current safety bounds are:
+
+```text
+API page size      20 messages (Beeper limit)
+per-analysis batch 200 messages by default
+recent dedupe IDs  5000
+fetch safety cap   5000 messages per poll
+```
+
+A large backlog is processed oldest-first in bounded analysis batches. The watermark advances only after Hermes has produced and persisted a communications report. The current batch is held in one crash-recoverable `pending.json`; after a successful commit that raw-text staging file is removed.
+
+If the API reports more than the 5000-message fetch safety bound, the run fails without advancing the watermark rather than silently skipping history.
+
+### analysis model
+
+`vesper-communications-intelligence` separates:
+
+- salience / what actually deserves attention
+- direct requests and decisions
+- commitments and open loops (`me`, `them`, `shared`)
+- person/source identity context
+- group decisions and topic changes
+- security/social-engineering/manipulation risk indicators
+
+Message volume is not importance.
+
+High-value risk analysis is evidence-bound. Valid signals include credential or payment requests, unusual urgency, impersonation/identity inconsistency, coercion, suspicious-link pressure, meaningful contradiction and boundary pressure. Findings must retain source message IDs and distinguish observation from inference.
+
+The system does not infer protected/sensitive traits and does not diagnose people as narcissists, psychopaths, mentally ill, etc. Person notes describe concrete evidenced behavior and can be corrected by later evidence.
+
+Only `high` and `critical` findings can trigger immediate desktop `notify-send` alerts. Exact duplicate alert bodies are suppressed. Communications code never routes those alerts back through WhatsApp/Telegram/Discord/Instagram.
+
+### second-brain fan-in
+
+Communications reports use the same durable briefing store as other Hermes lanes:
+
+```text
+~/.local/share/vesper/briefings/
+```
+
+At `23:30`, `second-brain-dream` inspects recent `lane=communications-radar` reports and promotes only durable knowledge. It may update compact existing notes such as:
+
+```text
+Hermes/Communications/Briefings/
+Hermes/Communications/Groups/
+Hermes/Communications/Topics/
+Hermes/People/
+```
+
+It does not dump transcripts into Obsidian. Person notes keep aliases/source identities, useful facts, open loops, meaningful changes and dated risk/trust-boundary observations with evidence references. Uncertain cross-platform identities remain separate until evidence supports a merge.
+
+Morning Check may surface a Communications section when there is a real action, commitment, risk or important change; routine chatter is omitted.
 
 ## research profile
 
@@ -147,11 +267,19 @@ Research state:
 ~/.local/state/vesper/research/
 ```
 
+Communications operational state:
+
+```text
+~/.local/state/vesper/communications/
+```
+
 Briefings:
 
 ```text
 ~/.local/share/vesper/briefings/
 ```
+
+The communications state contains watermarks, bounded dedupe IDs, intake status, at most one pending batch and duplicate-alert state. It is not a transcript archive.
 
 The Rust control plane writes atomic JSON records, Markdown briefings, run status and a rebuilt briefing index. Caelestia consumes the briefing index through the Rust AI Hub rather than invoking a Python runtime.
 
@@ -163,11 +291,11 @@ Scheduled job success/error receipts live under:
 
 Freshness monitoring reads these receipts. A successful scheduler configuration without a recent successful receipt is not treated as proof that the job actually ran.
 
-Long future workflows that contain many independently resumable units should additionally use a durable per-unit manifest from `agent-operations`; the existing research latest-run record is a task receipt, not a general-purpose batch manifest.
+Long future workflows that contain many independently resumable units should additionally use a durable per-unit manifest from `agent-operations`; the existing latest-run record is a task receipt, not a general-purpose batch manifest.
 
 ## adaptive source state
 
-Useful evidence-bearing report URLs reinforce one shared source registry:
+Useful evidence-bearing research report URLs reinforce one shared source registry:
 
 ```text
 ~/.local/state/vesper/research/unknown-frontier-ai/source-registry.json
@@ -175,7 +303,9 @@ Useful evidence-bearing report URLs reinforce one shared source registry:
 
 A source starts at `probation`, becomes `trusted` after repeated useful hits and `promoted` after further repeated evidence. A mention in a prompt or candidate list is not enough; the URL must survive into the final report evidence.
 
-Inspect it with:
+Communications reports use source message IDs rather than pretending private chats are public research URLs, so they do not reinforce this research source registry.
+
+Inspect the research registry with:
 
 ```bash
 vesper-research sources
@@ -237,6 +367,8 @@ fresh artifact / expected remote state -> outcome evidence
 
 An API or provider call that mutates remote state should be followed by a read of the remote object when the integration supports it. Ambiguous timeout/retry paths must not blindly repeat externally visible side effects.
 
+Communications intake is deliberately read-only, so its postcondition is a persisted analysis report plus a committed local watermark; a model claim that it "checked messages" is not enough.
+
 ## skill evolution
 
 `skill-evolution-review` is review, not unattended self-rewrite.
@@ -253,15 +385,18 @@ Canonical skills remain Nix/Home Manager owned. Approval for a promotion must be
 
 ```bash
 vesper-hermes status --json
+vesper-hermes comms-status
 vesper-hermes list
 vesper-hermes read <id>
 vesper-hermes inbox
 vesper-hermes run unknown-frontier-ai
+vesper-hermes run communications-radar
 
 vesper-hermes-automations jobs
 vesper-hermes-automations validate-registry
 vesper-hermes-automations sync-cron --prune
 vesper-hermes-automations trigger agenda
+vesper-hermes-automations trigger communications-radar
 vesper-hermes-automations execute agenda
 vesper-hermes-automations links
 vesper-hermes-automations tor-fetch 'http://example.onion/'
@@ -273,4 +408,4 @@ vesper-doctor --json
 
 ## CI
 
-The smoke workflow rejects first-party `.py` files before evaluation. It compiles both Rust control planes, validates the Hermes job registry, parses Nix and Hyprland Lua, evaluates Home Manager, builds the Caelestia surface before the complete Vesper system, then builds the separately exposed packages.
+The smoke workflow rejects first-party `.py` files before evaluation. It compiles the Rust control plane (including the communications module), validates the Hermes job registry, parses Nix and Hyprland Lua, evaluates Home Manager, builds the Caelestia surface before the complete Vesper system, then builds the separately exposed packages.
