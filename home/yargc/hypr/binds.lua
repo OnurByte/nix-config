@@ -33,6 +33,8 @@ hl.bind(main .. " + U", exec("codexbar-popup"))
 hl.bind(main .. " + SHIFT + C", exec("ghostty -e codex"))
 hl.bind(main .. " + SHIFT + O", exec("ghostty -e opencode"))
 
+hl.bind(main .. " + SHIFT + BackSpace", exec("pkill -f hypruse"))
+
 hl.bind(main .. " + Q", hl.dsp.window.close())
 hl.bind(main .. " + F", hl.dsp.window.fullscreen({ mode = "fullscreen" }))
 hl.bind(main .. " + V", hl.dsp.window.float({ action = "toggle" }))
