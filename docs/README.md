@@ -38,6 +38,7 @@ Subsystem architecture must have one canonical document. Do not create parallel 
 | `AI-ANALYTICS.md` | spec | analytics normalization and measurement semantics |
 | `APPS-SETTINGS.md` | partial | installed-app settings contract and Store handoff |
 | `MARKETPLACE.md` | spec | Vesper Store architecture and target transaction model |
+| `DESKTOP-ERGONOMICS.md` | plan | high-frequency desktop interaction and ergonomics implementation plan |
 | `TOP-BAR-DOCK.md` | plan | Apple-aligned top-bar and Liquid Glass dock design plan |
 
 ## canonical boundaries
@@ -99,6 +100,12 @@ Do not make any orchestration backend a core product dependency. CCCC is optiona
 
 Do not build a second installed-app management surface inside Vesper Store.
 
+### desktop ergonomics
+
+`DESKTOP-ERGONOMICS.md` owns the planned high-frequency interaction layer built on the existing Hyprland + Caelestia desktop.
+
+Its status is `plan`. It may reference existing implementation primitives but must not be treated as proof that the planned interaction is active.
+
 ### visual shell
 
 `TOP-BAR-DOCK.md` is the visual authority for the planned top-bar and dock redesign.
@@ -109,39 +116,85 @@ For components outside that plan, follow current Caelestia/Vesper code and the r
 
 ## active remediation ledger
 
-This is the repository-wide ledger for confirmed cross-subsystem reliability issues found during the 2026-08-18 audit. It is not a second architecture document. Each item names the canonical contract that owns the final behavior.
+This is the repository-wide ledger for confirmed cross-subsystem reliability and architecture issues. It is not a second architecture document. Each item points to the canonical contract that owns the final behavior.
 
-An item stays open until the implementation is changed, the relevant tests/builds pass and the owning document describes the resulting current behavior.
+Priority vocabulary:
 
-| priority | issue | required fix | canonical owner |
-|---|---|---|---|
-| high | `vesper-doctor` treats `/etc/vesper/restic.env` as missing when the normal user cannot read the intentionally `0600 root:root` file | configuration health must test existence/ownership or a privileged service-visible condition without requiring `yargc` to read the secret; Hermes must not inherit this false unhealthy state | `BACKUP.md` |
-| high | wellbeing keeps charging the last Hyprland foreground app while the session is idle or locked | gate accounting on authoritative idle/lock state and do not add samples while the user is inactive; keep foreground sampling explicitly approximate | `APPS-SETTINGS.md` |
-| high | Privacy HUD treats an unmuted default input as active microphone use | report microphone attention only from real capture/recording activity; muted/unmuted device state is not usage state | `../AGENTS.md` desktop/privacy contract |
-| medium-high | Privacy HUD can treat Tor Browser's bundled `tor` process as system Tor | system-Tor status must come from the Vesper system Tor service or another ownership-specific signal, never generic `pgrep tor` | `../AGENTS.md` privacy contract |
-| medium-high | proxy configuration writes a Vesper marker before the effective `environment.d` file, allowing status to say configured after a partial failure | write/validate the effective environment atomically, commit the status marker last or derive status from the effective file, and keep secret-bearing files user-private | `NETWORK-SETTINGS.md` |
-| medium | proxy copy implies newly started desktop processes immediately inherit the new environment | document the real session boundary: `environment.d` is guaranteed for the next user-session environment; a session restart is the clean global handoff | `NETWORK-SETTINGS.md` |
-| medium-high | adaptive-icon production behavior is assembled from a long ordered patch stack while the package disables its own checks | fold accepted patches into tracked Rust sources, delete obsolete patch assembly, run Cargo tests from the package build and keep CI testing the same sources shipped by Nix | `ADAPTIVE-ICONS.md` |
-| medium | the Wi-Fi QR stdin/security correction exists as a packaging patch instead of the tracked `vesper-control` source | fold the correction into the canonical Rust source and remove the source/runtime drift | `NETWORK-SETTINGS.md` |
-| medium | `ADAPTIVE-ICONS.md` still describes the icon engine as a direct-`rustc` prototype even though it already has `Cargo.toml`, `Cargo.lock` and `rustPlatform.buildRustPackage` packaging | replace stale implementation prose with the actual Cargo package boundary while keeping future architecture clearly marked as target work | `ADAPTIVE-ICONS.md` |
-| medium | Agent Cockpit, Privacy HUD and wellbeing independently launch subprocess-heavy probes on short polling intervals | use event-driven state where practical and otherwise cache/throttle expensive backend probes; UI refresh cadence must not imply rerunning every Git/process/system probe | `AI.md`, `APPS-SETTINGS.md`, `../AGENTS.md` |
-| medium | airplane mode models only Wi-Fi/Bluetooth, ignores WWAN in status and does not preserve pre-airplane radio state | snapshot Wi-Fi/WWAN/Bluetooth state before enabling airplane mode, disable all intended radios, then restore only the previous state; surface command failures | `NETWORK-SETTINGS.md` |
-| medium | remote repository name is `vesper` while `nh`, aliases and command-memory still assume `~/nix-config` | keep one explicit local checkout contract; until code is migrated, installation must clone `OnurByte/vesper` into `~/nix-config` so existing commands remain valid | `INSTALL.md` |
+- `P0` — root architecture/state/lifecycle error that can make current behavior false or block reliable implementation
+- `P1` — correctness, security, identity, reliability or maintainability defect that should be fixed before expanding the affected subsystem
+- `P2` — bounded cleanup or dependency-hygiene issue with lower immediate operational risk
+
+Class vocabulary:
+
+- `state ownership` — two layers can claim or mutate the same state without one authority
+- `lifecycle` — process/session/service ownership is split or not bound to the correct target
+- `semantic drift` — implemented behavior does not match the declared protocol/model
+- `source drift` — reviewed source differs from the source actually built or shipped
+- `identity` — application/package/runtime identity can be attributed incorrectly
+- `security boundary` — capability or trust scope is wider than intended
+- `observability` — UI/doctor status can report inferred or stale state as authoritative
+- `documentation drift` — high-authority documentation can steer implementation away from current code
+- `dependency hygiene` — dependency/update/reproducibility boundaries are unnecessarily opaque or broad
+
+An item stays open until the implementation is changed, the verification condition passes and the owning document describes the resulting current behavior.
+
+| priority | class | root cause / issue | required fix | verification | canonical owner |
+|---|---|---|---|---|---|
+| P0 | state ownership | Caelestia runtime settings write `~/.config/caelestia/shell.json` while Home Manager also owns the same file through `programs.caelestia.settings`; native `GlobalConfig.*` changes therefore cannot be reliably persisted | choose one write authority; keep the runtime-owned Caelestia config writable and move Vesper declarative defaults/policy to a seed/overlay or restrict HM ownership to truly immutable values | change a native Caelestia setting, restart the shell/session and confirm the value persists without Home Manager/store write failures; a later HM activation must not silently erase runtime-owned state | `SETTINGS.md` + current Caelestia integration |
+| P0 | lifecycle | Vesper mixes direct Hyprland-start process spawning with systemd user services while the session does not establish the `graphical-session.target` lifecycle expected by user services such as Vicinae | establish one Hyprland session target model and bind long-lived desktop services to it; use UWSM or an explicit Hyprland/session-target bridge rather than per-process ad-hoc ownership | login must activate the intended graphical session target; Vicinae, portals and migrated desktop daemons must start, stop and restart with the session | `SETTINGS.md`, `DESKTOP-ERGONOMICS.md`, current Hyprland config |
+| P0 | source drift | first-party Vesper Rust behavior is assembled from a long ordered patch stack while the package itself disables Cargo checks, so repository source is not the source actually shipped | fold accepted first-party patches into canonical Rust sources, delete obsolete first-party patch assembly and run package checks against the exact sources Nix ships; keep patches for genuine upstream boundaries only | `nix build` and `cargo test --locked` use the same tracked final sources with no first-party patch reconstruction | `ADAPTIVE-ICONS.md`, `NETWORK-SETTINGS.md` |
+| P0 | semantic drift | adaptive-icon `.vicon` packages are generated but the active theme compiler still renders from `canonical.svg`; semantic group/depth/material data is therefore not the rendering authority | make `.vicon` manifest/groups the renderer input and keep `canonical.svg` only as compatibility/fallback input | a multi-group fixture must produce a rendered result whose output changes when group/depth/material metadata changes; renderer tests must fail if `.vicon` data is ignored | `ADAPTIVE-ICONS.md` |
+| P1 | semantic drift | remote icon analysis asks for semantic grouping/retain-raster decisions but the current production path reduces output to a single primary group and does not carry the full semantic response into rendering | define one provider-neutral typed decomposition contract and preserve all decisions through canonicalization and rendering | provider fixtures with different valid group counts/retain-raster decisions must result in different validated canonical `.vicon` structures | `ADAPTIVE-ICONS.md` |
+| P1 | identity | adaptive-icon desktop discovery does not implement full freedesktop precedence: `Hidden=true` entries do not tombstone lower-precedence copies, and `OnlyShowIn`/`NotShowIn`/`TryExec` semantics are incomplete | implement the Desktop Entry specification in one canonical resolver shared by Apps and adaptive icons | fixtures must cover hidden tombstones, desktop-environment visibility and `TryExec`; lower-precedence entries must stay hidden when shadowed | `ADAPTIVE-ICONS.md`, `APPS-SETTINGS.md` |
+| P1 | identity | icon lookup uses a global candidate scoring heuristic instead of the freedesktop icon-theme `index.theme`/inheritance/size-scale lookup algorithm | implement theme-aware lookup with inheritance and `hicolor` fallback before AppStream recovery | fixtures must prove theme inheritance, size/scale choice and `hicolor` fallback match freedesktop semantics | `ADAPTIVE-ICONS.md` |
+| P1 | identity | desktop `Exec=` parsing in the runtime identity resolver is whitespace-based rather than Desktop Entry Exec grammar-aware | parse quoting, escaping and field codes according to the Desktop Entry specification before deriving executable/class/app-id aliases | add quoted-path, escaped-argument and field-code fixtures; they must resolve without false aliases | `ADAPTIVE-ICONS.md`, `APPS-SETTINGS.md` |
+| P1 | identity | Apps can infer Flatpak ownership from a matching desktop/application ID rather than proving which winning desktop entry/package source owns the visible application | separate app identity from install/source ownership and derive ownership from the effective desktop entry plus package/source evidence | native and Flatpak copies with overlapping IDs must be attributed to the winning source; permissions/remove/size controls must follow that owner only | `APPS-SETTINGS.md`, `MARKETPLACE.md` |
+| P1 | semantic drift | adaptive-icon queue identity is dominated by source fingerprint and does not include semantic contract/prompt/schema/renderer revision, so accepted work can survive an incompatible contract change | version the processing contract and include the relevant revision in invalidation/provenance | changing the declared semantic contract revision must deterministically requeue affected work without changing the source file | `ADAPTIVE-ICONS.md` |
+| P1 | lifecycle | adaptive-icon queue exposes heartbeat/lease concepts but worker liveness does not maintain the lease, and provider `Retry-After` metadata is not used | maintain lease heartbeats during work and use provider retry metadata with bounded fallback backoff | long-running fixture must not be reclaimed while heartbeating; mocked 429/Retry-After must schedule the requested retry window | `ADAPTIVE-ICONS.md` |
+| P1 | observability | `vesper-doctor` covers hardware/recovery/Hermes state but not the desktop contracts most likely to fail: graphical session target, portals, Vicinae, Caelestia config writability and adaptive-icon services | add bounded checks for the current desktop/session/control-plane invariants without duplicating subsystem logic | `vesper-doctor --json` must expose stable keys for these checks and return warnings when each invariant is intentionally broken in a fixture/manual test | `SETTINGS.md` + `vesper-doctor` implementation |
+| P1 | security boundary | Agent Cockpit can persist full process argv under `~/.local/state/vesper/agents/`, despite the repository rule against persisting unsanitized prompts/tokens/secret-bearing arguments | store bounded sanitized process identity/metadata only; redact or omit raw argv by default | fixture with token/prompt-like argv must not place the sensitive value in durable agent snapshots | `AI.md`, `../AGENTS.md` |
+| P1 | observability | Privacy HUD clipboard status infers clipboard-history health from the Caelestia/Quickshell process rather than the actual `wl-paste -> cliphist store` watchers | report clipboard history from ownership-specific watcher/service state | killing both watchers while leaving Caelestia alive must make clipboard-history state unhealthy/offline | `../AGENTS.md` privacy contract |
+| P1 | observability | Agent Cockpit, Privacy HUD and wellbeing independently launch subprocess-heavy probes on short UI polling intervals | move expensive probes to event-driven/cached backends where practical and decouple UI refresh cadence from probe cadence | repeated UI refreshes must not spawn full Git/process/device probe sets at the same rate when source state has not changed | `AI.md`, `APPS-SETTINGS.md`, `../AGENTS.md` |
+| P1 | security boundary | `trusted-users = [ "root" "@wheel" ]` grants all wheel users Nix daemon trusted-user capabilities although the configured substituter/key does not require this broad trust | narrow trusted users to the minimum required principals or document a concrete root-equivalent requirement | normal `nh`/flake/cache workflows must still function after removing unnecessary wheel-wide trust | current Nix module + `../AGENTS.md` Nix contract |
+| P1 | security boundary | Zapret2 narrows TCP/payload scope but leaves interface scope unset, allowing unintended loopback/VPN/tunnel interfaces into the NFQUEUE path | declare the intended outbound interface scope or another ownership-safe exclusion policy | nftables/Zapret rules must show only intended egress interfaces entering the desync path; VPN/tunnel control traffic must remain outside unless explicitly desired | `NETWORK-SETTINGS.md` + current privacy module |
+| P1 | dependency hygiene | browser/context MCPs launched with `bunx` are exact-versioned but still fetched from the package registry at runtime rather than from the Nix build graph | package high-value MCP runtimes through Nix where practical or explicitly document/cache-pin the mutable runtime boundary | offline/session-start test must distinguish packaged MCPs from intentionally network-dependent runtimes; authenticated-browser MCP availability must not depend on an undocumented first-run download | `MCP.md`, `AI.md` |
+| P1 | security boundary | one shared MCP registry is automatically exposed to multiple agent runtimes while per-agent capability enforcement is not implemented | keep inventory separate from authorization and introduce enforceable per-agent MCP capability policy before exposing allow/deny controls | denied agent fixture must be technically unable to invoke the restricted MCP, not merely show a disabled label | `AI.md`, `MCP.md` |
+| P1 | semantic drift | Store catalogue readiness validates only a subset of the schema tables, so a partial catalogue can be reported as available | validate the complete schema contract plus metadata/revision coherence needed by the UI | malformed fixture missing categories/keywords/screenshots/aliases or revision metadata must report unavailable | `MARKETPLACE.md` |
+| P1 | semantic drift | Store spec suggests `~/.local/state/vesper/store/profile` while also requiring retained generations to stay GC-rooted and visible to the desktop; profile GC ownership/session exposure are not yet defined coherently | use a Nix profile location/registration model with explicit GC roots and define how its `bin`/`share/applications` outputs enter the effective user session | install/rollback/`nh clean` integration test must keep retained Store apps alive and make their desktop entries visible without manual environment edits | `MARKETPLACE.md` |
+| P1 | documentation drift | `AGENTS.md` and README prose describe Caelestia as launcher owner although current code uses Vicinae as the primary `Super + Space` launcher | state the current boundary explicitly: Caelestia remains the shell/control surfaces; Vicinae owns the primary Spotlight-style launcher | grep/docs review must leave no high-authority prose that instructs agents to restore Caelestia as primary launcher | `../AGENTS.md`, `APPS-SETTINGS.md` |
+| P1 | documentation drift | `DESKTOP-ERGONOMICS.md` used the non-standard status `implementation plan / spec` and was absent from the docs authority map despite declaring itself canonical | use exactly `Status: plan` and list the document in this authority map | docs status vocabulary search must show only the four allowed labels near architecture document headers | this document + `DESKTOP-ERGONOMICS.md` |
+| P1 | state ownership | wellbeing keeps charging the last Hyprland foreground app while the session is idle or locked | gate accounting on authoritative idle/lock state and do not add samples while the user is inactive; keep foreground sampling explicitly approximate | lock/idle interval must not increase app usage totals | `APPS-SETTINGS.md` |
+| P1 | observability | Privacy HUD treats an unmuted default input as active microphone use | report microphone attention only from real capture/recording activity; muted/unmuted device state is readiness, not usage | unmuted unused microphone must remain inactive; active capture must be detected | `../AGENTS.md` privacy contract |
+| P1 | observability | Privacy HUD can treat Tor Browser's bundled `tor` process as system Tor | derive system-Tor state only from `tor.service` or another ownership-specific system signal | Tor Browser alone must not make the system-Tor indicator active | `../AGENTS.md` privacy contract |
+| P1 | state ownership | proxy configuration can persist a Vesper marker before the effective `environment.d` file, allowing status to claim configured after a partial failure | write and validate effective environment state first, then atomically commit status or derive status from the effective file | injected write failure must leave status unconfigured and must not expose secret-bearing files broadly | `NETWORK-SETTINGS.md` |
+| P1 | semantic drift | airplane mode models only Wi-Fi/Bluetooth, ignores WWAN and does not preserve previous radio state | snapshot intended radio state, disable all covered radios and restore only the previous state | round-trip test with mixed Wi-Fi/WWAN/Bluetooth initial states must restore the exact prior state | `NETWORK-SETTINGS.md` |
+| P1 | documentation drift | repository name is `vesper` while `nh`, aliases and command-memory still assume the local checkout path `~/nix-config` | keep one explicit local checkout contract; until code migrates, installation docs must clone `OnurByte/vesper` into `~/nix-config` | fresh-install instructions and all hard-coded local paths must agree | `INSTALL.md` |
+| P1 | observability | `vesper-doctor` treats `/etc/vesper/restic.env` as missing when the normal user cannot read the intentionally root-only secret file | test existence/ownership or another privileged service-visible condition without requiring the user to read the secret | correct `0600 root:root` configuration must report configured without exposing contents | `BACKUP.md` |
+| P2 | dependency hygiene | adaptive-icon Cargo `src = lib.cleanSource ./.` uses the entire `home/yargc/packages/` directory as the crate source, coupling unrelated package edits to icon rebuilds | move the crate into its own source directory or filter the source to the files it actually owns | unrelated QML/package edit must not change the icon crate source hash | `ADAPTIVE-ICONS.md` |
+| P2 | dependency hygiene | `llm-agents` packages are consumed from their own nixpkgs graph even though upstream exposes a shared-nixpkgs overlay | evaluate moving to the upstream shared-nixpkgs overlay so agent packages build against Vesper's pinned package universe, unless upstream compatibility requires isolation | closure/eval comparison must show no regression and one intentional nixpkgs authority for integrated packages | `AI.md` + current flake |
+| P2 | dependency hygiene | the normal update alias advances many fast-moving inputs together, including heavily patched Caelestia/Quickshell and AI/browser packages | split update workflows by input family or require grouped compatibility verification for broad updates | update procedure must support advancing shell, AI and application inputs independently and still run the relevant build checks | current flake + maintenance docs |
+| P2 | dependency hygiene | Anthropic skills are pinned by `builtins.fetchGit` outside the flake input/lock graph | keep the immutable pin but either promote it to an explicit flake input or document it as an intentional lockfile-external source dependency | dependency inventory must expose the exact skills revision in one obvious maintenance location | `SKILLS.md` + current skills wiring |
+| P2 | semantic drift | AppStream icon recovery uses a bounded hand-written XML substring parser rather than a real AppStream/XML parser | keep it fallback-only or replace with a maintained parser before relying on richer AppStream semantics | malformed/entity/attribute-order fixtures must fail safely without overriding the primary freedesktop resolver | `ADAPTIVE-ICONS.md` |
+| P2 | state ownership | GNOME Keyring + greetd PAM enablement is declared in more than one module | assign the configuration to one module boundary and remove duplicate declarations | Nix evaluation stays unchanged after deduplication and only one module owns the policy | current security/desktop modules |
 
 ### remediation order
 
-Use this order unless a dependency forces a smaller prerequisite change:
+Use this order unless a smaller prerequisite is required:
 
-1. Restic doctor false-negative
-2. wellbeing idle/lock accounting
-3. Privacy HUD microphone and Tor truth
-4. proxy atomic state and session semantics
-5. adaptive-icon and Wi-Fi QR source/patch consolidation
-6. polling/caching cleanup
-7. airplane state preservation
-8. checkout-path/documentation cleanup
+1. Caelestia writable-state ownership
+2. Hyprland/systemd graphical-session lifecycle
+3. first-party patch-stack consolidation
+4. `.vicon` renderer authority and semantic pipeline integrity
+5. canonical freedesktop application/icon identity
+6. Apps package/source ownership attribution
+7. adaptive-icon queue versioning, heartbeat and provider retry semantics
+8. doctor and HUD truthfulness
+9. security-boundary narrowing for Nix, Zapret2 and shared MCP capability exposure
+10. Store profile/GC/session-exposure contract before install implementation
+11. dependency/build-boundary cleanup
+12. lower-risk module and fallback-parser cleanup
 
-Do not mark an item closed because prose was updated. The code change and verification must land first.
+Do not mark an item closed because prose was updated. The implementation change and verification must land first.
 
 ## agent documentation rules
 
