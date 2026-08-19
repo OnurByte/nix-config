@@ -9,11 +9,12 @@ Configured servers:
 - `nixos` — NixOS, nixpkgs and Home Manager package/option lookup through `mcp-nixos`
 - `context7` — current library and API documentation through Context7
 - `github` — GitHub repositories, issues, pull requests and Actions through GitHub's official MCP server
-- `beeper` — one local MCP surface for connected WhatsApp, Instagram, Telegram and Discord accounts through Beeper Desktop
 - `hypruse` — Hyprland-native desktop inspection and confined GUI control
 - `semgrep` — local deterministic static/security analysis through Semgrep's built-in MCP server
 - `helium-devtools` — Chrome DevTools MCP pointed at the Nix-managed Helium binary
 - `zen-devtools` — Mozilla Firefox DevTools MCP pointed at the Nix-managed Zen beta binary
+
+Messaging is deliberately **not** part of this shared MCP registry. Vesper's communications radar uses Agent Messenger through the separate `vesper-agent-messenger-read` command allowlist, so Codex, Claude Code and OpenCode do not receive a mutation-capable messaging MCP merely because communications intelligence is enabled.
 
 ## use it
 
@@ -31,7 +32,6 @@ Useful requests are ordinary agent requests:
 use the nixos MCP to find the correct Home Manager option for this
 use context7 for the current Next.js API before changing this code
 use the github MCP to inspect the failing Actions run and related pull request
-use beeper to search my WhatsApp, Instagram, Telegram and Discord chats
 use hypruse to launch Vesper Settings and inspect the real Hyprland UI
 use semgrep with an explicit ruleset to security-scan these changed files
 use helium-devtools to inspect this page's network requests and console
@@ -58,43 +58,13 @@ vesper-github-mcp
 
 The command is normally started by the agent and speaks MCP over stdio, so running it manually is only useful for startup/auth errors.
 
-## Beeper
+## messaging is not an MCP
 
-`beeper` points at Beeper Desktop's built-in Streamable HTTP MCP endpoint:
+The supported communications transport is `agent-messenger/agent-messenger`, but it is intentionally outside `programs.mcp`.
 
-```text
-http://127.0.0.1:23373/v0/mcp
-```
+The full `agent-messenger` CLI is installed for human-driven authentication and explicit manual use. Upstream also contains mutation commands, so scheduled communications analysis never receives that full surface. `vesper-hermes-core` sees only `vesper-agent-messenger-read`, whose command grammar admits the audited read operations needed for account status, chat/message retrieval and Discord unread DM/mention discovery.
 
-This is deliberately loopback-only. Do not expose the Desktop API or MCP endpoint on the LAN or public internet for normal Vesper use.
-
-Beeper is used as the normalization layer for the messaging networks connected in Beeper Desktop. For the requested communications set this means WhatsApp, Instagram, Telegram and Discord are available through one MCP server instead of four unrelated account/session implementations.
-
-The MCP client performs Beeper's normal MCP OAuth flow. No Beeper bearer token is embedded in Nix or Git. If manual token authentication is ever needed, keep the token outside the repository and pass it at runtime through the client rather than writing an `Authorization` header into declarative source.
-
-The MCP implementation/proxy is open source at `beeper/desktop-api-mcp` under the MIT license. Beeper also builds its chat-network integrations around open-source Matrix bridge projects; Vesper intentionally consumes the supported Beeper Desktop surface rather than vendoring four fragile protocol clients.
-
-Setup:
-
-1. open Beeper Desktop and sign in
-2. connect WhatsApp, Instagram, Telegram and Discord in Beeper
-3. enable Desktop API / Integrations if it is not already enabled
-4. run `nh os switch`
-5. start Codex, Claude Code or OpenCode and authenticate the `beeper` MCP when prompted
-
-Hermes uses its own native MCP client rather than the Home Manager client registry. Vesper keeps the full Beeper MCP out of Hermes' default cron profile and exposes it only through a dedicated interactive profile:
-
-```bash
-vesper-hermes-beeper-mcp setup
-vesper-hermes-beeper-mcp test
-vesper-hermes-beeper-mcp chat
-```
-
-The first `setup` creates `vesper-social` by cloning the default Hermes profile's model/provider setup, then installs Beeper there with Hermes' OAuth flow. The profile stays independent afterwards and is never made the sticky default. `vesper-hermes-beeper-mcp login` re-runs OAuth when necessary.
-
-The shared MCP surface can expose mutation tools such as sending or reacting. Those are interactive agent capabilities and must be treated as externally visible actions.
-
-This does **not** weaken Hermes' scheduled communications boundary. `communications-radar` remains on the default profile, stays read-only and continues to use Vesper's first-party Rust REST intake path; it does not call the Beeper MCP and does not send, reply, react, draft or mark messages read.
+Do not add a second WhatsApp, Telegram, Discord or Instagram MCP as a fallback. A failed source is reported as degraded/unavailable; transport switching is not an availability strategy.
 
 ## Hypruse
 
