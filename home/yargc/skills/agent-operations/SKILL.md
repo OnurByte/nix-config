@@ -47,6 +47,36 @@ Do not load all four into a routine task.
 - `external-review-handoff` owns static-snapshot review. This skill supplies postcondition and stale-state rules after a report returns.
 - `vesper-maintainer` owns Vesper workstation diagnosis. Use the reliability reference when the symptom could be a silent service/network/state failure.
 
+## Hermes upstream procedures
+
+Hermes bundled skills may supply task-specific mechanics without becoming Vesper policy owners.
+
+Approved examples include:
+
+- `github-issue-to-pr` for issue context, duplicate-PR checks, reproduction, history inspection, regression proof and live CI evidence
+- `github-code-review`, `github-pr-workflow` and `requesting-code-review` as procedural references for GitHub/review mechanics
+- `grounded-citations` as a task-local provenance/evidence helper
+- `youtube-content` as a transcript/intake helper before source verification
+
+When an upstream Hermes skill and a Vesper-local contract overlap, keep this precedence:
+
+```text
+AGENTS.md / authoritative Vesper docs
+-> Vesper-local policy skills
+-> upstream Hermes procedure
+-> task-local convenience
+```
+
+Preserve useful upstream procedure but replace mechanisms that conflict with Vesper ownership. In particular:
+
+- use Vesper's configured GitHub MCP or existing `gh` login instead of inventing another credential store
+- do not treat an upstream example that posts, merges, approves, pays, sends or otherwise mutates external state as authority to perform that action
+- keep worker/reviewer claims below deterministic acceptance and postcondition evidence
+- keep bounded review and retry rules even when an upstream workflow suggests another loop
+- do not copy bundled Hermes skills into `~/.agents/skills` merely to make them visible to Hermes; upstream Hermes remains their canonical owner
+
+An upstream skill can make a procedure easier. It cannot weaken Vesper's approval, secret, routing, evidence or durability contracts.
+
 ## adaptation rule
 
 These rules are failure-derived patterns, not cargo-cult numbers.
