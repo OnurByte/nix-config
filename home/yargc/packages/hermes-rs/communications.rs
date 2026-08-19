@@ -196,7 +196,7 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
 fn unavailable(detail: &str) -> Result<String, String> {
     set_status("unavailable", detail)?;
     Ok(format!(
-        "{{\"status\":\"unavailable\",\"reason\":{},\"messages\":[],\"chats\":{{}}}}",
+        "{{\"status\":\"unavailable\",\"reason\":{},\"messages\":[],\"contextMessages\":[],\"chats\":{{}}}}",
         json_string(detail)
     ))
 }
@@ -219,7 +219,7 @@ pub fn prepare_batch() -> Result<String, String> {
         Ok(Some(value)) => value,
         Ok(None) => {
             set_status("unconfigured", "Beeper access token file is missing or empty")?;
-            return Ok("{\"status\":\"unconfigured\",\"reason\":\"Beeper access token file is missing or empty\",\"messages\":[],\"chats\":{}}".to_string());
+            return Ok("{\"status\":\"unconfigured\",\"reason\":\"Beeper access token file is missing or empty\",\"messages\":[],\"contextMessages\":[],\"chats\":{}}".to_string());
         }
         Err(error) => return unavailable(&error),
     };
@@ -263,10 +263,19 @@ pub fn prepare_batch() -> Result<String, String> {
         r#"
         (.watermark.recentIds // []) as $seen
         | (.batch.messages | map(select(.id as $id | (($seen | index($id)) == null)))) as $fresh
+        | ($fresh[:{max_messages}]) as $selected
+        | ($selected | map(.chatID) | unique) as $selectedChats
+        | (.batch.messages
+            | map(select(
+                (.id as $id | (($seen | index($id)) != null))
+                and (.chatID as $chat | (($selectedChats | index($chat)) != null))
+              ))
+            | if length > 400 then .[-400:] else . end) as $context
         | .batch + {{
             discoveredCount: ($fresh | length),
             backlog: (($fresh | length) > {max_messages}),
-            messages: ($fresh[:{max_messages}])
+            contextMessages: $context,
+            messages: $selected
         }}
         "#
     );
