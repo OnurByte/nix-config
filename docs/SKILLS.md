@@ -62,6 +62,28 @@ Hermes keeps its own bundled skills alongside these links. Its upstream `obsidia
 The active shared tree is Home Manager owned. Do not edit generated links directly.
 Local skill source files live under `home/yargc/skills/` in this repository.
 
+## Hermes bundled helpers
+
+Hermes' own bundled skill tree remains upstream-owned and is not copied into `~/.agents/skills` just to make a procedure available.
+
+Vesper explicitly treats these bundled skills as approved helpers:
+
+- `github-issue-to-pr` — issue context, duplicate-PR checks, reproduction, history inspection, regression proof and live CI evidence
+- `grounded-citations` — task-local citation/evidence provenance for research and review
+- `youtube-content` — transcript and timestamp intake before source verification
+
+The following bundled skills are useful procedural references but do not own Vesper policy:
+
+- `github-code-review`
+- `github-pr-workflow`
+- `requesting-code-review`
+
+When one of these helpers overlaps a Vesper-local skill, Vesper policy wins. `AGENTS.md`, the authoritative subsystem document, `agent-operations` and `agent-orchestration` keep authority over credentials, approval, external mutations, routing, acceptance evidence, retries and durable state.
+
+Do not create a second GitHub credential path because an upstream skill demonstrates one. Reuse the configured GitHub MCP or the existing `gh` authentication path. Do not treat an upstream example that posts, approves, merges or otherwise mutates remote state as permission to perform that action.
+
+For research, `grounded-citations` is a task-local provenance helper rather than a replacement for the Vesper source registry or durable briefing state. `youtube-content` provides discovery material; important technical claims still require primary-source verification when a primary source exists.
+
 ## skill ownership
 
 Use one skill for one procedural boundary.
@@ -251,6 +273,14 @@ use vesper-maintainer to diagnose and repair this workstation issue
 use vesper-adaptive-icons for adaptive icon pipeline work
 use hermes-research-radar for this scheduled research program
 use vesper-obsidian-second-brain to consolidate durable research into Obsidian
+```
+
+Hermes may also use its approved bundled helpers directly when the task needs them:
+
+```text
+use github-issue-to-pr for this issue-to-PR task under Vesper's operations/orchestration policy
+use grounded-citations for evidence-heavy research
+use youtube-content to inspect this video before following its claims to primary sources
 ```
 
 ## update
