@@ -25,6 +25,7 @@ let
     vesper-maintainer = ./skills/vesper-maintainer;
     hermes-research-radar = ./skills/hermes-research-radar;
     vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
+    vesper-communications-intelligence = ./skills/vesper-communications-intelligence;
     vesper-adaptive-icons = ./skills/vesper-adaptive-icons;
   };
 
@@ -43,6 +44,7 @@ let
     "agent-operations"
     "hermes-research-radar"
     "vesper-obsidian-second-brain"
+    "vesper-communications-intelligence"
     "vesper-maintainer"
     "skill-creator"
   ];
@@ -78,6 +80,7 @@ in
     # Cron sessions are isolated and do not receive built-in Hermes memory by
     # default, so lane state must remain durable outside the agent session.
     ".local/state/vesper/research/.keep".text = "";
+    ".local/state/vesper/communications/.keep".text = "";
     ".local/share/vesper/briefings/.keep".text = "";
     ".local/share/vesper/skill-drafts/.keep".text = "";
   };
