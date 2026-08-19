@@ -1,3 +1,4 @@
+mod communications;
 mod cron;
 mod prompts;
 mod state;
@@ -5,15 +6,16 @@ mod util;
 
 use std::{env, fs, path::Path};
 
+use communications::{commit_batch, maybe_notify, prepare_batch, status_json as communications_status_json};
 use cron::{dispatch, job_for, sync_cron, tor_fetch, validate_registry, watch};
-use prompts::{adhoc_contract, research_contract, ALL_TASKS, FRONTIER_TASKS};
+use prompts::{adhoc_contract, communications_contract, research_contract, ALL_TASKS, FRONTIER_TASKS};
 use state::{
     coverage_summary, frontier_context, list_json, mark_all_read, mark_read, read_report, rebuild_index,
     recent_briefings, save_report, source_records, source_registry_text, status_json, task_context,
 };
 use util::{
-    jq, jq_raw, json_string, now_iso, output_allow_failure, research_skill, run, run_status,
-    second_brain_skill, state_root,
+    communications_skill, jq, jq_raw, json_string, now_iso, output_allow_failure, research_skill, run,
+    run_status, second_brain_skill, state_root,
 };
 
 fn extract_json_object(text: &str) -> Result<String, String> {
@@ -104,12 +106,13 @@ fn task_extra(task: &str) -> String {
             )
         }
         "morning-check" => format!(
-            "Recent durable Hermes briefings:\n{}\n\nInspect local Git/project/todo state with shell tools where useful. Prefer these verified findings instead of rediscovering stories. Return the final Telegram-ready message in the report body.",
+            "Recent durable Hermes briefings:\n{}\n\nInspect local Git/project/todo state with shell tools where useful. The briefing index at ~/.local/share/vesper/briefings/index.json may contain lane=communications-radar reports; include only concrete communications actions, risks, commitments or meaningful changes, never routine chatter. Prefer already verified findings instead of rediscovering stories. Return the final Telegram-ready message in the report body.",
             recent_briefings(55_000)
         ),
         "second-brain-dream" => format!(
-            "Second-brain skill:\n{}\n\nRecent durable Hermes research:\n{}\n\nSkill drafts belong under {}. Do not invent an Obsidian vault if none exists.",
+            "Second-brain skill:\n{}\n\nCommunications skill:\n{}\n\nRecent durable Hermes research:\n{}\n\nAlso inspect ~/.local/share/vesper/briefings/index.json for recent lane=communications-radar reports and promote durable person/group/topic context according to the communications skill. Never copy full transcripts into Obsidian. Skill drafts belong under {}. Do not invent an Obsidian vault if none exists.",
             second_brain_skill(),
+            communications_skill(),
             recent_briefings(80_000),
             util::skill_draft_root().display()
         ),
@@ -137,12 +140,43 @@ fn is_web_only(task: &str) -> bool {
     )
 }
 
+fn run_communications_radar() -> Result<String, String> {
+    let batch = prepare_batch()?;
+    let status = jq_raw(&batch, ".status // \"unknown\"")?.trim().to_string();
+    let count = jq_raw(&batch, ".messages | length")?
+        .trim()
+        .parse::<usize>()
+        .unwrap_or(0);
+
+    if status != "ready" {
+        let reason = jq_raw(&batch, ".reason // \"communications intake unavailable\"")?;
+        return Ok(format!(
+            "{{\"title\":\"Communications radar\",\"summary\":{},\"body\":\"\",\"priority\":\"low\",\"confidence\":1.0,\"skip\":true}}",
+            json_string(reason.trim())
+        ));
+    }
+    if count == 0 {
+        return Ok("{\"title\":\"Communications radar\",\"summary\":\"No new messages in the current delta\",\"body\":\"\",\"priority\":\"low\",\"confidence\":1.0,\"skip\":true}".to_string());
+    }
+
+    let durable = task_context("communications-radar", 36_000);
+    let prompt = communications_contract(&communications_skill(), &durable, &batch);
+    let raw = invoke_agent(&prompt, false)?;
+    let report = save_report("communications-radar", &raw)?;
+    commit_batch(&batch)?;
+    maybe_notify(&report)?;
+    Ok(report)
+}
+
 fn run_single_task(task: &str) -> Result<String, String> {
     if task == "frontier-daily" {
         for scout in FRONTIER_TASKS {
             run_single_task(scout)?;
         }
         return run_single_task("unknown-frontier-synthesis");
+    }
+    if task == "communications-radar" {
+        return run_communications_radar();
     }
     if !ALL_TASKS.contains(&task) || matches!(task, "vesper-health-watch" | "cron-skill-integrity-watch") {
         return Err(format!("unknown research task: {task}"));
@@ -296,6 +330,9 @@ fn runtime_cli(args: &[String]) -> Result<i32, String> {
                     jq_raw(&value, r#""Hermes · \(.unread) unread · \(.high) high priority · \(.count) total\nlatest: \(.latestTitle)""#)?
                 );
             }
+        }
+        "comms-status" => {
+            println!("{}", communications_status_json());
         }
         "list" => {
             let value = list_json()?;
