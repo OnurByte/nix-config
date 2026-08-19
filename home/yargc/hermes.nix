@@ -12,6 +12,42 @@ let
   hermesCore = pkgs.callPackage ./packages/hermes-core.nix {
     inherit hermesAgent;
   };
+  beeperMcpUrl = "http://127.0.0.1:23373/v0/mcp";
+
+  # Hermes owns its mutable MCP/OAuth state under ~/.hermes. Do not generate
+  # config.yaml from Home Manager: that file also contains user-selected model
+  # and provider settings. This small Nix-managed entrypoint delegates setup,
+  # login and diagnostics to Hermes' native MCP lifecycle commands instead.
+  # Setup is intentionally explicit because Beeper's MCP contains externally
+  # visible mutation tools, while Vesper's scheduled communications lane must
+  # remain on the separate first-party read-only REST path.
+  hermesBeeperMcp = pkgs.writeShellApplication {
+    name = "vesper-hermes-beeper-mcp";
+    text = ''
+      set -euo pipefail
+
+      case "''${1:-status}" in
+        setup)
+          exec ${hermesAgent}/bin/hermes mcp add beeper \
+            --url ${lib.escapeShellArg beeperMcpUrl} \
+            --auth oauth
+          ;;
+        login)
+          exec ${hermesAgent}/bin/hermes mcp login beeper
+          ;;
+        test)
+          exec ${hermesAgent}/bin/hermes mcp test beeper
+          ;;
+        status|list)
+          exec ${hermesAgent}/bin/hermes mcp list
+          ;;
+        *)
+          echo "usage: vesper-hermes-beeper-mcp {setup|login|test|status}" >&2
+          exit 2
+          ;;
+      esac
+    '';
+  };
 
   researchEnv = ''
     export VESPER_REDDIT_SEEDS="opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev"
@@ -85,13 +121,17 @@ let
   );
 in
 {
-  home.packages = [ hermesCore ];
+  home.packages = [
+    hermesCore
+    hermesBeeperMcp
+  ];
 
   home.sessionVariables = {
     VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
     VESPER_REDDIT_SEEDS = "opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev";
     VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
     VESPER_BEEPER_BASE_URL = "http://127.0.0.1:23373";
+    VESPER_BEEPER_MCP_URL = beeperMcpUrl;
     VESPER_BEEPER_TOKEN_FILE = "${home}/.config/vesper/beeper.token";
     VESPER_COMMUNICATIONS_STATE_DIR = "${home}/.local/state/vesper/communications";
   };
