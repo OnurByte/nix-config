@@ -14,6 +14,29 @@ let
   bunMcpCache = "${mcpCacheRoot}/bun";
   hypruseJournal = "${config.home.homeDirectory}/.local/state/vesper/mcp/hypruse/journal.ndjson";
 
+  # Keep Context7 at the currently selected 4.0.2 release without moving the
+  # workstation-wide nixpkgs pin. This is the nixpkgs package recipe with the
+  # newer immutable source/dependency hashes, so MCP startup never downloads JS.
+  context7Src = pkgs.fetchFromGitHub {
+    owner = "upstash";
+    repo = "context7";
+    tag = "@upstash/context7-mcp@4.0.2";
+    hash = "sha256-mRjDG+hGG7gU+05CMAtBy7oVFRNSQgQMWgMEnfmmlSM=";
+  };
+
+  context7Mcp = pkgs.context7-mcp.overrideAttrs (_old: {
+    version = "4.0.2";
+    src = context7Src;
+    pnpmDeps = pkgs.fetchPnpmDeps {
+      pname = "context7-mcp";
+      version = "4.0.2";
+      src = context7Src;
+      pnpm = pkgs.pnpm_10;
+      fetcherVersion = 3;
+      hash = "sha256-F3c2/y3fgtPiUQOsg3hFdAp9b85AFs2mCTO1Eoa0i5E=";
+    };
+  });
+
   # GCC is the global system toolchain. Keep Clang's compiler frontends
   # available without adding Clang's entire wrapper output to Home Manager:
   # the full wrapper also exports linker shims such as ld.gold that collide
@@ -113,13 +136,7 @@ in
         };
 
         context7 = {
-          command = bunx;
-          args = [
-            "@upstash/context7-mcp@4.0.2"
-          ];
-          env = {
-            BUN_INSTALL_CACHE_DIR = bunMcpCache;
-          };
+          command = "${context7Mcp}/bin/context7-mcp";
         };
 
         github = {
