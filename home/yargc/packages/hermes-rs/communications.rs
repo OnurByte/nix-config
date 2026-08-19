@@ -360,16 +360,83 @@ pub fn commit_batch(batch: &str) -> Result<(), String> {
     set_status("ready", "latest communications batch analyzed and committed")
 }
 
+pub fn sanitize_report(batch: &str, report: &str) -> Result<String, String> {
+    let wrapped = format!("{{\"batch\":{},\"report\":{}}}", batch, report);
+    jq(
+        &wrapped,
+        r#"
+        def valid_evidence($valid):
+          [(.evidenceMessageIds // [])[]?
+            | select(type == "string" and length > 0)
+            | . as $id
+            | select(($valid | index($id)) != null)]
+          | unique;
+        def evidence_bound($valid):
+          .evidenceMessageIds = valid_evidence($valid);
+
+        (((.batch.messages // []) + (.batch.contextMessages // []))
+          | map(.id // empty)
+          | map(select(type == "string" and length > 0))
+          | unique) as $valid
+        | (.report.alerts // [] | length) as $alertsBefore
+        | (.report.manipulationSignals // [] | length) as $manipulationBefore
+        | .report
+        | .alerts = [(.alerts // [])[]?
+            | select(type == "object")
+            | evidence_bound($valid)
+            | select((.evidenceMessageIds | length) > 0)
+            | select((.severity // "") == "high" or (.severity // "") == "critical")]
+        | .strategy = [(.strategy // [])[]?
+            | select(type == "object")
+            | evidence_bound($valid)
+            | select((.evidenceMessageIds | length) > 0)]
+        | .commitments = [(.commitments // [])[]?
+            | select(type == "object")
+            | evidence_bound($valid)
+            | select((.evidenceMessageIds | length) > 0)]
+        | .manipulationSignals = [(.manipulationSignals // [])[]?
+            | select(type == "object")
+            | evidence_bound($valid)
+            | select((.evidenceMessageIds | length) > 0)]
+        | .topics = [(.topics // [])[]?
+            | select(type == "object")
+            | evidence_bound($valid)
+            | select((.evidenceMessageIds | length) > 0)]
+        | .people = [(.people // [])[]?
+            | select(type == "object")
+            | .facts = [(.facts // [])[]?
+                | select(type == "object")
+                | evidence_bound($valid)
+                | select((.evidenceMessageIds | length) > 0)]
+            | .riskSignals = [(.riskSignals // [])[]?
+                | select(type == "object")
+                | evidence_bound($valid)
+                | select((.evidenceMessageIds | length) > 0)]
+            | select(((.facts | length) + (.riskSignals | length) + ((.openLoops // []) | length)) > 0)]
+        | if ((.priority // "normal") == "high" or (.priority // "normal") == "critical")
+             and ((.alerts // []) | length) == 0
+          then .priority = "normal"
+          else .
+          end
+        | .validation = ((.validation // {}) + {
+            evidenceGate: {
+              validMessageIds: ($valid | length),
+              droppedAlerts: ($alertsBefore - ((.alerts // []) | length)),
+              droppedManipulationSignals: ($manipulationBefore - ((.manipulationSignals // []) | length)),
+              priorityRequiresValidatedAlert: true
+            }
+          })
+        "#,
+    )
+}
+
 pub fn maybe_notify(report: &str) -> Result<(), String> {
     let mut body = jq_raw(
         report,
         r#"
-        ([.alerts[]? | select((.severity // "") == "high" or (.severity // "") == "critical")][0:4]
-          | map("[" + ((.severity // "high") | ascii_upcase) + "] " + (.reason // .summary // "important communication") + (if (.person // "") != "" then " · " + .person elif (.chat // "") != "" then " · " + .chat else "" end))
-          | join("\n")) as $alerts
-        | if $alerts != "" then $alerts
-          elif ((.priority // "normal") == "high" or (.priority // "normal") == "critical") then "[" + ((.priority // "high") | ascii_upcase) + "] " + (.summary // "important communication")
-          else "" end
+        [.alerts[]? | select((.severity // "") == "high" or (.severity // "") == "critical")][0:4]
+        | map("[" + ((.severity // "high") | ascii_upcase) + "] " + (.reason // .summary // "important communication") + (if (.person // "") != "" then " · " + .person elif (.chat // "") != "" then " · " + .chat else "" end))
+        | join("\n")
         "#,
     )?;
     body = body.trim().chars().take(1200).collect();
@@ -399,7 +466,7 @@ pub fn maybe_notify(report: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_pages;
+    use super::{normalize_pages, sanitize_report};
     use crate::util::jq_raw;
 
     #[test]
@@ -462,5 +529,55 @@ mod tests {
         let second = jq_raw(&normalized, ".messages[1].presentationSignals | length")
             .expect("second signal list should parse");
         assert_eq!(second.trim(), "0");
+    }
+
+    #[test]
+    fn evidence_gate_drops_unknown_ids_and_downgrades_unproven_priority() {
+        let batch = r#"{
+          "messages":[{"id":"m1"}],
+          "contextMessages":[{"id":"m0"}]
+        }"#;
+        let report = r#"{
+          "title":"test",
+          "summary":"test",
+          "priority":"critical",
+          "alerts":[{"severity":"critical","reason":"invented","evidenceMessageIds":["missing"]}],
+          "strategy":[{"action":"verify","evidenceMessageIds":["m1","missing"]}],
+          "manipulationSignals":[{"kind":"unicode_obfuscation","evidenceMessageIds":["missing"]}],
+          "people":[{"identityKey":"p1","facts":[{"claim":"supported","evidenceMessageIds":["m0","missing"]}],"riskSignals":[]}]
+        }"#;
+
+        let clean = sanitize_report(batch, report).expect("report should sanitize");
+        assert_eq!(jq_raw(&clean, ".priority").unwrap().trim(), "normal");
+        assert_eq!(jq_raw(&clean, ".alerts | length").unwrap().trim(), "0");
+        assert_eq!(
+            jq_raw(&clean, ".strategy[0].evidenceMessageIds | join(\",\")")
+                .unwrap()
+                .trim(),
+            "m1"
+        );
+        assert_eq!(jq_raw(&clean, ".manipulationSignals | length").unwrap().trim(), "0");
+        assert_eq!(
+            jq_raw(&clean, ".people[0].facts[0].evidenceMessageIds | join(\",\")")
+                .unwrap()
+                .trim(),
+            "m0"
+        );
+        assert_eq!(jq_raw(&clean, ".validation.evidenceGate.droppedAlerts").unwrap().trim(), "1");
+    }
+
+    #[test]
+    fn evidence_gate_keeps_valid_high_alert() {
+        let batch = r#"{"messages":[{"id":"m1"}],"contextMessages":[]}"#;
+        let report = r#"{
+          "title":"test",
+          "summary":"test",
+          "priority":"high",
+          "alerts":[{"severity":"high","reason":"credential request","evidenceMessageIds":["m1"]}]
+        }"#;
+
+        let clean = sanitize_report(batch, report).expect("report should sanitize");
+        assert_eq!(jq_raw(&clean, ".priority").unwrap().trim(), "high");
+        assert_eq!(jq_raw(&clean, ".alerts | length").unwrap().trim(), "1");
     }
 }
