@@ -1,4 +1,4 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
 use crate::util::{atomic_write, env_path, jq, jq_raw, json_string, now_iso, read_or, run, run_status};
 
@@ -45,6 +45,13 @@ fn read_token() -> Result<Option<String>, String> {
     let path = token_path();
     if !path.is_file() {
         return Ok(None);
+    }
+    let metadata = fs::metadata(&path).map_err(|e| format!("Beeper token metadata: {e}"))?;
+    if metadata.permissions().mode() & 0o077 != 0 {
+        return Err(format!(
+            "Beeper token file {} is group/world-accessible; chmod 600 it before communications intake",
+            path.display()
+        ));
     }
     let token = fs::read_to_string(&path).map_err(|e| format!("Beeper token: {e}"))?;
     let token = token.trim().to_string();
@@ -101,8 +108,6 @@ fn search_page(token: &str, after: &str, cursor: Option<&str>) -> Result<String,
         url,
         "--data-urlencode".to_string(),
         format!("dateAfter={after}"),
-        "--data-urlencode".to_string(),
-        "sender=others".to_string(),
         "--data-urlencode".to_string(),
         "includeMuted=true".to_string(),
         "--data-urlencode".to_string(),
@@ -161,6 +166,7 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
                     chatID: (.chatID // ""),
                     senderID: (.senderID // ""),
                     senderName: (.senderName // ""),
+                    isSender: (.isSender // false),
                     timestamp: (.timestamp // ""),
                     sortKey: (.sortKey // ""),
                     text: (.text // ""),
@@ -209,9 +215,13 @@ pub fn prepare_batch() -> Result<String, String> {
         return Ok(pending);
     }
 
-    let Some(token) = read_token()? else {
-        set_status("unconfigured", "Beeper access token file is missing or empty")?;
-        return Ok("{\"status\":\"unconfigured\",\"reason\":\"Beeper access token file is missing or empty\",\"messages\":[],\"chats\":{}}".to_string());
+    let token = match read_token() {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            set_status("unconfigured", "Beeper access token file is missing or empty")?;
+            return Ok("{\"status\":\"unconfigured\",\"reason\":\"Beeper access token file is missing or empty\",\"messages\":[],\"chats\":{}}".to_string());
+        }
+        Err(error) => return unavailable(&error),
     };
 
     let after = date_after();
