@@ -114,7 +114,9 @@ read → normalize → analyze → brief → remember → local alert
 never send / reply / react / draft / mark-read
 ```
 
-Vesper deliberately does **not** add Beeper's MCP server to the shared Codex/Claude/OpenCode registry because that surface also contains mutation tools. Instead, first-party Rust calls only Beeper Desktop's local `GET /v1/messages/search` endpoint. There is no POST/PUT/DELETE message path in `communications.rs`.
+Interactive messaging access and the scheduled communications pipeline are deliberately separate surfaces. Vesper exposes Beeper Desktop's MCP to Codex, Claude Code and OpenCode, and provides a dedicated Hermes profile named `vesper-social` for explicit interactive Hermes use. The default Hermes profile used by Vesper cron does not receive the Beeper MCP.
+
+`communications-radar` continues to use only Vesper's first-party Rust intake against Beeper Desktop's local `GET /v1/messages/search` endpoint. There is no POST/PUT/DELETE message path in `communications.rs`, and the scheduled lane never invokes the mutation-capable Beeper MCP.
 
 Beeper is the normalization layer for supported connected chat networks such as WhatsApp, Telegram, Discord and Instagram. It remains the message-history source of truth; Vesper does not create a second full chat archive.
 
@@ -162,6 +164,24 @@ vesper-hermes comms-status
 ```
 
 `unconfigured`, `unavailable`, `ready` and an empty delta are different states. Missing Beeper/token is not reported as an empty inbox and does not trigger a 15-minute error-notification storm.
+
+### interactive Hermes MCP
+
+The mutation-capable Beeper MCP is kept out of the default Hermes profile. Vesper installs a small lifecycle wrapper that creates `vesper-social` from the default profile on first use, then lets Hermes own that profile's MCP and OAuth state:
+
+```bash
+vesper-hermes-beeper-mcp setup
+vesper-hermes-beeper-mcp test
+vesper-hermes-beeper-mcp chat
+```
+
+`setup` uses Hermes' native MCP client against `http://127.0.0.1:23373/v0/mcp` with OAuth. Re-authenticate later with:
+
+```bash
+vesper-hermes-beeper-mcp login
+```
+
+The profile clone copies the current default profile's model/provider configuration when it is first created, but later state is independent. Vesper does not generate or overwrite `~/.hermes/config.yaml`, does not make `vesper-social` the sticky default, and does not trigger an interactive OAuth flow during `nh os switch`.
 
 ### delta and crash semantics
 
@@ -391,6 +411,12 @@ vesper-hermes read <id>
 vesper-hermes inbox
 vesper-hermes run unknown-frontier-ai
 vesper-hermes run communications-radar
+
+vesper-hermes-beeper-mcp setup
+vesper-hermes-beeper-mcp login
+vesper-hermes-beeper-mcp test
+vesper-hermes-beeper-mcp chat
+vesper-hermes-beeper-mcp status
 
 vesper-hermes-automations jobs
 vesper-hermes-automations validate-registry
