@@ -80,6 +80,15 @@
     description = "early warning for Vesper upstream changes";
   };
 
+  communications-radar = {
+    schedule = "4,19,34,49 * * * *";
+    mode = "dispatch";
+    task = "communications-radar";
+    deliver = "local";
+    freshnessMinutes = 90;
+    description = "read-only Beeper communications triage with high-signal local alerts";
+  };
+
   vesper-health-watch = {
     schedule = "7,22,37,52 * * * *";
     mode = "watchdog";
@@ -102,7 +111,7 @@
     task = "second-brain-dream";
     deliver = "local";
     freshnessMinutes = 2160;
-    description = "nightly durable research consolidation into the Obsidian second brain";
+    description = "nightly durable research and communications consolidation into the Obsidian second brain";
   };
 
   user-pain-miner = {
