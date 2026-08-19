@@ -32,6 +32,25 @@ jobs:
             exit 1
           fi
 
+      - name: Guard communications capability boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if grep -RFn 'agentMessenger.full' home/yargc --include='*.nix'; then
+            echo 'unrestricted Agent Messenger must not be installed in the Vesper user environment' >&2
+            exit 1
+          fi
+          if grep -Fq 'name = "agent-messenger"' home/yargc/packages/agent-messenger.nix; then
+            echo 'Vesper must not expose an unrestricted agent-messenger wrapper' >&2
+            exit 1
+          fi
+
+          grep -Fq 'agentMessenger.authOnly' home/yargc/hermes.nix
+          grep -Fq 'run("vesper-agent-messenger-read", args, None)' home/yargc/packages/hermes-rs/communications.rs
+          grep -Fq 'let raw = invoke_agent(&prompt, AgentMode::Communications)?;' home/yargc/packages/hermes-rs/main.rs
+          grep -Fq 'args.extend(["--safe-mode", "-t", "context_engine"]);' home/yargc/packages/hermes-rs/main.rs
+
       - name: Parse every Nix file
         shell: bash
         run: |
