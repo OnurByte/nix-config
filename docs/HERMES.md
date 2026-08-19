@@ -95,7 +95,7 @@ Daily lanes currently use a 36-hour window, communications uses a 90-minute fres
 | `09:30` | `agenda` | compact current agenda |
 | `10:00` | `morning-check` | local projects + research + useful communications → Telegram |
 | `15:00` | `upstream-edge-radar` | upstream change radar |
-| every 15 min, `:04/:19/:34/:49` | `communications-radar` | read-only messaging delta → analysis; local alert only for high/critical signal |
+| every 15 min, `:04/:19/:34/:49` | `communications-radar` | Agent Messenger read-only delta → analysis; local alert only for validated high/critical signal |
 | every 15 min, offset | `vesper-health-watch` | internal health/freshness + optional external dead-man ping |
 | every 6 h | `cron-skill-integrity-watch` | scheduler/registry/script integrity |
 | `23:30` | `second-brain-dream` | durable research + communications/person context consolidation |
@@ -114,91 +114,120 @@ read → normalize → analyze → brief → remember → local alert
 never send / reply / react / draft / mark-read
 ```
 
-Interactive messaging access and the scheduled communications pipeline are deliberately separate surfaces. Vesper exposes Beeper Desktop's MCP to Codex, Claude Code and OpenCode, and provides a dedicated Hermes profile named `vesper-social` for explicit interactive Hermes use. The default Hermes profile used by Vesper cron does not receive the Beeper MCP.
+Agent Messenger is the **single transport** for WhatsApp, Telegram, Discord and Instagram. There is no alternate connector and no failover path. If one network is unconfigured, degraded or unavailable, the batch records that source state and continues only with sources that are actually readable.
 
-`communications-radar` continues to use only Vesper's first-party Rust intake against Beeper Desktop's local `GET /v1/messages/search` endpoint. There is no POST/PUT/DELETE message path in `communications.rs`, and the scheduled lane never invokes the mutation-capable Beeper MCP.
+The source messaging networks remain the message-history authority. Agent Messenger owns the local account/session material needed to talk to them. Vesper keeps only bounded operational state and derived briefings; it does not create a second full chat archive.
 
-Beeper is the normalization layer for supported connected chat networks such as WhatsApp, Telegram, Discord and Instagram. It remains the message-history source of truth; Vesper does not create a second full chat archive.
+### capability boundary
 
-### local-only source boundary
-
-Vesper accepts the Beeper API only on loopback:
+Upstream Agent Messenger exposes both read and mutation commands. Vesper deliberately separates two executable surfaces:
 
 ```text
-http://127.0.0.1:<port>
-http://localhost:<port>
+agent-messenger              human-driven authentication / explicit manual use
+vesper-agent-messenger-read  scheduled communications intake only
 ```
 
-The default is:
+`vesper-agent-messenger-read` has a hard command allowlist. The scheduled Rust control plane can query only:
 
 ```text
-http://127.0.0.1:23373
+<platform> auth status
+whatsapp|telegram|instagram chat list
+whatsapp|telegram|instagram|discord message list
+discord dm unread
+discord mention unread
 ```
 
-A non-loopback `VESPER_BEEPER_BASE_URL` is rejected. Do not enable Beeper Desktop API Remote Access for this workflow.
+Send, reply, react, edit, delete, acknowledge/mark-read, logout, account switching and other mutation operations are outside that executable grammar. The full Agent Messenger CLI is not placed on the scheduled intake path.
+
+Agent Messenger is also not added to Vesper's shared MCP registry. Communications intelligence therefore does not grant Codex, Claude Code or OpenCode a messaging MCP merely because the scheduled radar exists.
+
+### package/runtime boundary
+
+Vesper selects Agent Messenger `2.36.0` exactly. The wrapper runs that package through Bun's package runner and keeps its package cache under:
+
+```text
+~/.cache/vesper-agent-messenger/bun
+```
+
+This is version-pinned but not an offline Nix-store package: a cold cache can require registry access. Do not describe it as fully Nix-reproducible until Agent Messenger is packaged into the Nix build graph.
+
+Agent Messenger account/session state lives under:
+
+```text
+~/.config/agent-messenger/
+```
+
+or the path selected by `AGENT_MESSENGER_CONFIG_DIR`.
 
 ### setup
 
-Beeper Desktop is installed declaratively from pinned nixpkgs. After `nh os switch`:
-
-1. open Beeper and sign in
-2. connect the messaging accounts you want observed
-3. in Beeper, enable Desktop API and create an Approved Connection token under Settings → Integrations
-4. store the token outside Nix/Git:
+After `nh os switch`, authenticate the networks you want observed with the full human-facing CLI. Current upstream entry points include:
 
 ```bash
-install -d -m 700 ~/.config/vesper
-read -rsp 'Beeper token: ' BEEPER_TOKEN; printf '\n'
-umask 077
-printf '%s\n' "$BEEPER_TOKEN" > ~/.config/vesper/beeper.token
-unset BEEPER_TOKEN
-chmod 600 ~/.config/vesper/beeper.token
+agent-messenger whatsapp auth login --qr
+agent-messenger telegram auth login
+agent-messenger discord auth extract
+agent-messenger instagram auth extract
 ```
 
-The Rust intake refuses a group/world-readable token file. The token is read at runtime and passed to `curl` through stdin/config, not as a command-line bearer header. Do not commit it or put it in a Nix expression.
+Authentication is interactive and may require the corresponding logged-in app/browser/session or platform-specific credentials. Do not put extracted credentials, cookies, tokens or session files in Git or Nix source.
 
-Check intake state with:
+Check the Vesper-side intake state with:
 
 ```bash
 vesper-hermes comms-status
+vesper-doctor --json
 ```
 
-`unconfigured`, `unavailable`, `ready` and an empty delta are different states. Missing Beeper/token is not reported as an empty inbox and does not trigger a 15-minute error-notification storm.
-
-### interactive Hermes MCP
-
-The mutation-capable Beeper MCP is kept out of the default Hermes profile. Vesper installs a small lifecycle wrapper that creates `vesper-social` from the default profile on first use, then lets Hermes own that profile's MCP and OAuth state:
-
-```bash
-vesper-hermes-beeper-mcp setup
-vesper-hermes-beeper-mcp test
-vesper-hermes-beeper-mcp chat
-```
-
-`setup` uses Hermes' native MCP client against `http://127.0.0.1:23373/v0/mcp` with OAuth. Re-authenticate later with:
-
-```bash
-vesper-hermes-beeper-mcp login
-```
-
-The profile clone copies the current default profile's model/provider configuration when it is first created, but later state is independent. Vesper does not generate or overwrite `~/.hermes/config.yaml`, does not make `vesper-social` the sticky default, and does not trigger an interactive OAuth flow during `nh os switch`.
+`unconfigured`, `unavailable`, `degraded`, `ready` and a ready-but-empty delta are different states. One failed network is not silently replaced by another connector.
 
 ### delta and crash semantics
 
-The first configured run bootstraps a bounded recent window (default 6 hours). Later runs overlap the watermark by 10 minutes and deduplicate with recent source message IDs so scheduling jitter and timestamp ties do not create gaps.
+The first configured run bootstraps a bounded recent window, default `6h`. Later runs overlap the last committed watermark by 10 minutes and deduplicate with recent platform-prefixed message IDs.
 
-The current safety bounds are:
+Canonical message IDs are transport-independent inside Vesper's current model:
 
 ```text
-API page size      20 messages (Beeper limit)
-per-analysis batch 200 messages by default
-recent dedupe IDs  5000
-fetch safety cap   5000 messages per poll
+whatsapp:<source-message-id>
+telegram:<source-message-id>
+instagram:<source-message-id>
+discord:<source-message-id>
 ```
 
-A large backlog is processed oldest-first in bounded analysis batches. The watermark advances only after Hermes has produced and persisted a communications report. The current batch is held in one crash-recoverable `pending.json`; after a successful commit that raw-text staging file is removed.
+This prevents cross-network ID collisions.
 
-If the API reports more than the 5000-message fetch safety bound, the run fails without advancing the watermark rather than silently skipping history.
+Current Vesper intake bounds are:
+
+```text
+recent chats per network       80 by default
+messages fetched per chat      50 by default
+per-analysis batch             200 messages by default
+recent dedupe IDs              5000
+```
+
+`VESPER_COMMS_CHAT_LIMIT`, `VESPER_COMMS_MESSAGES_PER_CHAT`, `VESPER_COMMS_BATCH_MESSAGES` and `VESPER_COMMS_BOOTSTRAP_HOURS` can tune the bounded fetch within the clamps enforced by `communications.rs`.
+
+For WhatsApp, Telegram and Instagram, the intake selects recent/unread chats then reads bounded message windows. Discord uses unread DM and unread mention discovery, then reads bounded DM message windows. A source that reports incomplete unread discovery or partial read failures marks the batch degraded rather than pretending coverage was complete.
+
+This is an inbox radar, not a guaranteed historical export. Per-chat and upstream query bounds mean an arbitrarily large offline backlog may require wider explicit limits or separate archival tooling; Vesper must never claim it observed messages that were outside the selected windows.
+
+The watermark advances only after Hermes produces a report, that report passes the evidence sanitizer and the report is persisted. The current batch is held in one crash-recoverable `pending.json`; after a successful commit that staging file is removed.
+
+Pending state is transport-tagged. A stale batch from a previous communications transport is discarded instead of being replayed as Agent Messenger data.
+
+### evidence and alert gate
+
+Model output is not trusted merely because it is valid JSON.
+
+Before persistence/notification, the Rust sanitizer:
+
+- accepts evidence message IDs only if they exist in the current `messages + contextMessages` set
+- drops evidence-bound findings that are left without real source IDs
+- requires every high/critical alert to contain a valid source message ID
+- requires a high/critical alert to carry an explicit semantic ground such as a credential request, payment request, impersonation, coercion, threat, deadline, sensitive account action or material decision
+- downgrades report priority when no validated high/critical alert survives
+
+Presentation hints such as invisible Unicode or punycode can remain a review signal, but they do not create a high/critical alert by themselves.
 
 ### analysis model
 
@@ -217,7 +246,13 @@ High-value risk analysis is evidence-bound. Valid signals include credential or 
 
 The system does not infer protected/sensitive traits and does not diagnose people as narcissists, psychopaths, mentally ill, etc. Person notes describe concrete evidenced behavior and can be corrected by later evidence.
 
-Only `high` and `critical` findings can trigger immediate desktop `notify-send` alerts. Exact duplicate alert bodies are suppressed. Communications code never routes those alerts back through WhatsApp/Telegram/Discord/Instagram.
+Only validated `high` and `critical` alerts can trigger immediate desktop `notify-send`. Exact duplicate alert bodies are suppressed. Communications code never routes those alerts back through WhatsApp/Telegram/Discord/Instagram.
+
+### provider privacy boundary
+
+Local Agent Messenger collection does not make inference local. The normalized bounded batch becomes part of the Hermes model request.
+
+If the configured Hermes provider/model is remote, the message text and bounded identity/context fields in that batch leave the machine for inference. Do not call this workflow fully local unless the chosen inference provider is itself local.
 
 ### second-brain fan-in
 
@@ -299,7 +334,7 @@ Briefings:
 ~/.local/share/vesper/briefings/
 ```
 
-The communications state contains watermarks, bounded dedupe IDs, intake status, at most one pending batch and duplicate-alert state. It is not a transcript archive.
+The communications state contains watermarks, bounded dedupe IDs, per-source intake status, at most one pending batch and duplicate-alert state. It is not a transcript archive.
 
 The Rust control plane writes atomic JSON records, Markdown briefings, run status and a rebuilt briefing index. Caelestia consumes the briefing index through the Rust AI Hub rather than invoking a Python runtime.
 
@@ -387,7 +422,7 @@ fresh artifact / expected remote state -> outcome evidence
 
 An API or provider call that mutates remote state should be followed by a read of the remote object when the integration supports it. Ambiguous timeout/retry paths must not blindly repeat externally visible side effects.
 
-Communications intake is deliberately read-only, so its postcondition is a persisted analysis report plus a committed local watermark; a model claim that it "checked messages" is not enough.
+Communications intake is deliberately read-only, so its postcondition is a persisted sanitized analysis report plus a committed local watermark; a model claim that it "checked messages" is not enough.
 
 ## skill evolution
 
@@ -412,11 +447,10 @@ vesper-hermes inbox
 vesper-hermes run unknown-frontier-ai
 vesper-hermes run communications-radar
 
-vesper-hermes-beeper-mcp setup
-vesper-hermes-beeper-mcp login
-vesper-hermes-beeper-mcp test
-vesper-hermes-beeper-mcp chat
-vesper-hermes-beeper-mcp status
+agent-messenger whatsapp auth login --qr
+agent-messenger telegram auth login
+agent-messenger discord auth extract
+agent-messenger instagram auth extract
 
 vesper-hermes-automations jobs
 vesper-hermes-automations validate-registry
