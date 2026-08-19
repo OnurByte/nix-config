@@ -10,6 +10,7 @@ Configured servers:
 - `context7` — current library and API documentation through Context7
 - `github` — GitHub repositories, issues, pull requests and Actions through GitHub's official MCP server
 - `hypruse` — Hyprland-native desktop inspection and confined GUI control
+- `semgrep` — local deterministic static/security analysis through Semgrep's built-in MCP server
 - `helium-devtools` — Chrome DevTools MCP pointed at the Nix-managed Helium binary
 - `zen-devtools` — Mozilla Firefox DevTools MCP pointed at the Nix-managed Zen beta binary
 
@@ -30,6 +31,7 @@ use the nixos MCP to find the correct Home Manager option for this
 use context7 for the current Next.js API before changing this code
 use the github MCP to inspect the failing Actions run and related pull request
 use hypruse to launch Vesper Settings and inspect the real Hyprland UI
+use semgrep with an explicit ruleset to security-scan these changed files
 use helium-devtools to inspect this page's network requests and console
 use zen-devtools to open this site and reproduce the Firefox-side bug
 ```
@@ -94,6 +96,24 @@ vesper-hypruse-mcp
 `Super + Shift + Backspace` is the emergency stop. It runs `vesper-hypruse-mcp stop`, which targets the PID advertised by Hypruse's runtime beacon and follows the upstream graceful shutdown path so held input state is cleaned up before the server exits.
 
 Use it for real desktop QA where browser-only MCPs are insufficient. Prefer semantic desktop/accessibility state before screenshots when the target exposes it.
+
+## Semgrep
+
+`semgrep` uses the Nix-managed Semgrep CLI from the locked nixpkgs revision and starts its built-in stdio MCP server with `semgrep mcp`.
+
+It is a deterministic analysis surface, not another coding agent. Use it to scan code or evaluate a custom Semgrep rule, then let the coding-agent workflow decide what to change from the findings.
+
+Vesper sets:
+
+```text
+SEMGREP_SEND_METRICS=off
+```
+
+No Semgrep AppSec token is configured by default. Keep scans local and do not enable telemetry to make an MCP call succeed.
+
+With metrics disabled, Semgrep intentionally refuses its config-less `auto` scan path. Pass an explicit configuration such as `p/default`, another reviewed registry ruleset or a custom rule when calling the scan tools. A request that fails because no configuration was supplied should be corrected by selecting a ruleset, not by enabling metrics.
+
+Registry rules may require network access to retrieve the rules themselves. That is different from uploading the source being scanned; do not silently turn the optional cloud/AppSec integration into a Vesper dependency.
 
 ## Context7
 
