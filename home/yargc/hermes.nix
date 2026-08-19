@@ -17,10 +17,11 @@ let
 
   # Communications analysis receives its complete normalized batch in the
   # prompt. Shadow only that cron lane's `hermes` executable so the model gets
-  # an explicitly empty built-in toolset. Other research jobs keep their normal
-  # Hermes tool surfaces.
+  # the empty built-in context-engine toolset while safe mode suppresses user
+  # plugins, MCP servers, hooks/rules and custom context-engine extensions.
+  # Other research jobs keep their normal Hermes tool surfaces.
   communicationsHermes = pkgs.writeShellScriptBin "hermes" ''
-    exec ${hermesAgent}/bin/hermes -t context_engine "$@"
+    exec ${hermesAgent}/bin/hermes --safe-mode -t context_engine "$@"
   '';
 
   researchEnv = ''
