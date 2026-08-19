@@ -13,6 +13,7 @@ let
   mcpCacheRoot = "${config.home.homeDirectory}/.cache/vesper-mcp";
   bunMcpCache = "${mcpCacheRoot}/bun";
   uvMcpCache = "${mcpCacheRoot}/uv";
+  hypruseJournal = "${config.home.homeDirectory}/.local/state/vesper/mcp/hypruse/journal.ndjson";
 
   # GCC is the global system toolchain. Keep Clang's compiler frontends
   # available without adding Clang's entire wrapper output to Home Manager:
@@ -77,7 +78,9 @@ let
       export HYPRUSE_AUTH_GUARD="strict"
       export HYPRUSE_STRICT="1"
       export HYPRUSE_MARK="1"
+      export HYPRUSE_JOURNAL="${hypruseJournal}"
       unset HYPRUSE_CLIPBOARD
+      unset HYPRUSE_JOURNAL_TEXT
 
       exec uvx --from hypruse==0.9.4 hypruse
     '';
