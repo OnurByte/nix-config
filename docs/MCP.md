@@ -9,6 +9,7 @@ Configured servers:
 - `nixos` — NixOS, nixpkgs and Home Manager package/option lookup through `mcp-nixos`
 - `context7` — current library and API documentation through Context7
 - `github` — GitHub repositories, issues, pull requests and Actions through GitHub's official MCP server
+- `beeper` — one local MCP surface for connected WhatsApp, Instagram, Telegram and Discord accounts through Beeper Desktop
 - `hypruse` — Hyprland-native desktop inspection and confined GUI control
 - `semgrep` — local deterministic static/security analysis through Semgrep's built-in MCP server
 - `helium-devtools` — Chrome DevTools MCP pointed at the Nix-managed Helium binary
@@ -30,6 +31,7 @@ Useful requests are ordinary agent requests:
 use the nixos MCP to find the correct Home Manager option for this
 use context7 for the current Next.js API before changing this code
 use the github MCP to inspect the failing Actions run and related pull request
+use beeper to search my WhatsApp, Instagram, Telegram and Discord chats
 use hypruse to launch Vesper Settings and inspect the real Hyprland UI
 use semgrep with an explicit ruleset to security-scan these changed files
 use helium-devtools to inspect this page's network requests and console
@@ -55,6 +57,34 @@ vesper-github-mcp
 ```
 
 The command is normally started by the agent and speaks MCP over stdio, so running it manually is only useful for startup/auth errors.
+
+## Beeper
+
+`beeper` points at Beeper Desktop's built-in Streamable HTTP MCP endpoint:
+
+```text
+http://127.0.0.1:23373/v0/mcp
+```
+
+This is deliberately loopback-only. Do not expose the Desktop API or MCP endpoint on the LAN or public internet for normal Vesper use.
+
+Beeper is used as the normalization layer for the messaging networks connected in Beeper Desktop. For the requested communications set this means WhatsApp, Instagram, Telegram and Discord are available through one MCP server instead of four unrelated account/session implementations.
+
+The MCP client performs Beeper's normal MCP OAuth flow. No Beeper bearer token is embedded in Nix or Git. If manual token authentication is ever needed, keep the token outside the repository and pass it at runtime through the client rather than writing an `Authorization` header into declarative source.
+
+The MCP implementation/proxy is open source at `beeper/desktop-api-mcp` under the MIT license. Beeper also builds its chat-network integrations around open-source Matrix bridge projects; Vesper intentionally consumes the supported Beeper Desktop surface rather than vendoring four fragile protocol clients.
+
+Setup:
+
+1. open Beeper Desktop and sign in
+2. connect WhatsApp, Instagram, Telegram and Discord in Beeper
+3. enable Desktop API / Integrations if it is not already enabled
+4. run `nh os switch`
+5. start Codex, Claude Code or OpenCode and authenticate the `beeper` MCP when prompted
+
+The shared MCP surface can expose mutation tools such as sending or reacting. Those are interactive agent capabilities and must be treated as externally visible actions.
+
+This does **not** weaken Hermes' scheduled communications boundary. `communications-radar` remains read-only and continues to use Vesper's first-party Rust REST intake path; it does not call the Beeper MCP and does not send, reply, react, draft or mark messages read.
 
 ## Hypruse
 
