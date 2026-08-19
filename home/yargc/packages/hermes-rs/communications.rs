@@ -154,8 +154,10 @@ fn normalize_pages(pages: &[String], after: &str) -> Result<String, String> {
           | [
               if ([$cp[] | select(. == 8203 or . == 8204 or . == 8205 or . == 8288 or . == 65279)] | length) > 0
               then "zero_width_unicode" else empty end,
-              if ([$cp[] | select(. == 8206 or . == 8207 or (. >= 8234 and . <= 8238) or (. >= 8294 and . <= 8297))] | length) > 0
+              if ([$cp[] | select(. == 1564 or . == 8206 or . == 8207 or (. >= 8234 and . <= 8238) or (. >= 8294 and . <= 8297))] | length) > 0
               then "bidi_control_unicode" else empty end,
+              if ([$cp[] | select(. >= 917504 and . <= 917631)] | length) > 0
+              then "unicode_tag_payload" else empty end,
               if ([($m.links // [])[]? | select((.originalURL // .url // "") != (.url // ""))] | length) > 0
               then "redirected_link" else empty end,
               if ([($m.links // [])[]? | (.url // ""), (.originalURL // "") | select(mixed_latin_confusable_script(.))] | length) > 0
@@ -422,7 +424,7 @@ mod tests {
               "senderName": "Person",
               "timestamp": "2026-08-19T12:00:00Z",
               "sortKey": "1",
-              "text": "pay\u200bnow",
+              "text": "pay\u200bnow\udb40\udc01",
               "type": "TEXT",
               "links": [{
                 "title": "portal",
@@ -455,7 +457,7 @@ mod tests {
             .expect("first signal list should parse");
         assert_eq!(
             first.trim(),
-            "mixed_script_link,punycode_link,redirected_link,suspicious_double_extension,zero_width_unicode"
+            "mixed_script_link,punycode_link,redirected_link,suspicious_double_extension,unicode_tag_payload,zero_width_unicode"
         );
         let second = jq_raw(&normalized, ".messages[1].presentationSignals | length")
             .expect("second signal list should parse");
