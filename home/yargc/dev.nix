@@ -122,7 +122,7 @@ let
       unset HYPRUSE_CLIPBOARD
       unset HYPRUSE_JOURNAL_TEXT
 
-      exec hypruse
+      exec hypruse "$@"
     '';
   };
 in
