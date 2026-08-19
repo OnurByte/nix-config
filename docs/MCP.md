@@ -73,6 +73,8 @@ HYPRUSE_MARK=1
 
 This means input is limited to windows launched by the MCP, authentication dialogs remain guarded, an unexpected human/focus change forces the agent to re-observe before acting and agent-owned windows are marked when supported. Clipboard access is not enabled.
 
+Hypruse tags windows it launches as `hypruse-owned`. Vesper keeps a matching Hyprland window rule that gives those windows a 2 px red safety outline, so the automation boundary remains visible even when Hypruse's runtime marking rule does not render on a particular compositor build.
+
 Confinement is an input boundary, not a privacy boundary. Desktop state and screenshots can still reveal visible information, and an MCP client still decides whether to approve tool calls. Do not treat Hypruse inventory as a stronger sandbox than the enforcement it actually provides.
 
 Hypruse tool calls and refusals are recorded to:
