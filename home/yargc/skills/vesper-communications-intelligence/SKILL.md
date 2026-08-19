@@ -41,6 +41,31 @@ Vesper state should keep only what is operationally necessary:
 - derived briefings and evidence references
 - bounded alert state
 
+### WhatsApp fallback boundary
+
+Beeper is the primary multi-network normalization layer. OpenWA may be used only as an explicit WhatsApp-only fallback when the Beeper WhatsApp bridge is unusable or materially incomplete.
+
+OpenWA is not a second default ingestion path and its MCP surface must not be added to the shared agent registry. Its API contains mutation methods, so an OpenWA adapter must expose only an audited read allowlist such as the documented GET message/chat retrieval routes.
+
+A valid fallback must preserve these constraints:
+
+```text
+source = beeper OR openwa
+never both for the same WhatsApp account at once
+loopback-only API endpoint
+file-backed API key with owner-only permissions
+read routes only
+same normalized Vesper event schema
+same message-id dedupe/watermark semantics
+fixture coverage before activation
+```
+
+Source changes must be explicit rather than automatic silent failover. Automatic switching can duplicate the same WhatsApp event under different source identities and can hide a degraded connector behind apparently healthy analysis.
+
+OpenWA v5 is still an alpha line and its message API documents raw WhatsApp Web results as unstructured. Do not enable it merely because the endpoint responds. Validate the exact selected release against representative DM, group, media, forwarded, edited and malformed fixtures before treating it as a supported fallback.
+
+Do not describe OpenWA as a clean default open-source dependency unless its actual selected release/license has been reviewed. The current public repository uses unusual project terms and GitHub does not expose a standard SPDX license for it.
+
 ### provider privacy boundary
 
 A local Beeper API does not imply local AI analysis. The normalized current batch is included in the Hermes model request.
