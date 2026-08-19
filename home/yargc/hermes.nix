@@ -15,14 +15,6 @@ let
     agentMessengerRead = agentMessenger.readOnly;
   };
 
-  # Communications analysis receives its complete normalized batch in the
-  # prompt. Shadow only that cron lane's `hermes` executable so the model gets
-  # the pinned Hermes `context_engine` toolset, which is intentionally empty.
-  # Other research jobs keep their normal Hermes tool surfaces.
-  communicationsHermes = pkgs.writeShellScriptBin "hermes" ''
-    exec ${hermesAgent}/bin/hermes -t context_engine "$@"
-  '';
-
   researchEnv = ''
     export VESPER_REDDIT_SEEDS="opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev"
     export VESPER_REDDIT_COMMENT_SEEDS="MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec"
@@ -39,9 +31,6 @@ let
     pkgs.writeShellScript "vesper-hermes-${name}" ''
       set -euo pipefail
       ${researchEnv}
-      ${lib.optionalString (name == "communications-radar") ''
-        export PATH="${communicationsHermes}/bin:$PATH"
-      ''}
       ${hermesCore}/bin/vesper-hermes-automations trigger ${lib.escapeShellArg name}
 
       ${lib.optionalString (name == "vesper-health-watch") ''
