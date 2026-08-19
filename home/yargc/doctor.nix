@@ -200,6 +200,18 @@ let
         record warn hermes_registry "Hermes job registry is unavailable: $hermes_registry"
       fi
 
+      if command -v vesper-agent-messenger-auth >/dev/null 2>&1; then
+        record ok communications_auth_boundary "communications setup uses the Vesper auth-only Agent Messenger wrapper"
+      else
+        record warn communications_auth_boundary "vesper-agent-messenger-auth is unavailable"
+      fi
+
+      if command -v agent-messenger >/dev/null 2>&1; then
+        record warn communications_mutation_cli "unrestricted upstream agent-messenger is on PATH; Vesper intentionally does not install it"
+      else
+        record ok communications_mutation_cli "unrestricted upstream agent-messenger is not on PATH"
+      fi
+
       comms_config="''${AGENT_MESSENGER_CONFIG_DIR:-$HOME/.config/agent-messenger}"
       comms_state_root="''${VESPER_COMMUNICATIONS_STATE_DIR:-$HOME/.local/state/vesper/communications}"
       comms_status="$comms_state_root/status.json"
