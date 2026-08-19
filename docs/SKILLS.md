@@ -213,13 +213,13 @@ read / normalize / analyze / brief / remember / local-alert
 never send / reply / react / draft / mark-read
 ```
 
-The connector layer enforces that boundary with a GET-only Beeper Desktop intake rather than trusting a prompt to avoid write-capable MCP tools.
+Agent Messenger is the single messaging transport. The scheduled path does not receive its mutation-capable full CLI; `vesper-hermes-core` can reach only the separate `vesper-agent-messenger-read` executable with an audited command allowlist. Agent Messenger is not placed in the shared MCP registry.
 
-The skill separates salience, commitments/open loops, people/source identities, groups/topics and concrete communication-risk signals. High/critical findings require source message IDs. Risk analysis describes observable behavior such as urgency, credential/payment requests, impersonation, coercion, suspicious-link pressure or relevant contradiction; it is not a personality or mental-health diagnosis.
+The skill separates salience, commitments/open loops, people/source identities, groups/topics and concrete communication-risk signals. High/critical alerts require real batch message IDs plus semantic grounds; presentation-only hints such as unusual Unicode cannot create an immediate alert by themselves. Risk analysis describes observable behavior such as urgency, credential/payment requests, impersonation, coercion, suspicious-link pressure or relevant contradiction; it is not a personality or mental-health diagnosis.
 
 Identity resolution is conservative. Similar display names do not merge people. Uncertain cross-platform identities remain separate until stable evidence supports a canonical link.
 
-Raw chat history remains in Beeper. Vesper stores bounded operational state and durable derived findings; Obsidian receives only promoted knowledge rather than transcript dumps.
+The source messaging networks remain the chat-history authority. Vesper stores bounded operational state and durable derived findings; Obsidian receives only promoted knowledge rather than transcript dumps. A failed network is reported degraded/unavailable instead of switching to another connector.
 
 ## Hermes drafts and skill lifecycle
 
