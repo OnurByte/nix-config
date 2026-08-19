@@ -379,3 +379,63 @@ pub fn maybe_notify(report: &str) -> Result<(), String> {
     );
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_pages;
+    use crate::util::jq_raw;
+
+    #[test]
+    fn presentation_preflight_flags_invisible_unicode_and_redirects() {
+        let page = r#"{
+          "chats": {
+            "chat-1": {
+              "id": "chat-1",
+              "accountID": "whatsapp",
+              "network": "whatsapp",
+              "title": "Test",
+              "type": "single",
+              "participants": {"items": []}
+            }
+          },
+          "items": [
+            {
+              "id": "m1",
+              "accountID": "whatsapp",
+              "chatID": "chat-1",
+              "senderID": "person-1",
+              "senderName": "Person",
+              "timestamp": "2026-08-19T12:00:00Z",
+              "sortKey": "1",
+              "text": "pay\u200bnow",
+              "type": "TEXT",
+              "links": [{
+                "title": "portal",
+                "url": "https://example.com/final",
+                "originalURL": "https://short.example/x",
+                "summary": "open portal"
+              }]
+            },
+            {
+              "id": "m2",
+              "accountID": "whatsapp",
+              "chatID": "chat-1",
+              "senderID": "person-1",
+              "timestamp": "2026-08-19T12:01:00Z",
+              "sortKey": "2",
+              "text": "ordinary text",
+              "type": "TEXT"
+            }
+          ]
+        }"#;
+
+        let normalized = normalize_pages(&[page.to_string()], "2026-08-19T11:00:00Z")
+            .expect("communications fixture should normalize");
+        let first = jq_raw(&normalized, ".messages[0].presentationSignals | sort | join(\",\")")
+            .expect("first signal list should parse");
+        assert_eq!(first.trim(), "redirected_link,zero_width_unicode");
+        let second = jq_raw(&normalized, ".messages[1].presentationSignals | length")
+            .expect("second signal list should parse");
+        assert_eq!(second.trim(), "0");
+    }
+}
