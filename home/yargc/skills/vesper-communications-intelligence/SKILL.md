@@ -56,9 +56,9 @@ The scheduled intake may use only the read operations required to observe accoun
 
 The communications model receives the complete normalized bounded batch in its prompt, so it does not need shell, browser, MCP, messaging or file tools.
 
-Only the `communications-radar` cron wrapper shadows `hermes` with a constrained invocation that enables Hermes safe mode plus the empty built-in `context_engine` toolset. This suppresses user plugins, MCP servers, rules/hooks and custom context-engine extensions for the analysis lane while leaving other Hermes research jobs unchanged.
+The Rust communications lane invokes Hermes directly with safe mode plus the empty built-in `context_engine` toolset. This isolation is part of `run_communications_radar`, not PATH ordering or a cron-script convention, so direct/manual execution of that lane gets the same boundary. Safe mode suppresses user plugins, MCP servers, rules/hooks and custom context-engine extensions while other Hermes research jobs keep their normal tool surfaces.
 
-Do not weaken this into a prompt-only "never send" rule. If Hermes gains a first-class explicit no-tools mode, prefer that primitive over the current safe-mode + empty-toolset wrapper.
+Do not weaken this into a prompt-only "never send" rule. If Hermes gains a first-class explicit no-tools mode, prefer that primitive over the current safe-mode + empty-toolset invocation.
 
 ### provider privacy boundary
 
