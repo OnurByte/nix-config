@@ -12,7 +12,6 @@ let
   bunx = "${pkgs.bun}/bin/bunx";
   mcpCacheRoot = "${config.home.homeDirectory}/.cache/vesper-mcp";
   bunMcpCache = "${mcpCacheRoot}/bun";
-  uvMcpCache = "${mcpCacheRoot}/uv";
   hypruseJournal = "${config.home.homeDirectory}/.local/state/vesper/mcp/hypruse/journal.ndjson";
 
   # GCC is the global system toolchain. Keep Clang's compiler frontends
@@ -59,21 +58,39 @@ let
     '';
   };
 
-  # Hypruse is an upstream Python MCP, not first-party Vesper runtime code.
-  # Keep uv scoped to this wrapper instead of adding a mutable Python toolchain
-  # to the user environment. Confinement allows input only in windows the MCP
-  # launched itself; auth dialogs remain guarded and clipboard stays disabled.
+  # Upstream Python is acceptable inside a pinned external package; Vesper's
+  # first-party control plane remains Rust. Build the published universal wheel
+  # into the Nix store so desktop control never downloads code at MCP startup.
+  hyprusePackage = pkgs.python3Packages.buildPythonApplication (finalAttrs: {
+    pname = "hypruse";
+    version = "0.9.4";
+    format = "wheel";
+
+    src = pkgs.fetchPypi {
+      inherit (finalAttrs) pname version;
+      format = "wheel";
+      dist = "py3";
+      python = "py3";
+      hash = "sha256-v2QV5fUtbiUIfyn1pKaqL0qsk1RUIJXA28kZ8b+/f84=";
+    };
+
+    dependencies = [ pkgs.python3Packages.mcp ];
+    pythonImportsCheck = [ "hypruse" ];
+  });
+
+  # Confinement allows input only in windows the MCP launched itself; auth
+  # dialogs remain guarded, human seat changes fail closed and clipboard stays
+  # disabled. The journal records calls/refusals without persisting typed text.
   hypruseMcp = pkgs.writeShellApplication {
     name = "vesper-hypruse-mcp";
     runtimeInputs = [
-      pkgs.uv
+      hyprusePackage
       pkgs.grim
       pkgs.wtype
       pkgs.imagemagick
       pkgs.systemd
     ];
     text = ''
-      export UV_CACHE_DIR="${uvMcpCache}"
       export HYPRUSE_CONFINE="launched"
       export HYPRUSE_AUTH_GUARD="strict"
       export HYPRUSE_STRICT="1"
@@ -82,7 +99,7 @@ let
       unset HYPRUSE_CLIPBOARD
       unset HYPRUSE_JOURNAL_TEXT
 
-      exec uvx --from hypruse==0.9.4 hypruse
+      exec hypruse
     '';
   };
 in
