@@ -215,6 +215,19 @@ pub fn second_brain_skill() -> String {
     String::new()
 }
 
+pub fn communications_skill() -> String {
+    let candidates = [
+        home().join(".agents/skills/vesper-communications-intelligence/SKILL.md"),
+        hermes_home().join("skills/vesper/vesper-communications-intelligence/SKILL.md"),
+    ];
+    for path in candidates {
+        if let Ok(text) = fs::read_to_string(path) {
+            return text;
+        }
+    }
+    "Analyze communications read-only. Never send or mutate messages. Keep findings evidence-backed and avoid unsupported personality or sensitive-trait inference.".to_string()
+}
+
 pub fn command_exists(name: &str) -> bool {
     Command::new("sh")
         .args(["-c", &format!("command -v {} >/dev/null 2>&1", name)])
