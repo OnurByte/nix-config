@@ -10,19 +10,40 @@ let
     export BUN_INSTALL_CACHE_DIR="${cacheDir}"
   '';
 
-  full = pkgs.writeShellApplication {
-    name = "agent-messenger";
+  # Human setup surface only. It can create/switch/remove authentication state,
+  # but it never exposes chat/message mutation commands such as send, edit,
+  # delete or react.
+  authOnly = pkgs.writeShellApplication {
+    name = "vesper-agent-messenger-auth";
     runtimeInputs = [ pkgs.bun ];
     text = ''
       set -euo pipefail
       ${runtime}
-      exec ${pkgs.bun}/bin/bunx --package ${package} agent-messenger "$@"
+
+      if [ "$#" -lt 2 ]; then
+        echo "usage: vesper-agent-messenger-auth PLATFORM ACTION [ARGS...]" >&2
+        echo "platforms: whatsapp telegram instagram discord" >&2
+        exit 64
+      fi
+
+      platform="$1"
+      shift
+
+      case "$platform" in
+        whatsapp|telegram|instagram|discord) ;;
+        *)
+          echo "denied: platform is outside Vesper communications scope" >&2
+          exit 64
+          ;;
+      esac
+
+      exec ${pkgs.bun}/bin/bunx --package ${package} agent-messenger "$platform" auth "$@"
     '';
   };
 
-  # Agent Messenger intentionally exposes both read and write operations.
-  # Vesper's scheduled communications intake gets a separate executable whose
-  # command grammar contains only the read operations it actually needs.
+  # Scheduled intake surface. Agent Messenger intentionally exposes both read
+  # and write operations upstream; Vesper gives the communications worker a
+  # separate executable whose grammar contains only the reads it needs.
   readOnly = pkgs.writeShellApplication {
     name = "vesper-agent-messenger-read";
     runtimeInputs = [ pkgs.bun ];
@@ -56,5 +77,5 @@ let
   };
 in
 {
-  inherit version full readOnly;
+  inherit version authOnly readOnly;
 }
