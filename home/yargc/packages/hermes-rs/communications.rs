@@ -653,10 +653,11 @@ pub fn prepare_batch() -> Result<String, String> {
         .trim()
         .parse::<usize>()
         .unwrap_or(count);
+    let intake_state = if degraded { "degraded" } else { "ready" };
 
     if count == 0 {
         set_status(
-            "ready",
+            intake_state,
             &format!(
                 "Agent Messenger: {readable}/{} sources readable; no new messages in the current delta",
                 PLATFORMS.len()
@@ -667,7 +668,7 @@ pub fn prepare_batch() -> Result<String, String> {
 
     atomic_write(&pending_path, &batch)?;
     set_status(
-        "ready",
+        intake_state,
         &format!(
             "Agent Messenger: {readable}/{} sources readable; {count} of {discovered} new messages staged",
             PLATFORMS.len()
@@ -703,7 +704,15 @@ pub fn commit_batch(batch: &str) -> Result<(), String> {
     if pending.exists() {
         fs::remove_file(&pending).map_err(|e| e.to_string())?;
     }
-    set_status("ready", "latest Agent Messenger communications batch analyzed and committed")
+    let degraded = jq_raw(batch, ".degraded // false")?.trim() == "true";
+    if degraded {
+        set_status(
+            "degraded",
+            "latest Agent Messenger communications batch analyzed and committed with partial source coverage",
+        )
+    } else {
+        set_status("ready", "latest Agent Messenger communications batch analyzed and committed")
+    }
 }
 
 pub fn sanitize_report(batch: &str, report: &str) -> Result<String, String> {
