@@ -336,9 +336,10 @@ Suggested state:
 $XDG_RUNTIME_DIR/vesper/store.lock
 ```
 
-The Rust Store backend exposes this path contract through `vesper-store-core
-store-state` and creates the private state directories and an empty manifest
-with `vesper-store-core store-init`. `manifest-status` rejects unknown schema,
+The Rust Store backend exposes this path contract through
+`vesper-store-core store-state` and creates the private state directories and
+an empty manifest with `vesper-store-core store-init`. `manifest-status` rejects
+unknown schema,
 duplicate application ids, unsafe identifiers and source entries without the
 required package or Flatpak identifier.
 
