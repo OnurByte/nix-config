@@ -339,8 +339,8 @@ $XDG_RUNTIME_DIR/vesper/store.lock
 The Rust Store backend exposes this path contract through `vesper-store-core
 store-state` and creates the private state directories and an empty manifest
 with `vesper-store-core store-init`. `manifest-status` rejects unknown schema,
-duplicate application ids and source entries without the required package or
-Flatpak identifier.
+duplicate application ids, unsafe identifiers and source entries without the
+required package or Flatpak identifier.
 
 The profile's `bin` and `share` directories are the session handoff paths. The
 profile and retained generation links must still be registered as explicit Nix
