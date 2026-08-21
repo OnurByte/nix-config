@@ -116,6 +116,58 @@ let
         record info monitors "Hyprland is not the current session; skipping live monitor check"
       fi
 
+      desktop_session=false
+      if [ -n "''${WAYLAND_DISPLAY:-}" ] || [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+        desktop_session=true
+      fi
+
+      if [ "$desktop_session" = true ]; then
+        if systemctl --user is-active --quiet hyprland-session.target 2>/dev/null; then
+          record ok graphical_session "Hyprland graphical session target is active"
+        else
+          record warn graphical_session "Hyprland graphical session target is not active"
+        fi
+
+        portal_load_state="$(systemctl --user show -p LoadState --value xdg-desktop-portal.service 2>/dev/null || true)"
+        if [ "$portal_load_state" = loaded ]; then
+          record ok portals "XDG desktop portal user unit is loaded"
+        else
+          record warn portals "XDG desktop portal user unit is unavailable"
+        fi
+
+        if systemctl --user is-active --quiet vicinae.service 2>/dev/null; then
+          record ok vicinae "Vicinae user service is active"
+        else
+          record warn vicinae "Vicinae user service is not active"
+        fi
+
+        caelestia_config="$HOME/.config/caelestia/shell.json"
+        if [ -f "$caelestia_config" ] && [ -w "$caelestia_config" ]; then
+          record ok caelestia_config "Caelestia runtime configuration is writable"
+        elif [ -f "$caelestia_config" ]; then
+          record warn caelestia_config "Caelestia runtime configuration is not writable"
+        else
+          record warn caelestia_config "Caelestia runtime configuration is missing"
+        fi
+
+        for desktop_unit in vesper-adaptive-icons.service vesper-cliphist-text.service vesper-cliphist-image.service; do
+          desktop_key="desktop_''${desktop_unit%.service}"
+          if systemctl --user is-active --quiet "$desktop_unit" 2>/dev/null; then
+            record ok "$desktop_key" "$desktop_unit is active"
+          else
+            record warn "$desktop_key" "$desktop_unit is not active"
+          fi
+        done
+      else
+        record info graphical_session "No Wayland/Hyprland session detected; desktop service checks skipped"
+        record info portals "Desktop portal check skipped outside a graphical session"
+        record info vicinae "Vicinae check skipped outside a graphical session"
+        record info caelestia_config "Caelestia config check skipped outside a graphical session"
+        record info desktop_vesper-adaptive-icons "Adaptive icon service check skipped outside a graphical session"
+        record info desktop_vesper-cliphist-text "Text clipboard service check skipped outside a graphical session"
+        record info desktop_vesper-cliphist-image "Image clipboard service check skipped outside a graphical session"
+      fi
+
       if systemctl is-active --quiet tor.service; then
         record ok tor "system Tor client is active"
       else

@@ -280,7 +280,7 @@ A check may expose:
 - related Settings location
 - safe remediation action when one exists
 
-The page may cover existing doctor domains such as storage/Btrfs, scrub, power state, NVIDIA/PRIME, displays, Tor, local web stack, Restic/timers, failed units and suspend capability as the current doctor implementation exposes them.
+The page may cover existing doctor domains such as storage/Btrfs, scrub, power state, NVIDIA/PRIME, displays, graphical-session/desktop-service state, Tor, local web stack, Restic/timers, failed units and suspend capability as the current doctor implementation exposes them.
 
 Target actions may include:
 
