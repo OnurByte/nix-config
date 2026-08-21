@@ -22,14 +22,14 @@ The proxy backend writes the user-session environment contract to:
 
 Do not describe this as an immediate mutation of the already-running desktop environment. A clean user-session restart is the reliable global handoff for compositor-launched and other desktop processes to inherit the new values.
 
-Known reliability issue: current proxy setup can write Vesper's configured-state marker before the effective `environment.d` file. A later write failure can therefore leave UI/status saying that the proxy is configured even though the effective session file was not committed.
+Proxy status is derived from the effective `environment.d` file itself. The backend writes that file atomically with private `0600` permissions and no longer commits a separate configured-state marker before the effective write succeeds. `proxy_clear` still removes the legacy marker left by older builds.
 
-Required remediation:
+Remaining operational rules:
 
 - validate the requested proxy URL before mutating state
-- write the effective environment file through a temporary file and atomic rename where practical
+- write the effective environment file through a private temporary file and atomic rename
 - keep any proxy file that may contain credentials private to the user
-- derive configured state from the effective file or commit a separate status marker only after the effective write succeeds
+- derive configured state from the effective file
 - clearing the proxy must remove effective and bookkeeping state coherently
 - do not claim that the current desktop session has inherited a new proxy until that is actually true
 

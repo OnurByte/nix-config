@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::{self, BufRead, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -485,7 +486,7 @@ fn network_status() {
     let connection = active_connection().unwrap_or_default();
     let zapret = success("systemctl", &["is-active", "--quiet", "zapret2.service"])
         || success("systemctl", &["is-active", "--quiet", "zapret2"]);
-    let proxy = config_root().join("proxy.env").exists();
+    let proxy = proxy_environment_path().is_file();
     println!(
         "{{\"airplane\":{},\"wifi\":{},\"bluetooth\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{}}}",
         if !wifi && !bluetooth { "true" } else { "false" },
@@ -586,12 +587,6 @@ fn proxy_set() -> Result<(), String> {
     if !(value.starts_with("http://") || value.starts_with("https://") || value.starts_with("socks5://")) {
         return Err("proxy must start with http://, https:// or socks5://".to_string());
     }
-    let root = config_root();
-    fs::create_dir_all(&root).map_err(|error| error.to_string())?;
-    fs::write(root.join("proxy.env"), format!("{value}\n")).map_err(|error| error.to_string())?;
-
-    let env_dir = home().join(".config/environment.d");
-    fs::create_dir_all(&env_dir).map_err(|error| error.to_string())?;
     let content = if value.starts_with("socks5://") {
         format!("ALL_PROXY=\"{value}\"\nall_proxy=\"{value}\"\n")
     } else {
@@ -600,14 +595,15 @@ fn proxy_set() -> Result<(), String> {
             value
         )
     };
-    fs::write(env_dir.join("90-vesper-proxy.conf"), content).map_err(|error| error.to_string())?;
-    Ok(())
+    // The effective environment file is the single status authority. Do not
+    // commit a separate marker before this write succeeds.
+    write_private_atomic(&proxy_environment_path(), &content)
 }
 
 fn proxy_clear() -> Result<(), String> {
     for path in [
-        config_root().join("proxy.env"),
-        home().join(".config/environment.d/90-vesper-proxy.conf"),
+        proxy_environment_path(),
+        config_root().join("proxy.env"), // legacy marker from older builds
     ] {
         match fs::remove_file(path) {
             Ok(()) => {}
@@ -616,6 +612,28 @@ fn proxy_clear() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn proxy_environment_path() -> PathBuf {
+    home().join(".config/environment.d/90-vesper-proxy.conf")
+}
+
+fn write_private_atomic(path: &Path, body: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("invalid path: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("vesper");
+    let temporary = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)
+        .map_err(|error| error.to_string())?;
+    file.write_all(body.as_bytes()).map_err(|error| error.to_string())?;
+    drop(file);
+    fs::rename(&temporary, path).map_err(|error| error.to_string())
 }
 
 fn today() -> String {
@@ -973,7 +991,7 @@ fn main() {
             println!("{}", path.display());
         }
         [group, action] if group == "proxy" && action == "status" => {
-            println!("{}", if config_root().join("proxy.env").exists() { "configured" } else { "off" });
+            println!("{}", if proxy_environment_path().is_file() { "configured" } else { "off" });
         }
         [group, action] if group == "proxy" && action == "set" => {
             proxy_set().unwrap_or_else(|error| print_error(&error));
