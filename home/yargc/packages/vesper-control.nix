@@ -25,7 +25,14 @@ let
   iconEngine = rustPlatform.buildRustPackage {
     pname = "vesper-icons";
     version = "1.0.0";
-    src = lib.cleanSource ./.;
+    # Keep unrelated Vesper package edits out of the icon crate source hash.
+    src = lib.cleanSourceWith {
+      src = lib.cleanSource ./.;
+      filter = path: type:
+        type == "directory"
+        || lib.elem (lib.baseNameOf path) [ "Cargo.toml" "Cargo.lock" ]
+        || lib.hasSuffix ".rs" (lib.baseNameOf path);
+    };
     cargoLock.lockFile = ./Cargo.lock;
     nativeBuildInputs = [ sqlite ];
   };
