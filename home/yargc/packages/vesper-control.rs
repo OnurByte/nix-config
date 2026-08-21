@@ -1001,34 +1001,198 @@ fn wellbeing_seconds_for(id: &str) -> u64 {
         .sum()
 }
 
-fn flatpak_id(id: &str) -> &str {
-    id.strip_suffix(".desktop").unwrap_or(id)
+#[derive(Clone, Debug)]
+struct DesktopOwner {
+    path: PathBuf,
+    flatpak_id: Option<String>,
+    hidden: bool,
+}
+
+#[derive(Clone, Debug)]
+struct FlatpakOwner {
+    desktop_path: PathBuf,
+    id: String,
+    scope: &'static str,
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.iter().any(|existing| existing == &path) {
+        paths.push(path);
+    }
+}
+
+fn application_data_dirs() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+    push_unique_path(&mut paths, xdg_data_home());
+    for path in env::var("XDG_DATA_DIRS")
+        .unwrap_or_else(|_| "/usr/local/share:/usr/share".to_string())
+        .split(':')
+        .filter(|value| !value.is_empty())
+    {
+        push_unique_path(&mut paths, PathBuf::from(path));
+    }
+    for path in [
+        home().join(".nix-profile/share"),
+        xdg_data_home().join("flatpak/exports/share"),
+        PathBuf::from("/var/lib/flatpak/exports/share"),
+        PathBuf::from("/run/current-system/sw/share"),
+    ] {
+        if path.exists() {
+            push_unique_path(&mut paths, path);
+        }
+    }
+    if let Ok(user) = env::var("USER") {
+        let path = PathBuf::from("/etc/profiles/per-user").join(user).join("share");
+        if path.exists() {
+            push_unique_path(&mut paths, path);
+        }
+    }
+    paths
+}
+
+fn desktop_file_id(path: &Path, root: &Path) -> Option<String> {
+    let relative = path.strip_prefix(root).ok()?;
+    let mut parts = relative.components();
+    let mut id = String::new();
+    while let Some(component) = parts.next() {
+        let value = component.as_os_str().to_str()?;
+        if !id.is_empty() {
+            id.push('-');
+        }
+        id.push_str(value);
+    }
+    Some(id)
+}
+
+fn find_desktop_file(root: &Path, current: &Path, wanted: &str, depth: usize) -> Option<PathBuf> {
+    if depth > 8 {
+        return None;
+    }
+    let entries = fs::read_dir(current).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let file_type = entry.file_type().ok()?;
+        if file_type.is_dir() {
+            if let Some(found) = find_desktop_file(root, &path, wanted, depth + 1) {
+                return Some(found);
+            }
+        } else if file_type.is_file()
+            && path.extension().and_then(|value| value.to_str()) == Some("desktop")
+            && desktop_file_id(&path, root).as_deref() == Some(wanted)
+        {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn desktop_entry_value(path: &Path, wanted: &str) -> Option<String> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut section = false;
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line == "[Desktop Entry]";
+            continue;
+        }
+        if !section || line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == wanted {
+            return Some(value.trim().to_string());
+        }
+    }
+    None
+}
+
+fn desktop_owner(id: &str) -> Option<DesktopOwner> {
+    let wanted = if id.ends_with(".desktop") {
+        id.to_string()
+    } else {
+        format!("{id}.desktop")
+    };
+    for data_dir in application_data_dirs() {
+        let root = data_dir.join("applications");
+        if !root.is_dir() {
+            continue;
+        }
+        let Some(path) = find_desktop_file(&root, &root, &wanted, 0) else {
+            continue;
+        };
+        let hidden = desktop_entry_value(&path, "Hidden")
+            .map(|value| parse_bool(&value))
+            .unwrap_or(false);
+        let flatpak_id = desktop_entry_value(&path, "X-Flatpak")
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                let exported = data_dir.ends_with("flatpak/exports/share");
+                exported.then(|| wanted.trim_end_matches(".desktop").to_string())
+            });
+        return Some(DesktopOwner { path, flatpak_id, hidden });
+    }
+    None
+}
+
+fn flatpak_owner(id: &str) -> Option<FlatpakOwner> {
+    let desktop = desktop_owner(id)?;
+    if desktop.hidden {
+        return None;
+    }
+    let flatpak_id = desktop.flatpak_id?;
+    if success("flatpak", &["info", "--user", &flatpak_id]) {
+        return Some(FlatpakOwner { desktop_path: desktop.path, id: flatpak_id, scope: "user" });
+    }
+    if success("flatpak", &["info", "--system", &flatpak_id]) {
+        return Some(FlatpakOwner { desktop_path: desktop.path, id: flatpak_id, scope: "system" });
+    }
+    None
 }
 
 fn app_status(id: &str) {
-    let flatpak_id = flatpak_id(id);
-    let is_flatpak = success("flatpak", &["info", flatpak_id]);
-    let removable = is_flatpak && success("flatpak", &["info", "--user", flatpak_id]);
-    let permissions = if is_flatpak {
-        output("flatpak", &["info", "--show-permissions", flatpak_id]).unwrap_or_default()
+    let desktop = desktop_owner(id);
+    let flatpak = flatpak_owner(id);
+    let unresolved_flatpak = desktop.as_ref().and_then(|owner| owner.flatpak_id.as_ref()).is_some() && flatpak.is_none();
+    let sandbox = if flatpak.is_some() {
+        "flatpak"
+    } else if unresolved_flatpak || desktop.is_none() {
+        "unknown"
     } else {
-        String::new()
+        "native"
     };
+    let permissions = flatpak
+        .as_ref()
+        .and_then(|owner| output("flatpak", &["info", "--show-permissions", &owner.id]).ok())
+        .unwrap_or_default();
+    let flatpak_id = flatpak.as_ref().map(|owner| owner.id.as_str()).unwrap_or("");
+    let owner = flatpak
+        .as_ref()
+        .map(|value| if value.scope == "user" { "flatpak-user" } else { "flatpak-system" })
+        .or_else(|| desktop.as_ref().map(|_| "desktop-entry"))
+        .unwrap_or("unresolved");
+    let desktop_path = flatpak
+        .as_ref()
+        .map(|value| value.desktop_path.as_path())
+        .or_else(|| desktop.as_ref().map(|value| value.path.as_path()))
+        .map(|path| path.to_string_lossy().to_string())
+        .unwrap_or_default();
     println!(
-        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"removable\":{},\"todaySeconds\":{}}}",
-        if is_flatpak { "flatpak" } else { "native" },
+        "{{\"sandbox\":\"{}\",\"owner\":\"{}\",\"desktopPath\":\"{}\",\"flatpakScope\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"removable\":{},\"todaySeconds\":{}}}",
+        sandbox,
+        owner,
+        json_escape(&desktop_path),
+        flatpak.as_ref().map(|value| value.scope).unwrap_or(""),
         json_escape(flatpak_id),
         json_escape(&permissions),
-        if removable { "true" } else { "false" },
+        if flatpak.as_ref().map(|value| value.scope == "user").unwrap_or(false) { "true" } else { "false" },
         wellbeing_seconds_for(id)
     );
 }
 
 fn app_permission(id: &str, permission: &str, enabled: bool) -> Result<(), String> {
-    let id = flatpak_id(id);
-    if !success("flatpak", &["info", id]) {
-        return Err("app is not installed as Flatpak".to_string());
-    }
+    let owner = flatpak_owner(id).ok_or_else(|| "effective desktop entry is not an installed Flatpak owner".to_string())?;
     let flag = match (permission, enabled) {
         ("network", true) => "--share=network",
         ("network", false) => "--unshare=network",
@@ -1037,7 +1201,7 @@ fn app_permission(id: &str, permission: &str, enabled: bool) -> Result<(), Strin
         _ => return Err(format!("unsupported permission: {permission}")),
     };
     let result = Command::new("flatpak")
-        .args(["override", "--user", flag, id])
+        .args(["override", "--user", flag, &owner.id])
         .output()
         .map_err(|error| format!("failed to run flatpak: {error}"))?;
     if result.status.success() {
@@ -1048,12 +1212,9 @@ fn app_permission(id: &str, permission: &str, enabled: bool) -> Result<(), Strin
 }
 
 fn app_reset_permissions(id: &str) -> Result<(), String> {
-    let id = flatpak_id(id);
-    if !success("flatpak", &["info", id]) {
-        return Err("app is not installed as Flatpak".to_string());
-    }
+    let owner = flatpak_owner(id).ok_or_else(|| "effective desktop entry is not an installed Flatpak owner".to_string())?;
     let result = Command::new("flatpak")
-        .args(["override", "--user", "--reset", id])
+        .args(["override", "--user", "--reset", &owner.id])
         .output()
         .map_err(|error| format!("failed to run flatpak: {error}"))?;
     if result.status.success() {
@@ -1064,13 +1225,13 @@ fn app_reset_permissions(id: &str) -> Result<(), String> {
 }
 
 fn app_remove(id: &str) -> Result<(), String> {
-    let id = flatpak_id(id);
-    if !success("flatpak", &["info", "--user", id]) {
+    let owner = flatpak_owner(id).ok_or_else(|| "effective desktop entry is not an installed Flatpak owner".to_string())?;
+    if owner.scope != "user" {
         return Err("removal is only available for user-installed Flatpak apps here".to_string());
     }
 
     let result = Command::new("flatpak")
-        .args(["uninstall", "--user", "-y", id])
+        .args(["uninstall", "--user", "-y", &owner.id])
         .output()
         .map_err(|error| format!("failed to run flatpak: {error}"))?;
     if result.status.success() {
@@ -1181,7 +1342,8 @@ fn main() {
 mod tests {
     use super::{
         airplane_state_path, read_airplane_state, session_allows_wellbeing,
-        wellbeing_identity_keys, write_airplane_state, RadioState,
+        desktop_entry_value, desktop_file_id, wellbeing_identity_keys, write_airplane_state,
+        RadioState,
     };
     use std::env;
     use std::fs;
@@ -1226,5 +1388,21 @@ mod tests {
         fs::remove_file(airplane_state_path()).expect("remove airplane state");
         let _ = fs::remove_dir_all(runtime.join("vesper"));
         let _ = fs::remove_dir_all(runtime);
+    }
+
+    #[test]
+    fn desktop_owner_evidence_stays_with_the_effective_entry() {
+        let root = env::temp_dir().join(format!("vesper-owner-test-{}", std::process::id()));
+        let path = root.join("applications/org.example.App.desktop");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            "[Desktop Entry]\nType=Application\nX-Flatpak=org.example.App\n",
+        )
+        .unwrap();
+        assert_eq!(desktop_file_id(&path, &root.join("applications")).as_deref(), Some("org.example.App.desktop"));
+        assert_eq!(desktop_entry_value(&path, "X-Flatpak").as_deref(), Some("org.example.App"));
+        assert_eq!(desktop_entry_value(&path, "Missing"), None);
+        let _ = fs::remove_dir_all(root);
     }
 }

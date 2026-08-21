@@ -12,7 +12,7 @@ ColumnLayout {
     id: root
 
     property var app
-    property var status: ({ sandbox: "native", flatpakId: "", permissions: "", removable: false, todaySeconds: 0 })
+    property var status: ({ sandbox: "unknown", owner: "unresolved", desktopPath: "", flatpakScope: "", flatpakId: "", permissions: "", removable: false, todaySeconds: 0 })
     property var iconStatus: ({ id: "", iconKey: "", sourcePath: "", sourceKind: "", fingerprint: "", canonicalState: "missing", active: false, excluded: false, error: "" })
     property var queueStatus: ({ state: "none", provider: "", attempts: 0, nextRunMs: 0, lastError: "" })
     property string message: ""
@@ -23,6 +23,7 @@ ColumnLayout {
     spacing: Tokens.spacing.extraSmall / 2
 
     readonly property bool flatpak: status.sandbox === "flatpak"
+    readonly property bool ownershipUnknown: status.sandbox === "unknown"
     readonly property bool networkAllowed: flatpak && status.permissions.includes("shared=network")
     readonly property bool homeAllowed: flatpak && (status.permissions.includes("filesystems=home") || status.permissions.includes(";home;") || status.permissions.includes(";home:"))
 
@@ -256,11 +257,19 @@ ColumnLayout {
     }
 
     InfoRow {
-        icon: root.flatpak ? "deployed_code" : "warning"
+        icon: root.flatpak ? "deployed_code" : root.ownershipUnknown ? "help" : "warning"
         label: qsTr("Sandbox")
-        subtext: root.flatpak ? root.status.flatpakId : qsTr("native Nix app · Flatpak overrides do not apply")
-        value: root.flatpak ? qsTr("Flatpak") : qsTr("native")
+        subtext: root.flatpak ? root.status.flatpakId : root.ownershipUnknown ? qsTr("effective package owner could not be verified") : qsTr("native app · Flatpak overrides do not apply")
+        value: root.flatpak ? qsTr("Flatpak") : root.ownershipUnknown ? qsTr("unknown") : qsTr("native")
         iconColour: root.flatpak ? Colours.palette.m3primary : Colours.palette.m3tertiary
+    }
+
+    InfoRow {
+        visible: (root.status.owner || "unresolved") !== "unresolved"
+        icon: "inventory_2"
+        label: qsTr("Source owner")
+        subtext: root.status.desktopPath || qsTr("effective desktop entry")
+        value: root.status.owner || qsTr("unknown")
     }
 
     ToggleRow {

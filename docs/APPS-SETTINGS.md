@@ -24,6 +24,7 @@ Implemented Vesper-specific pieces include:
 - local wellbeing collection through `vesper-control wellbeing-daemon`;
 - Flatpak network/home override controls where the backend can enforce them;
 - native-app state that does not pretend ordinary Nix applications are Flatpak-sandboxed;
+- App Inspector ownership state resolved from the winning desktop entry, its `X-Flatpak`/export evidence and `flatpak info --user/--system` scope;
 - per-app adaptive-icon status/actions through the existing Vesper app controls;
 - shared adaptive-icon identity after an installed desktop entry is discovered.
 
@@ -31,7 +32,7 @@ The Default Agent selector, physical Assistant/Copilot-key handling and Quake Ag
 
 Caelestia may provide base installed-app list/detail behavior independently of these Vesper extensions. Inspect the current QML and backend before assuming every target field or transaction below is already wired end to end.
 
-The full ownership-aware Nix Store removal/size/source transaction contract and some App Inspector fields described later in this document remain target behavior until their corresponding backends become complete.
+The ownership-aware Nix Store removal/size/source transaction contract remains target behavior until the Store transaction backend becomes complete. Flatpak owner/scope state is now reported only when the effective desktop entry and installed Flatpak scope agree.
 
 ## ownership boundary
 
@@ -323,6 +324,8 @@ user-installed Flatpak
   -> flatpak uninstall --user
   -> explicit confirmation in Apps
 ```
+
+The backend resolves the effective desktop entry first. A Flatpak ID is accepted only from that entry's `X-Flatpak` value or Flatpak export path and must then pass `flatpak info --user` or `flatpak info --system`. A matching ID in another, lower-precedence desktop source cannot grant permissions or removal controls.
 
 Target routing as Store ownership becomes complete:
 
