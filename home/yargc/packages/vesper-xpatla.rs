@@ -523,6 +523,18 @@ fn source_watermark(handle: &str) -> i64 {
     .unwrap_or(0)
 }
 
+fn source_handles_sql(sources: &[Source]) -> String {
+    if sources.is_empty() {
+        "''".to_string()
+    } else {
+        sources
+            .iter()
+            .map(|source| sql_quote(&source.handle))
+            .collect::<Vec<_>>()
+            .join(",")
+    }
+}
+
 fn scan() -> Result<String, String> {
     init_db()?;
     let lock_path = state_root().join("scan.lock");
@@ -886,15 +898,17 @@ fn media_plan(post_id: &str) -> Result<String, String> {
 fn status_json() -> Result<String, String> {
     init_db()?;
     let config = config_path();
-    let configured_sources = load_sources().map(|sources| sources.len()).unwrap_or(0);
+    let configured = load_sources().unwrap_or_default();
+    let configured_sources = configured.len();
+    let active_handles = source_handles_sql(&configured);
     let sql = "SELECT json_object(
       'sourcesConfigured',%CONFIGURED%,
-      'sourcesObserved',(SELECT COUNT(*) FROM sources),
-      'followersTotal',(SELECT SUM(followers) FROM sources),
-      'postsObserved',(SELECT COUNT(*) FROM observed_posts),
-      'postsLast24h',(SELECT COUNT(*) FROM observed_posts WHERE observed_at >= strftime('%s','now')-86400),
-      'mediaAssets',(SELECT COUNT(*) FROM media_assets),
-      'opportunities',(SELECT COUNT(*) FROM opportunities WHERE state='candidate'),
+      'sourcesObserved',(SELECT COUNT(*) FROM sources WHERE handle IN (%HANDLES%)),
+      'followersTotal',(SELECT SUM(followers) FROM sources WHERE handle IN (%HANDLES%)),
+      'postsObserved',(SELECT COUNT(*) FROM observed_posts WHERE source_handle IN (%HANDLES%)),
+      'postsLast24h',(SELECT COUNT(*) FROM observed_posts WHERE source_handle IN (%HANDLES%) AND observed_at >= strftime('%s','now')-86400),
+      'mediaAssets',(SELECT COUNT(*) FROM media_assets WHERE post_id IN (SELECT post_id FROM observed_posts WHERE source_handle IN (%HANDLES%))),
+      'opportunities',(SELECT COUNT(*) FROM opportunities WHERE state='candidate' AND post_id IN (SELECT post_id FROM observed_posts WHERE source_handle IN (%HANDLES%))),
       'recentPosts',json((SELECT COALESCE(json_group_array(json_object(
         'postId',post_id,
         'source',source_handle,
@@ -907,12 +921,14 @@ fn status_json() -> Result<String, String> {
         SELECT observed_posts.*, opportunities.score
         FROM observed_posts
         LEFT JOIN opportunities ON opportunities.post_id=observed_posts.post_id
+        WHERE observed_posts.source_handle IN (%HANDLES%)
         ORDER BY observed_posts.observed_at DESC
         LIMIT 20
       ))),
       'lastRun',(SELECT json_object('status',status,'finishedAt',finished_at,'sourceCount',source_count,'postsSeen',posts_seen,'postsNew',posts_new,'errors',errors) FROM runs ORDER BY id DESC LIMIT 1)
     );"
-    .replace("%CONFIGURED%", &configured_sources.to_string());
+    .replace("%CONFIGURED%", &configured_sources.to_string())
+    .replace("%HANDLES%", &active_handles);
     let summary = db_query(&sql)?.trim().to_string();
     let summary = if summary.is_empty() {
         "{}".to_string()
