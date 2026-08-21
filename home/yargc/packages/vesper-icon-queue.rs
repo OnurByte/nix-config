@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const QUEUE_SCHEMA_VERSION: u32 = 2;
 const LEASE_MS: i64 = 5 * 60 * 1000;
 const MAX_ATTEMPTS: u32 = 4;
+const MAX_RETRY_DELAY_MS: i64 = 10 * 60 * 1000;
 
 #[derive(Clone, Debug)]
 struct InventoryItem {
@@ -517,6 +518,12 @@ fn set_paused(value: bool) -> Result<(), String> {
     Ok(())
 }
 
+fn bounded_retry_delay(backoff_ms: i64, retry_after_ms: Option<i64>) -> i64 {
+    retry_after_ms
+        .unwrap_or(backoff_ms)
+        .clamp(0, MAX_RETRY_DELAY_MS)
+}
+
 fn claim() -> Result<(), String> {
     sync()?;
     if paused()? {
@@ -577,7 +584,12 @@ fn complete(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn fail(key: &str, message: &str, permanent: bool) -> Result<(), String> {
+fn fail(
+    key: &str,
+    message: &str,
+    permanent: bool,
+    retry_after_ms: Option<i64>,
+) -> Result<(), String> {
     init_db()?;
     let query = format!("SELECT attempts FROM jobs WHERE key={};", sql_quote(key));
     let attempts = sqlite(&query)?.trim().parse::<u32>().unwrap_or(0).saturating_add(1);
@@ -587,7 +599,8 @@ fn fail(key: &str, message: &str, permanent: bool) -> Result<(), String> {
     } else {
         let exponent = attempts.saturating_sub(1).min(5);
         let backoff = 15_000_i64.saturating_mul(1_i64 << exponent);
-        ("retry-wait", timestamp.saturating_add(backoff.min(10 * 60 * 1000)))
+        let delay = bounded_retry_delay(backoff, retry_after_ms);
+        ("retry-wait", timestamp.saturating_add(delay))
     };
     sqlite(&format!(
         "UPDATE jobs SET state={},attempts={},updated_ms={},next_run_ms={},lease_until_ms=0,last_error={} WHERE key={};",
@@ -717,6 +730,18 @@ fn daemon() -> Result<(), String> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::bounded_retry_delay;
+
+    #[test]
+    fn retry_after_overrides_backoff_with_a_cap() {
+        assert_eq!(bounded_retry_delay(15_000, Some(45_000)), 45_000);
+        assert_eq!(bounded_retry_delay(15_000, Some(999_999_999)), 600_000);
+        assert_eq!(bounded_retry_delay(15_000, None), 15_000);
+    }
+}
+
 fn usage() -> ! {
     eprintln!(
         "vesper-icon-queue\n\
@@ -727,7 +752,7 @@ fn usage() -> ! {
            claim\n\
            heartbeat <job-key>\n\
            complete <job-key>\n\
-           fail <job-key> transient|permanent <message>\n\
+           fail <job-key> transient|permanent [retry-after-ms] <message>\n\
            retry-app <desktop-id>\n\
            pause|resume\n\
            daemon"
@@ -745,7 +770,11 @@ fn main() {
         [command, key] if command == "heartbeat" => heartbeat(key),
         [command, key] if command == "complete" => complete(key),
         [command, key, kind, message] if command == "fail" => {
-            fail(key, message, kind == "permanent")
+            fail(key, message, kind == "permanent", None)
+        }
+        [command, key, kind, retry_ms, message] if command == "fail" => {
+            let retry_after_ms = retry_ms.parse::<i64>().ok().filter(|value| *value >= 0);
+            fail(key, message, kind == "permanent", retry_after_ms)
         }
         [command, id] if command == "retry-app" => retry_app(id),
         [command] if command == "pause" => set_paused(true),

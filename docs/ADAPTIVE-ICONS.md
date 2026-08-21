@@ -313,7 +313,8 @@ The queue must support:
 
 - bounded provider concurrency;
 - per-provider rate-limit awareness;
-- Retry-After or equivalent server guidance when available;
+- the worker refreshes each five-minute lease every 60 seconds while a provider request is running;
+- numeric `Retry-After` guidance when available, capped at ten minutes, with bounded exponential backoff otherwise;
 - exponential or bounded backoff for transient failures;
 - pause/resume;
 - crash-safe recovery of `running` jobs;

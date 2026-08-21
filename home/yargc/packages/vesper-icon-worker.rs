@@ -3,6 +3,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -11,6 +12,8 @@ const PROMPT_REVISION: u32 = 1;
 const MAX_SOURCE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_RASTER_DIMENSION: u64 = 16_384;
 const MAX_RASTER_PIXELS: u64 = 64 * 1024 * 1024;
+const LEASE_HEARTBEAT_SECS: u64 = 60;
+const MAX_RETRY_AFTER_MS: i64 = 10 * 60 * 1000;
 
 #[derive(Clone, Debug)]
 struct Claim {
@@ -342,19 +345,56 @@ fn queue_complete(key: &str) {
         .status();
 }
 
-fn queue_fail(key: &str, permanent: bool, message: &str) {
+fn queue_fail(key: &str, permanent: bool, message: &str, retry_after_ms: Option<i64>) {
     let clean = message
         .chars()
         .map(|ch| if matches!(ch, '\n' | '\r' | '\t') { ' ' } else { ch })
         .collect::<String>();
+    let retry_after = retry_after_ms.map(|value| value.clamp(0, MAX_RETRY_AFTER_MS).to_string());
+    let mut args = vec![
+        "fail",
+        key,
+        if permanent { "permanent" } else { "transient" },
+    ];
+    if let Some(retry_after) = retry_after.as_deref() {
+        args.push(retry_after);
+    }
+    args.push(clean.as_str());
     let _ = Command::new("vesper-icon-queue")
-        .args([
-            "fail",
-            key,
-            if permanent { "permanent" } else { "transient" },
-            clean.as_str(),
-        ])
+        .args(args)
         .status();
+}
+
+fn start_lease_heartbeat(key: &str) -> (Arc<AtomicBool>, thread::JoinHandle<()>) {
+    let stop = Arc::new(AtomicBool::new(false));
+    let worker_stop = Arc::clone(&stop);
+    let key = key.to_string();
+    let handle = thread::spawn(move || loop {
+        for _ in 0..LEASE_HEARTBEAT_SECS {
+            if worker_stop.load(Ordering::Relaxed) {
+                return;
+            }
+            thread::sleep(Duration::from_secs(1));
+        }
+        if worker_stop.load(Ordering::Relaxed) {
+            return;
+        }
+        let _ = Command::new("vesper-icon-queue")
+            .args(["heartbeat", key.as_str()])
+            .status();
+    });
+    (stop, handle)
+}
+
+fn parse_retry_after_ms(headers: &str) -> Option<i64> {
+    headers.lines().rev().find_map(|line| {
+        let (name, value) = line.split_once(':')?;
+        if !name.trim().eq_ignore_ascii_case("retry-after") {
+            return None;
+        }
+        let seconds = value.trim().parse::<i64>().ok()?;
+        (seconds >= 0).then_some(seconds.saturating_mul(1000).min(MAX_RETRY_AFTER_MS))
+    })
 }
 
 fn source_is_unsafe_svg(path: &Path) -> bool {
@@ -653,6 +693,11 @@ fn provider_request(claim: &Claim, image: &Path, work: &Path) -> Result<Decompos
 
     fs::write(&body_path, body).map_err(|error| error.to_string())?;
     let status = http_post(&url, &headers, &body_path, &response_path, &headers_path)?;
+    if let Ok(response_headers) = fs::read_to_string(&headers_path) {
+        if let Some(delay) = parse_retry_after_ms(&response_headers) {
+            let _ = fs::write(work.join("retry-after-ms"), delay.to_string());
+        }
+    }
     if !(200..300).contains(&status) {
         let response = fs::read_to_string(&response_path).unwrap_or_default();
         let concise = response.chars().take(800).collect::<String>();
@@ -1051,6 +1096,7 @@ fn process_once() -> Result<bool, String> {
         let _ = fs::remove_dir_all(&work);
     }
     fs::create_dir_all(&work).map_err(|error| error.to_string())?;
+    let (stop_heartbeat, heartbeat) = start_lease_heartbeat(&claim.key);
 
     let result = (|| {
         let normalized = normalize_source(&claim, &work)?;
@@ -1062,6 +1108,8 @@ fn process_once() -> Result<bool, String> {
         }
         Ok::<(), String>(())
     })();
+    stop_heartbeat.store(true, Ordering::Relaxed);
+    let _ = heartbeat.join();
 
     match result {
         Ok(()) => {
@@ -1075,7 +1123,10 @@ fn process_once() -> Result<bool, String> {
                 || error.contains("20 MiB")
                 || error.contains("normalized icon is empty")
                 || error.contains("unsupported provider");
-            queue_fail(&claim.key, permanent, &error);
+            let retry_after_ms = fs::read_to_string(work.join("retry-after-ms"))
+                .ok()
+                .and_then(|value| value.trim().parse::<i64>().ok());
+            queue_fail(&claim.key, permanent, &error, retry_after_ms);
         }
     }
     let _ = fs::remove_dir_all(work);
@@ -1092,6 +1143,23 @@ fn daemon() -> Result<(), String> {
                 thread::sleep(Duration::from_secs(5));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_retry_after_ms;
+
+    #[test]
+    fn retry_after_seconds_are_bounded() {
+        assert_eq!(parse_retry_after_ms("HTTP/1.1 429 Too Many Requests\nRetry-After: 12\n"), Some(12_000));
+        assert_eq!(parse_retry_after_ms("Retry-After: 99999\n"), Some(600_000));
+    }
+
+    #[test]
+    fn malformed_retry_after_uses_fallback() {
+        assert_eq!(parse_retry_after_ms("Retry-After: Wed, 21 Oct 2015 07:28:00 GMT\n"), None);
+        assert_eq!(parse_retry_after_ms("X-Retry-After: 12\n"), None);
     }
 }
 
