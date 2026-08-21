@@ -65,6 +65,13 @@ in
     inputs.self.packages.${pkgs.system}.vesper-store
   ];
 
+  # Keep Store-owned binaries and desktop entries visible after a transaction
+  # without replacing the system's existing PATH or XDG data directories.
+  home.sessionPath = [ "$HOME/.local/state/vesper/store/profile/bin" ];
+  home.sessionSearchVariables.XDG_DATA_DIRS = [
+    "$HOME/.local/state/vesper/store/profile/share"
+  ];
+
   xdg.mimeApps = {
     enable = true;
     defaultApplications = {
