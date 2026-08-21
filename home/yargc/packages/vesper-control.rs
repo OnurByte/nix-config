@@ -677,6 +677,34 @@ fn active_app() -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
 }
 
+fn session_allows_wellbeing(properties: &str) -> Option<bool> {
+    let mut idle_hint = None;
+    let mut locked_hint = None;
+    for line in properties.lines() {
+        if let Some(value) = line.strip_prefix("IdleHint=") {
+            idle_hint = Some(value.trim());
+        } else if let Some(value) = line.strip_prefix("LockedHint=") {
+            locked_hint = Some(value.trim());
+        }
+    }
+    Some(idle_hint? == "no" && locked_hint? == "no")
+}
+
+fn session_allows_wellbeing_live() -> Option<bool> {
+    let session = env::var("XDG_SESSION_ID").ok()?;
+    if session.trim().is_empty() {
+        return None;
+    }
+    let output = Command::new("loginctl")
+        .args(["show-session", session.trim(), "-p", "IdleHint", "-p", "LockedHint"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    session_allows_wellbeing(&String::from_utf8_lossy(&output.stdout))
+}
+
 fn load_wellbeing(path: &Path) -> BTreeMap<String, u64> {
     let mut map = BTreeMap::new();
     for line in fs::read_to_string(path).unwrap_or_default().lines() {
@@ -751,8 +779,12 @@ fn wellbeing_daemon() -> Result<(), String> {
             path = wellbeing_dir().join(format!("{day}.tsv"));
             values = load_wellbeing(&path);
         }
-        if let Some(app) = active_app() {
-            *values.entry(app).or_insert(0) += tick.as_secs();
+        // ponytail: one bounded logind query per sample; move to an event
+        // subscription if session-state probing becomes measurable overhead.
+        if session_allows_wellbeing_live() == Some(true) {
+            if let Some(app) = active_app() {
+                *values.entry(app).or_insert(0) += tick.as_secs();
+            }
         }
         if last_flush.elapsed() >= Duration::from_secs(30) {
             write_wellbeing(&path, &values)?;
@@ -976,5 +1008,27 @@ fn main() {
             app_remove(id).unwrap_or_else(|error| print_error(&error));
         }
         _ => usage(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::session_allows_wellbeing;
+
+    #[test]
+    fn wellbeing_requires_an_explicit_unlocked_active_session() {
+        assert_eq!(
+            session_allows_wellbeing("IdleHint=no\nLockedHint=no\n"),
+            Some(true)
+        );
+        assert_eq!(
+            session_allows_wellbeing("IdleHint=yes\nLockedHint=no\n"),
+            Some(false)
+        );
+        assert_eq!(
+            session_allows_wellbeing("IdleHint=no\nLockedHint=yes\n"),
+            Some(false)
+        );
+        assert_eq!(session_allows_wellbeing("IdleHint=no\n"), None);
     }
 }

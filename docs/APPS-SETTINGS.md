@@ -390,12 +390,15 @@ Rules:
 
 No wellbeing usage data is uploaded by this feature.
 
-Known accuracy issue: the collector can keep charging the last foreground application while the desktop is idle or locked because foreground-window presence alone is not proof of active use.
+The collector now samples only when `loginctl show-session` reports both
+`IdleHint=no` and `LockedHint=no` for `XDG_SESSION_ID`. If the session owner
+cannot provide those signals, the sample is skipped rather than treated as
+active attention.
 
 The remediation contract is:
 
-- obtain idle/lock truth from the shell/session owner;
-- do not increment application usage while the session is idle or locked;
+- keep idle/lock truth on the logind session owner;
+- do not increment application usage while the session is idle, locked or unknown;
 - do not backfill missed samples as if continuous attention were proven;
 - keep foreground sampling explicitly approximate even after idle/lock gating;
 - prefer cached/event-driven session state over adding another fast subprocess poll.
