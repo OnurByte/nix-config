@@ -802,12 +802,39 @@ fn extract_json_string(json: &str, key: &str) -> Option<String> {
     None
 }
 
+fn identity_path() -> PathBuf {
+    xdg_state_home().join("vesper/adaptive-icons/identity.json")
+}
+
+fn canonical_app_id(runtime_id: &str) -> Option<String> {
+    let output = Command::new("jq")
+        .args([
+            "-r",
+            "--arg",
+            "alias",
+            runtime_id,
+            "(.aliases[$alias] // .aliases[($alias | ascii_downcase)]).desktopId // empty",
+        ])
+        .arg(identity_path())
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
 fn active_app() -> Option<String> {
     let json = output("hyprctl", &["activewindow", "-j"]).ok()?;
     let value = extract_json_string(&json, "class")
         .or_else(|| extract_json_string(&json, "initialClass"))?;
     let value = sanitise_app(&value);
-    if value.is_empty() { None } else { Some(value) }
+    if value.is_empty() {
+        None
+    } else {
+        Some(canonical_app_id(&value).unwrap_or(value))
+    }
 }
 
 fn session_allows_wellbeing(properties: &str) -> Option<bool> {
@@ -944,26 +971,32 @@ fn wellbeing_summary() {
     println!("{{\"totalSeconds\":{},\"apps\":[{}]}}", total, json.join(","));
 }
 
-fn normalise_id(value: &str) -> String {
-    value
-        .chars()
-        .filter(|ch| ch.is_ascii_alphanumeric())
-        .flat_map(|ch| ch.to_lowercase())
-        .collect()
+fn wellbeing_identity_keys(id: &str, canonical: Option<&str>) -> Vec<String> {
+    let mut keys = Vec::new();
+    if let Some(canonical) = canonical.filter(|value| !value.is_empty()) {
+        keys.push(canonical.to_string());
+    }
+    if !id.is_empty() && !keys.iter().any(|key| key == id) {
+        keys.push(id.to_string());
+    }
+    if let Some(stripped) = id.strip_suffix(".desktop") {
+        if !stripped.is_empty() && !keys.iter().any(|key| key == stripped) {
+            keys.push(stripped.to_string());
+        }
+    }
+    keys
 }
 
 fn wellbeing_seconds_for(id: &str) -> u64 {
-    let target = normalise_id(id.strip_suffix(".desktop").unwrap_or(id));
-    if target.is_empty() {
+    let canonical = canonical_app_id(id);
+    let keys = wellbeing_identity_keys(id, canonical.as_deref());
+    if keys.is_empty() {
         return 0;
     }
     let path = wellbeing_dir().join(format!("{}.tsv", today()));
     load_wellbeing(&path)
         .into_iter()
-        .filter(|(name, _)| {
-            let name = normalise_id(name);
-            name.contains(&target) || target.contains(&name)
-        })
+        .filter(|(name, _)| keys.iter().any(|key| name == key))
         .map(|(_, seconds)| seconds)
         .sum()
 }
@@ -1146,7 +1179,10 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{airplane_state_path, read_airplane_state, session_allows_wellbeing, write_airplane_state, RadioState};
+    use super::{
+        airplane_state_path, read_airplane_state, session_allows_wellbeing,
+        wellbeing_identity_keys, write_airplane_state, RadioState,
+    };
     use std::env;
     use std::fs;
 
@@ -1165,6 +1201,18 @@ mod tests {
             Some(false)
         );
         assert_eq!(session_allows_wellbeing("IdleHint=no\n"), None);
+    }
+
+    #[test]
+    fn wellbeing_identity_keys_are_exact_and_canonical_first() {
+        assert_eq!(
+            wellbeing_identity_keys("org.example.desktop", Some("org.example.desktop")),
+            vec!["org.example.desktop", "org.example"]
+        );
+        assert_eq!(
+            wellbeing_identity_keys("Firefox", Some("firefox.desktop")),
+            vec!["firefox.desktop", "Firefox"]
+        );
     }
 
     #[test]

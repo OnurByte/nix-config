@@ -382,7 +382,7 @@ Rules:
 
 ## wellbeing
 
-`vesper-control wellbeing-daemon` samples the active Hyprland window class every five seconds and stores daily local counters under:
+`vesper-control wellbeing-daemon` samples the active Hyprland window every five seconds, resolves its class through the adaptive-icon canonical identity inventory, and stores daily local counters under:
 
 ```text
 ~/.local/state/vesper/wellbeing/
@@ -394,6 +394,10 @@ The collector now samples only when `loginctl show-session` reports both
 `IdleHint=no` and `LockedHint=no` for `XDG_SESSION_ID`. If the session owner
 cannot provide those signals, the sample is skipped rather than treated as
 active attention.
+
+When the canonical identity inventory is unavailable, the collector keeps the
+exact runtime id as a bounded fallback. App summaries use exact canonical or
+runtime keys rather than fuzzy name matching.
 
 The remediation contract is:
 
