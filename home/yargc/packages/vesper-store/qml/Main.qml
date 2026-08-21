@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQml
 
 ApplicationWindow {
     id: window
@@ -16,6 +17,7 @@ ApplicationWindow {
     property int pageIndex: 0
     property var catalogStatus: parseJson(StoreCatalogStatusJson, ({ schemaVersion: 1, available: false, path: "" }))
     property var sourceStatus: parseJson(StoreSourcesJson, ({ nixpkgs: { enabled: true, default: true }, flathub: { enabled: false, default: false } }))
+    property var searchStatus: ({ available: false, results: [] })
 
     function parseJson(value, fallback) {
         try {
@@ -23,6 +25,27 @@ ApplicationWindow {
         } catch (error) {
             return fallback;
         }
+    }
+
+    function scheduleSearch() {
+        if (window.catalogStatus.available)
+            searchDebounce.restart();
+    }
+
+    Connections {
+        target: StoreSearch
+
+        function onValueChanged(key, value) {
+            if (key === "json")
+                window.searchStatus = window.parseJson(value, ({ available: false, results: [] }));
+        }
+    }
+
+    Timer {
+        id: searchDebounce
+        interval: 250
+        repeat: false
+        onTriggered: StoreSearch.query = searchField.text
     }
 
     component PageTitle: Label {
@@ -214,6 +237,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         placeholderText: qsTr("Search by name, keyword or package")
                         enabled: window.catalogStatus.available
+                        onTextChanged: window.scheduleSearch()
                     }
 
                     MutedText {
@@ -221,6 +245,47 @@ ApplicationWindow {
                         text: window.catalogStatus.available
                             ? qsTr("Local FTS search is ready for catalogue integration.")
                             : qsTr("Search is disabled until the local catalogue exists.")
+                    }
+
+                    Repeater {
+                        model: window.searchStatus.results || []
+
+                        delegate: Frame {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            padding: 16
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 4
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: modelData.name || modelData.id
+                                    font.weight: Font.DemiBold
+                                }
+
+                                MutedText {
+                                    Layout.fillWidth: true
+                                    text: modelData.summary || qsTr("No summary")
+                                }
+
+                                MutedText {
+                                    Layout.fillWidth: true
+                                    text: [modelData.source, modelData.packageAttr]
+                                        .filter(value => value)
+                                        .join(" · ")
+                                }
+                            }
+                        }
+                    }
+
+                    MutedText {
+                        visible: searchField.text.length > 0
+                            && (window.searchStatus.results || []).length === 0
+                            && window.searchStatus.available !== false
+                        Layout.fillWidth: true
+                        text: qsTr("No matching applications")
                     }
                 }
             }

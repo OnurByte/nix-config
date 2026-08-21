@@ -3,6 +3,7 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QProcess>
+#include <QQmlPropertyMap>
 #include <QUrl>
 
 namespace {
@@ -28,6 +29,63 @@ int main(int argc, char *argv[]) {
     app.setDesktopFileName(QStringLiteral("io.vesper.Store"));
 
     QQmlApplicationEngine engine;
+    const QString core = qEnvironmentVariable("VESPER_STORE_CORE");
+    QQmlPropertyMap searchState;
+    searchState.insert(
+        QStringLiteral("json"),
+        QStringLiteral("{\"available\":false,\"query\":\"\",\"results\":[]}"));
+    searchState.insert(QStringLiteral("busy"), false);
+    searchState.insert(QStringLiteral("query"), QString());
+
+    QProcess searchProcess;
+    QObject::connect(
+        &searchState,
+        &QQmlPropertyMap::valueChanged,
+        &app,
+        [&](const QString &key, const QVariant &value) {
+            if (key != QStringLiteral("query"))
+                return;
+
+            const QString query = value.toString().trimmed();
+            if (searchProcess.state() != QProcess::NotRunning) {
+                searchProcess.kill();
+                searchProcess.waitForFinished(1000);
+            }
+            if (query.isEmpty()) {
+                searchState.insert(
+                    QStringLiteral("json"),
+                    QStringLiteral("{\"available\":true,\"query\":\"\",\"results\":[]}"));
+                searchState.insert(QStringLiteral("busy"), false);
+                return;
+            }
+            if (core.isEmpty() || !QFileInfo::exists(core)) {
+                searchState.insert(
+                    QStringLiteral("json"),
+                    QStringLiteral("{\"available\":false,\"query\":\"\",\"results\":[],\"error\":\"Store backend unavailable\"}"));
+                searchState.insert(QStringLiteral("busy"), false);
+                return;
+            }
+
+            searchState.insert(QStringLiteral("busy"), true);
+            searchProcess.start(core, {QStringLiteral("search"), query});
+        });
+    QObject::connect(
+        &searchProcess,
+        &QProcess::finished,
+        &app,
+        [&](int exitCode, QProcess::ExitStatus exitStatus) {
+            const QString result = QString::fromUtf8(searchProcess.readAllStandardOutput()).trimmed();
+            if (exitStatus == QProcess::NormalExit && exitCode == 0 && !result.isEmpty()) {
+                searchState.insert(QStringLiteral("json"), result);
+            } else {
+                searchState.insert(
+                    QStringLiteral("json"),
+                    QStringLiteral("{\"available\":false,\"query\":\"\",\"results\":[],\"error\":\"Store search failed\"}"));
+            }
+            searchState.insert(QStringLiteral("busy"), false);
+        });
+
+    engine.rootContext()->setContextProperty(QStringLiteral("StoreSearch"), &searchState);
     engine.rootContext()->setContextProperty(
         QStringLiteral("StoreCatalogStatusJson"),
         runCore({QStringLiteral("catalog-status")})

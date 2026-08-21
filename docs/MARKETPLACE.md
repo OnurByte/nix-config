@@ -5,7 +5,7 @@ Status: **spec**
 This document is the single source of truth for Vesper Store architecture.
 It defines the target product and transaction contract. It is not proof that every capability below is implemented.
 
-Current implementation is partial: Vesper Store already has a native Qt/QML application shell and a Rust backend with catalogue/source contract plumbing. Catalogue status now rejects incomplete SQLite schemas and missing or incoherent `catalog-meta.json` sidecars, and the packaged backend checks the exact locked nixpkgs revision passed by the flake. The backend now exposes bounded local FTS5 search, while catalogue building, Qt/QML result presentation, install transactions, reconciliation, rollback and optional Flathub flow are not complete end to end yet.
+Current implementation is partial: Vesper Store already has a native Qt/QML application shell and a Rust backend with catalogue/source contract plumbing. Catalogue status now rejects incomplete SQLite schemas and missing or incoherent `catalog-meta.json` sidecars, and the packaged backend checks the exact locked nixpkgs revision passed by the flake. The backend now exposes bounded local FTS5 search and the Qt/QML shell renders its result rows, while catalogue building, detail/install transactions, reconciliation, rollback and optional Flathub flow are not complete end to end yet.
 
 The application name is exactly `Vesper Store`.
 
@@ -313,8 +313,9 @@ No AI provider is required for Store search.
 
 The current backend command is `vesper-store-core search QUERY`. It validates
 the local catalogue before querying, limits input and result count, and returns
-machine-readable JSON. The Qt/QML result surface still needs to consume that
-command.
+machine-readable JSON. The Qt/QML shell consumes that command after a short
+debounce and renders compact result rows; detail, install and reconciliation
+flows remain separate work.
 
 ## Nix install core
 
