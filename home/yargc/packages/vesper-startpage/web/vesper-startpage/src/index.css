@@ -31,23 +31,23 @@
 }
 
 :root {
-  --background: oklch(0.13 0.015 250);
-  --foreground: oklch(0.95 0.01 250);
-  --card: oklch(0.17 0.018 250);
-  --card-foreground: oklch(0.95 0.01 250);
-  --primary: oklch(0.82 0.14 172);
-  --primary-foreground: oklch(0.14 0.03 172);
-  --secondary: oklch(0.23 0.025 250);
-  --secondary-foreground: oklch(0.93 0.01 250);
-  --muted: oklch(0.2 0.02 250);
-  --muted-foreground: oklch(0.68 0.025 250);
-  --accent: oklch(0.25 0.04 172);
-  --accent-foreground: oklch(0.92 0.06 172);
-  --destructive: oklch(0.7 0.18 25);
-  --border: oklch(0.95 0.015 250 / 12%);
-  --input: oklch(0.95 0.015 250 / 15%);
-  --ring: oklch(0.82 0.14 172);
-  --radius: 0.8rem;
+  --background: oklch(0.105 0.012 25);
+  --foreground: oklch(0.94 0.015 75);
+  --card: oklch(0.145 0.018 25);
+  --card-foreground: oklch(0.94 0.015 75);
+  --primary: oklch(0.56 0.17 25);
+  --primary-foreground: oklch(0.97 0.01 75);
+  --secondary: oklch(0.22 0.025 25);
+  --secondary-foreground: oklch(0.92 0.015 75);
+  --muted: oklch(0.185 0.018 25);
+  --muted-foreground: oklch(0.68 0.025 55);
+  --accent: oklch(0.25 0.05 25);
+  --accent-foreground: oklch(0.9 0.08 25);
+  --destructive: oklch(0.62 0.2 25);
+  --border: oklch(0.94 0.015 75 / 14%);
+  --input: oklch(0.94 0.015 75 / 17%);
+  --ring: oklch(0.56 0.17 25);
+  --radius: 0.45rem;
 }
 
 @layer base {
@@ -61,7 +61,8 @@
 
   body {
     @apply min-h-svh bg-background text-foreground antialiased;
-    background-image: radial-gradient(circle at 10% 0%, color-mix(in oklch, var(--primary) 8%, transparent), transparent 34rem), radial-gradient(circle at 90% 20%, color-mix(in oklch, var(--accent) 15%, transparent), transparent 30rem);
+    background-image: radial-gradient(circle at 8% 0%, color-mix(in oklch, var(--primary) 16%, transparent), transparent 32rem), linear-gradient(135deg, transparent 0 49.7%, color-mix(in oklch, var(--primary) 7%, transparent) 50%, transparent 50.3%), linear-gradient(155deg, oklch(0.14 0.018 25), var(--background) 42%, oklch(0.08 0.01 25));
+    background-attachment: fixed;
   }
 
   a {
@@ -71,10 +72,10 @@
 
 @layer components {
   .eyebrow {
-    @apply font-mono text-[0.68rem] font-medium uppercase tracking-[0.2em] text-primary;
+    @apply font-mono text-[0.68rem] font-medium uppercase tracking-[0.22em] text-primary;
   }
 
   .glass-panel {
-    @apply border border-border/70 bg-card/75 shadow-2xl shadow-black/20 backdrop-blur-xl;
+    @apply border border-primary/25 bg-card/85 shadow-2xl shadow-black/45 backdrop-blur-xl;
   }
 }

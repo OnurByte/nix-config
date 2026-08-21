@@ -14,6 +14,9 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
   Badge,
   Button,
   Card,
@@ -47,6 +50,7 @@ import {
   type HermesResponse,
   type HistoryItem,
   type HistoryResponse,
+  type Shortcut,
   type ShortcutsResponse,
   type TorItem,
   type TorResponse,
@@ -104,6 +108,41 @@ function StatCard({ label, value, detail }: { label: string; value: string; deta
 
 function LoadingBlock({ className = "h-24" }: { className?: string }) {
   return <Skeleton className={className} aria-label="yükleniyor" />
+}
+
+function faviconUrl(value: string): string | null {
+  try {
+    const url = new URL(value)
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return null
+    }
+    return `${url.origin}/favicon.ico`
+  } catch {
+    return null
+  }
+}
+
+function ShortcutIcon({ shortcut }: { shortcut: Shortcut }) {
+  const [failed, setFailed] = useState(false)
+  const fallback = shortcut.title.trim().slice(0, 1).toUpperCase()
+  const source = faviconUrl(shortcut.url)
+
+  return (
+    <Avatar className="size-9 rounded-lg border border-primary/25 bg-background/80">
+      {source && !failed ? (
+        <AvatarImage
+          src={source}
+          alt=""
+          referrerPolicy="no-referrer"
+          className="object-contain p-1.5"
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+      <AvatarFallback className="rounded-lg bg-primary/15 font-mono text-xs text-primary">
+        {fallback || <Globe2 aria-hidden="true" />}
+      </AvatarFallback>
+    </Avatar>
+  )
 }
 
 function Unavailable({ title, description }: { title: string; description: string }) {
@@ -170,12 +209,15 @@ function ShortcutGrid({ state }: { state: SourceState<ShortcutsResponse> }) {
             key={shortcut.url}
             asChild
             variant="outline"
-            className="h-auto min-h-16 justify-between gap-3 rounded-xl bg-card/70 px-3 py-3 text-left hover:bg-muted"
+            className="h-auto min-h-16 justify-between gap-3 rounded-lg bg-card/70 px-3 py-3 text-left hover:border-primary/50 hover:bg-muted"
           >
             <a href={shortcut.url} aria-label={`${shortcut.title}: ${shortcut.url}`}>
-              <span className="flex min-w-0 flex-col gap-1">
-                <span className="truncate font-medium">{shortcut.title}</span>
-                <span className="truncate text-xs text-muted-foreground">{shortcut.domain}</span>
+              <span className="flex min-w-0 items-center gap-3">
+                <ShortcutIcon shortcut={shortcut} />
+                <span className="flex min-w-0 flex-col gap-1">
+                  <span className="truncate font-medium">{shortcut.title}</span>
+                  <span className="truncate text-xs text-muted-foreground">{shortcut.domain}</span>
+                </span>
               </span>
               <ArrowUpRight data-icon="inline-end" aria-hidden="true" />
             </a>
@@ -391,7 +433,7 @@ function TorPanel({ state }: { state: SourceState<TorResponse> }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
         <Shield aria-hidden="true" />
-        <span>Bu kaynaklar Zen veya Helium’da açılmaz. Buton yalnızca Nix tarafından yönetilen Tor Browser’ı çağırır.</span>
+        <span>Bu kaynaklar Zen veya Helium’da açılmaz. Buton yalnızca yerel Tor Browser’ı çağırır.</span>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Onion links" value={items.length.toLocaleString("tr-TR")} detail="gösterilen kaynak" />
@@ -488,7 +530,7 @@ function App() {
                 <TerminalSquare aria-hidden="true" />
               </div>
               <div>
-                <p className="eyebrow">vesper / local startpage</p>
+                <p className="eyebrow">vesper / executive private surface</p>
                 <h1 className="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Your surface for the unknown.</h1>
               </div>
             </div>
