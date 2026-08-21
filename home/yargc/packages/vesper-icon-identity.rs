@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -226,6 +227,48 @@ fn inventory_icons() -> BTreeMap<String, String> {
     icons
 }
 
+fn desktop_list(value: &str) -> Vec<String> {
+    value
+        .split(';')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn current_desktops() -> BTreeSet<String> {
+    env::var("XDG_CURRENT_DESKTOP")
+        .unwrap_or_default()
+        .split(':')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn desktop_visible(only_show_in: &[String], not_show_in: &[String], current: &BTreeSet<String>) -> bool {
+    if not_show_in.iter().any(|desktop| current.contains(desktop)) {
+        return false;
+    }
+    only_show_in.is_empty() || only_show_in.iter().any(|desktop| current.contains(desktop))
+}
+
+fn executable_file(path: &Path) -> bool {
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+fn executable_available(value: &str) -> bool {
+    let path = Path::new(value);
+    if path.is_absolute() {
+        return executable_file(path);
+    }
+    env::var_os("PATH")
+        .map(|paths| env::split_paths(&paths).any(|root| executable_file(&root.join(value))))
+        .unwrap_or(false)
+}
+
 fn parse_desktop(id: String, path: &Path, icon_key: String) -> Option<App> {
     let content = fs::read_to_string(path).ok()?;
     let mut section = false;
@@ -235,6 +278,9 @@ fn parse_desktop(id: String, path: &Path, icon_key: String) -> Option<App> {
     let mut startup = String::new();
     let mut exec = String::new();
     let mut flatpak = String::new();
+    let mut only_show_in = Vec::new();
+    let mut not_show_in = Vec::new();
+    let mut try_exec = String::new();
     for raw in content.lines() {
         let line = raw.trim();
         if line.starts_with('[') && line.ends_with(']') {
@@ -255,10 +301,18 @@ fn parse_desktop(id: String, path: &Path, icon_key: String) -> Option<App> {
             "StartupWMClass" => startup = value.to_string(),
             "Exec" => exec = value.to_string(),
             "X-Flatpak" => flatpak = value.to_string(),
+            "OnlyShowIn" => only_show_in = desktop_list(value),
+            "NotShowIn" => not_show_in = desktop_list(value),
+            "TryExec" => try_exec = clean_token(value),
             _ => {}
         }
     }
-    if kind != "Application" || hidden || no_display {
+    if kind != "Application"
+        || hidden
+        || no_display
+        || !desktop_visible(&only_show_in, &not_show_in, &current_desktops())
+        || (!try_exec.is_empty() && !executable_available(&try_exec))
+    {
         return None;
     }
     Some(App {
@@ -741,5 +795,23 @@ mod tests {
     fn exec_field_codes_never_become_identity_aliases() {
         let tokens = parse_exec_tokens("app --class=%U").expect("valid Exec");
         assert_eq!(extract_flag(&tokens, "--class"), None);
+    }
+
+    #[test]
+    fn desktop_visibility_honours_only_and_not_show_in() {
+        let current = ["GNOME", "X-Custom"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>();
+        assert!(desktop_visible(&[], &[], &current));
+        assert!(desktop_visible(&["GNOME".to_string()], &[], &current));
+        assert!(!desktop_visible(&["KDE".to_string()], &[], &current));
+        assert!(!desktop_visible(&[], &["GNOME".to_string()], &current));
+    }
+
+    #[test]
+    fn try_exec_requires_an_executable_file() {
+        assert!(executable_available("/bin/sh"));
+        assert!(!executable_available("/vesper/does-not-exist"));
     }
 }
