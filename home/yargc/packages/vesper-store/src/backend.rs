@@ -5,6 +5,7 @@ use std::process::Command;
 const CATALOG_SCHEMA_VERSION: u32 = 1;
 const REQUIRED_TABLES: u32 = 8;
 const REQUIRED_COLUMNS: u32 = 44;
+const SEARCH_LIMIT: u32 = 24;
 
 const CATALOG_SCHEMA_QUERY: &str = r#"
 PRAGMA user_version;
@@ -199,6 +200,90 @@ fn inspect_catalog(path: &Path) -> Result<(), String> {
     inspect_metadata(&catalog_metadata_path(&canonical), version)
 }
 
+fn normalized_search_terms(query: &str) -> Result<Vec<String>, String> {
+    if query.chars().count() > 128 {
+        return Err("search query is too long".to_string());
+    }
+
+    let mut terms = Vec::new();
+    let mut current = String::new();
+    for character in query.chars() {
+        if character.is_alphanumeric() || matches!(character, '_' | '-' | '.') {
+            current.push(character);
+        } else if !current.is_empty() {
+            terms.push(std::mem::take(&mut current));
+        }
+        if terms.len() == 8 {
+            break;
+        }
+    }
+    if !current.is_empty() && terms.len() < 8 {
+        terms.push(current);
+    }
+
+    for term in &mut terms {
+        *term = term.chars().take(48).collect();
+    }
+    terms.retain(|term| !term.is_empty());
+    Ok(terms)
+}
+
+fn sql_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn search_catalog(path: &Path, query: &str) -> Result<String, String> {
+    inspect_catalog(path)?;
+    let terms = normalized_search_terms(query)?;
+    if terms.is_empty() {
+        return Ok("[]".to_string());
+    }
+
+    let fts_query = terms
+        .iter()
+        .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("could not resolve catalogue path: {error}"))?;
+    let sql = format!(
+        "SELECT apps.id AS id, apps.name AS name, apps.summary AS summary, \
+                COALESCE((SELECT variants.source_kind FROM variants \
+                          WHERE variants.app_id = apps.id ORDER BY variants.id LIMIT 1), '') AS source, \
+                COALESCE((SELECT variants.package_attr FROM variants \
+                          WHERE variants.app_id = apps.id ORDER BY variants.id LIMIT 1), '') AS packageAttr \
+         FROM apps_fts \
+         JOIN apps ON apps.id = apps_fts.app_id \
+         WHERE apps_fts MATCH {} \
+         ORDER BY bm25(apps_fts), apps.name \
+         LIMIT {SEARCH_LIMIT};",
+        sql_literal(&fts_query)
+    );
+    let output = Command::new("sqlite3")
+        .args(["-readonly", "-batch", "-json"])
+        .arg(canonical)
+        .arg(sql)
+        .output()
+        .map_err(|error| format!("could not run sqlite3: {error}"))?;
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if error.is_empty() {
+            "catalogue search failed".to_string()
+        } else {
+            error
+        });
+    }
+
+    let result = String::from_utf8(output.stdout)
+        .map_err(|_| "catalogue search returned non-UTF-8 output".to_string())?;
+    let result = result.trim();
+    if result.is_empty() {
+        return Ok("[]".to_string());
+    }
+    Ok(result.to_string())
+}
+
 fn print_catalog_status() {
     match catalog_path() {
         Some(path) => {
@@ -226,15 +311,35 @@ fn print_sources() {
     );
 }
 
+fn print_search(query: &str) {
+    let escaped_query = json_escape(query);
+    match catalog_path() {
+        Some(path) => match search_catalog(&path, query) {
+            Ok(results) => println!(
+                "{{\"available\":true,\"query\":\"{escaped_query}\",\"results\":{results}}}"
+            ),
+            Err(error) => println!(
+                "{{\"available\":false,\"query\":\"{escaped_query}\",\"results\":[],\"error\":\"{}\"}}",
+                json_escape(&error)
+            ),
+        },
+        None => println!(
+            "{{\"available\":false,\"query\":\"{escaped_query}\",\"results\":[],\"error\":\"catalogue path not configured\"}}"
+        ),
+    }
+}
+
 fn usage() -> ! {
-    eprintln!("usage: vesper-store-core <catalog-status|sources>");
+    eprintln!("usage: vesper-store-core <catalog-status|sources|search QUERY>");
     std::process::exit(2);
 }
 
 fn main() {
-    match env::args().nth(1).as_deref() {
+    let mut args = env::args().skip(1);
+    match args.next().as_deref() {
         Some("catalog-status") => print_catalog_status(),
         Some("sources") => print_sources(),
+        Some("search") => print_search(&args.collect::<Vec<_>>().join(" ")),
         _ => usage(),
     }
 }

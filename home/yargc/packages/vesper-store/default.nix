@@ -67,6 +67,18 @@ stdenv.mkDerivation {
       VESPER_STORE_EXPECTED_NIXPKGS_REVISION="${expectedRevision}" \
       VESPER_STORE_CATALOG="$fixture" ./vesper-store-core catalog-status \
       | grep -F '"available":true' >/dev/null
+    sqlite3 "$fixture" <<'SQL'
+    INSERT INTO apps (id, name, summary, primary_category)
+      VALUES ('org.example.Browser', 'Example Browser', 'A private web browser', 'Network');
+    INSERT INTO variants (app_id, source_kind, source_id, package_attr, package_version, sandbox_kind, install_kind)
+      VALUES ('org.example.Browser', 'nixpkgs', 'example-browser', 'example-browser', '1.0', 'native', 'profile');
+    INSERT INTO apps_fts (app_id, name, generic_name, aliases, keywords, package_attr, summary, description)
+      VALUES ('org.example.Browser', 'Example Browser', 'Web Browser', 'browser', 'internet web', 'example-browser', 'A private web browser', '');
+    SQL
+    VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_EXPECTED_NIXPKGS_REVISION="${expectedRevision}" \
+      VESPER_STORE_CATALOG="$fixture" ./vesper-store-core search browser \
+      | grep -F '"id":"org.example.Browser"' >/dev/null
 
     incomplete="$TMPDIR/catalog-incomplete.sqlite"
     sqlite3 "$incomplete" < data/catalog-schema.sql
