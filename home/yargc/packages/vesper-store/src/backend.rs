@@ -90,6 +90,8 @@ fn inspect_metadata(path: &Path, schema_version: u32) -> Result<(), String> {
     }
 
     let expected_system = env::var("VESPER_STORE_EXPECTED_SYSTEM").unwrap_or_default();
+    let expected_revision =
+        env::var("VESPER_STORE_EXPECTED_NIXPKGS_REVISION").unwrap_or_default();
     let output = Command::new("jq")
         .args([
             "-e",
@@ -99,6 +101,9 @@ fn inspect_metadata(path: &Path, schema_version: u32) -> Result<(), String> {
             "--arg",
             "expectedSystem",
             &expected_system,
+            "--arg",
+            "expectedRevision",
+            &expected_revision,
             r#"
                 if type != "object"
                    or (.schemaVersion | type) != "number"
@@ -108,6 +113,7 @@ fn inspect_metadata(path: &Path, schema_version: u32) -> Result<(), String> {
                    or ($expectedSystem != "" and .system != $expectedSystem)
                    or (.nixpkgsRevision | type) != "string"
                    or (.nixpkgsRevision | test("^[0-9a-fA-F]{7,64}$") | not)
+                   or ($expectedRevision != "" and .nixpkgsRevision != $expectedRevision)
                    or (.generatedAt | type) != "string"
                    or (.generatedAt == "")
                 then error("catalogue metadata contract mismatch")

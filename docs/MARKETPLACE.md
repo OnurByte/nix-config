@@ -5,7 +5,7 @@ Status: **spec**
 This document is the single source of truth for Vesper Store architecture.
 It defines the target product and transaction contract. It is not proof that every capability below is implemented.
 
-Current implementation is partial: Vesper Store already has a native Qt/QML application shell and a Rust backend with catalogue/source contract plumbing. Catalogue status now rejects incomplete SQLite schemas and missing or incoherent `catalog-meta.json` sidecars, while full catalogue building, search, install transactions, reconciliation, rollback and optional Flathub flow are not complete end to end yet.
+Current implementation is partial: Vesper Store already has a native Qt/QML application shell and a Rust backend with catalogue/source contract plumbing. Catalogue status now rejects incomplete SQLite schemas and missing or incoherent `catalog-meta.json` sidecars, and the packaged backend checks the exact locked nixpkgs revision passed by the flake. Full catalogue building, search, install transactions, reconciliation, rollback and optional Flathub flow are not complete end to end yet.
 
 The application name is exactly `Vesper Store`.
 
@@ -254,8 +254,9 @@ Suggested derivation output:
 The current readiness command reads `VESPER_STORE_CATALOG` and checks the
 sidecar at the same directory's `catalog-meta.json`. Set
 `VESPER_STORE_CATALOG_META` when the metadata lives elsewhere. The packaged
-Store also sets `VESPER_STORE_EXPECTED_SYSTEM` from its target platform before
-the backend validates the sidecar.
+Store also sets `VESPER_STORE_EXPECTED_SYSTEM` from its target platform and
+`VESPER_STORE_EXPECTED_NIXPKGS_REVISION` from the flake lock before the backend
+validates the sidecar.
 
 Do not evaluate all nixpkgs on each query.
 Do not call a remote search service on every keystroke.

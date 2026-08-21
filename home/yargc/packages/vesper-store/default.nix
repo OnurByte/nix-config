@@ -3,10 +3,18 @@
   pkg-config,
   qt6,
   jq,
+  nixpkgsRevision ? null,
   rustc,
   sqlite,
   stdenv,
 }:
+let
+  expectedRevision = if nixpkgsRevision == null then "" else nixpkgsRevision;
+  fixtureRevision =
+    if expectedRevision == "" then "0000000000000000000000000000000000000000" else expectedRevision;
+  expectedRevisionArg = lib.optionalString (nixpkgsRevision != null)
+    "--set VESPER_STORE_EXPECTED_NIXPKGS_REVISION ${lib.escapeShellArg nixpkgsRevision}";
+in
 stdenv.mkDerivation {
   pname = "vesper-store";
   version = "0.1.0";
@@ -53,9 +61,10 @@ stdenv.mkDerivation {
 
     fixture="$TMPDIR/catalog.sqlite"
     sqlite3 "$fixture" < data/catalog-schema.sql
-    printf '%s\n' '{"schemaVersion":1,"system":"${stdenv.hostPlatform.system}","nixpkgsRevision":"0000000000000000000000000000000000000000","generatedAt":"2026-01-01T00:00:00Z"}' \
+    printf '%s\n' '{"schemaVersion":1,"system":"${stdenv.hostPlatform.system}","nixpkgsRevision":"${fixtureRevision}","generatedAt":"2026-01-01T00:00:00Z"}' \
       > "$TMPDIR/catalog-meta.json"
     VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_EXPECTED_NIXPKGS_REVISION="${expectedRevision}" \
       VESPER_STORE_CATALOG="$fixture" ./vesper-store-core catalog-status \
       | grep -F '"available":true' >/dev/null
 
@@ -63,6 +72,7 @@ stdenv.mkDerivation {
     sqlite3 "$incomplete" < data/catalog-schema.sql
     sqlite3 "$incomplete" 'DROP TABLE aliases;'
     VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_EXPECTED_NIXPKGS_REVISION="${expectedRevision}" \
       VESPER_STORE_CATALOG="$incomplete" VESPER_STORE_CATALOG_META="$TMPDIR/catalog-meta.json" \
       ./vesper-store-core catalog-status | grep -F '"available":false' >/dev/null
 
@@ -70,6 +80,7 @@ stdenv.mkDerivation {
     printf '%s\n' '{"schemaVersion":1,"system":"x86_64-linux","nixpkgsRevision":"not-a-revision","generatedAt":"2026-01-01T00:00:00Z"}' \
       > "$invalid_meta"
     VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_EXPECTED_NIXPKGS_REVISION="${expectedRevision}" \
       VESPER_STORE_CATALOG="$fixture" VESPER_STORE_CATALOG_META="$invalid_meta" \
       ./vesper-store-core catalog-status | grep -F '"available":false' >/dev/null
 
@@ -94,6 +105,7 @@ stdenv.mkDerivation {
       --set VESPER_STORE_QML "$out/share/vesper-store/qml/Main.qml"
       --set VESPER_STORE_CORE "$out/libexec/vesper-store-core"
       --set VESPER_STORE_EXPECTED_SYSTEM "${stdenv.hostPlatform.system}"
+      ${expectedRevisionArg}
       --prefix PATH : "${lib.makeBinPath [ jq sqlite ]}"
     )
   '';
