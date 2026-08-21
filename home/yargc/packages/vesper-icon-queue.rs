@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -201,6 +201,20 @@ fn load_provider() -> String {
     "openai".to_string()
 }
 
+fn remote_consent() -> bool {
+    let content = fs::read_to_string(config_path()).unwrap_or_default();
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == "remoteConsent" {
+            let value = value.trim();
+            return value == "1" || value.eq_ignore_ascii_case("true");
+        }
+    }
+    false
+}
+
 fn provider_configured(provider: &str) -> bool {
     Command::new("secret-tool")
         .args(["lookup", "service", "vesper-ai", "provider", provider])
@@ -212,21 +226,45 @@ fn provider_configured(provider: &str) -> bool {
 }
 
 fn load_inventory() -> Vec<InventoryItem> {
-    let content = fs::read_to_string(inventory_path()).unwrap_or_default();
     let mut items = Vec::new();
+    if let Ok(content) = sqlite(
+        "PRAGMA busy_timeout=5000; SELECT desktop_id,source_path,source_fingerprint,source_kind,canonical_state,excluded FROM application_inventory ORDER BY desktop_id;",
+    ) {
+        for line in content.lines() {
+            let parts = line.split('\t').collect::<Vec<_>>();
+            if parts.len() < 6 {
+                continue;
+            }
+            items.push(InventoryItem {
+                id: parts[0].to_string(),
+                source_path: parts[1].to_string(),
+                fingerprint: parts[2].to_string(),
+                source_kind: parts[3].to_string(),
+                canonical_state: parts[4].to_string(),
+                excluded: parts[5] == "1",
+            });
+        }
+        if !items.is_empty() {
+            return items;
+        }
+    }
+
+    // Migration fallback for a session where the engine has not populated the
+    // transactional inventory yet. The next reconcile writes the DB and this
+    // path becomes unused.
+    let content = fs::read_to_string(inventory_path()).unwrap_or_default();
     for line in content.lines() {
         let parts = line.split('\t').collect::<Vec<_>>();
-        if parts.len() < 9 {
-            continue;
+        if parts.len() >= 9 {
+            items.push(InventoryItem {
+                id: parts[0].to_string(),
+                source_path: parts[2].to_string(),
+                fingerprint: parts[3].to_string(),
+                source_kind: parts[4].to_string(),
+                canonical_state: parts[5].to_string(),
+                excluded: parts[7] == "1",
+            });
         }
-        items.push(InventoryItem {
-            id: parts[0].to_string(),
-            source_path: parts[2].to_string(),
-            fingerprint: parts[3].to_string(),
-            source_kind: parts[4].to_string(),
-            canonical_state: parts[5].to_string(),
-            excluded: parts[7] == "1",
-        });
     }
     items
 }
@@ -314,16 +352,25 @@ fn migrate_legacy_queue() -> Result<(), String> {
     Ok(())
 }
 
-fn desired_jobs(items: &[InventoryItem], provider: &str) -> BTreeMap<String, QueueJob> {
-    let ready = provider_configured(provider);
+fn desired_jobs(items: &[InventoryItem], provider: &str, consent: bool) -> BTreeMap<String, QueueJob> {
+    let provider_ready = provider_configured(provider);
+    let desired_state = if !consent {
+        "blocked-no-consent"
+    } else if provider_ready {
+        "ready"
+    } else {
+        "blocked-no-provider"
+    };
     let mut jobs = BTreeMap::<String, QueueJob>::new();
     for item in items {
-        if item.excluded || item.fingerprint.is_empty() || item.canonical_state != "pending-ai" {
+        let needs_remote_semantics = item.canonical_state == "pending-ai"
+            || (item.canonical_state == "validated" && item.source_kind == "svg");
+        if item.excluded || item.fingerprint.is_empty() || !needs_remote_semantics {
             continue;
         }
         let entry = jobs.entry(item.fingerprint.clone()).or_insert_with(|| QueueJob {
             key: item.fingerprint.clone(),
-            state: if ready { "ready" } else { "blocked-no-provider" }.to_string(),
+            state: desired_state.to_string(),
             provider: provider.to_string(),
             source_kind: item.source_kind.clone(),
             source_path: item.source_path.clone(),
@@ -345,11 +392,18 @@ fn desired_jobs(items: &[InventoryItem], provider: &str) -> BTreeMap<String, Que
 fn sync() -> Result<(), String> {
     init_db()?;
     let provider = load_provider();
+    let consent = remote_consent();
     let provider_ready = provider_configured(&provider);
-    let desired = desired_jobs(&load_inventory(), &provider);
+    let desired = desired_jobs(&load_inventory(), &provider, consent);
     let existing = load_jobs()?;
     let timestamp = now_ms();
-    let ready_state = if provider_ready { "ready" } else { "blocked-no-provider" };
+    let ready_state = if !consent {
+        "blocked-no-consent"
+    } else if provider_ready {
+        "ready"
+    } else {
+        "blocked-no-provider"
+    };
     let mut sql = String::from("BEGIN IMMEDIATE;\n");
 
     for (key, target) in &desired {
@@ -367,6 +421,10 @@ fn sync() -> Result<(), String> {
                 last_error.clear();
                 next_run = 0;
                 lease_until = 0;
+            } else if !consent && matches!(state.as_str(), "ready" | "retry-wait" | "blocked-no-provider") {
+                state = "blocked-no-consent".to_string();
+                next_run = 0;
+                lease_until = 0;
             } else if state == "running" && lease_until <= timestamp {
                 state = ready_state.to_string();
                 last_error = "recovered expired conversion lease".to_string();
@@ -374,10 +432,16 @@ fn sync() -> Result<(), String> {
             } else if state == "retry-wait" && next_run <= timestamp {
                 state = ready_state.to_string();
                 next_run = 0;
-            } else if state == "blocked-no-provider" && provider_ready {
+            } else if state == "blocked-no-consent" && consent {
+                state = if provider_ready {
+                    "ready".to_string()
+                } else {
+                    "blocked-no-provider".to_string()
+                };
+            } else if state == "blocked-no-provider" && provider_ready && consent {
                 state = "ready".to_string();
-            } else if state == "ready" && !provider_ready {
-                state = "blocked-no-provider".to_string();
+            } else if state == "ready" && (!provider_ready || !consent) {
+                state = ready_state.to_string();
             } else if state == "superseded" {
                 state = ready_state.to_string();
                 attempts = 0;
@@ -540,7 +604,13 @@ fn fail(key: &str, message: &str, permanent: bool) -> Result<(), String> {
 fn retry_app(id: &str) -> Result<(), String> {
     sync()?;
     let provider = load_provider();
-    let state = if provider_configured(&provider) { "ready" } else { "blocked-no-provider" };
+    let state = if !remote_consent() {
+        "blocked-no-consent"
+    } else if provider_configured(&provider) {
+        "ready"
+    } else {
+        "blocked-no-provider"
+    };
     let jobs = load_jobs()?;
     let mut keys = Vec::new();
     for job in jobs.values() {
@@ -606,6 +676,7 @@ fn print_status() -> Result<(), String> {
     let jobs = load_jobs()?;
     let provider = load_provider();
     let paused = paused()?;
+    let consent = remote_consent();
     let count = |state: &str| jobs.values().filter(|job| job.state == state).count();
     let pending = jobs
         .values()
@@ -617,10 +688,11 @@ fn print_status() -> Result<(), String> {
         })
         .count();
     println!(
-        "{{\"schemaVersion\":{},\"provider\":\"{}\",\"providerConfigured\":{},\"paused\":{},\"total\":{},\"pending\":{},\"ready\":{},\"running\":{},\"retryWait\":{},\"blockedNoProvider\":{},\"blockedNoConsent\":{},\"failed\":{},\"succeeded\":{},\"superseded\":{},\"transport\":\"active\"}}",
+        "{{\"schemaVersion\":{},\"provider\":\"{}\",\"providerConfigured\":{},\"consentGranted\":{},\"paused\":{},\"total\":{},\"pending\":{},\"ready\":{},\"running\":{},\"retryWait\":{},\"blockedNoProvider\":{},\"blockedNoConsent\":{},\"failed\":{},\"succeeded\":{},\"superseded\":{},\"transport\":\"active\"}}",
         QUEUE_SCHEMA_VERSION,
         json_escape(&provider),
         if provider_configured(&provider) { "true" } else { "false" },
+        if consent { "true" } else { "false" },
         if paused { "true" } else { "false" },
         jobs.len(),
         pending,

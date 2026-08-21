@@ -49,6 +49,211 @@ fn runtime_root() -> PathBuf {
         .join("vesper")
 }
 
+#[derive(Clone, Copy)]
+struct VicinaeSettings {
+    follow_theme: bool,
+    follow_icons: bool,
+    use_glass: bool,
+    close_on_focus_loss: bool,
+    pop_to_root_on_close: bool,
+    layer_shell: bool,
+}
+
+impl Default for VicinaeSettings {
+    fn default() -> Self {
+        Self {
+            follow_theme: true,
+            follow_icons: true,
+            use_glass: true,
+            close_on_focus_loss: true,
+            pop_to_root_on_close: true,
+            layer_shell: true,
+        }
+    }
+}
+
+fn xdg_config_home() -> PathBuf {
+    env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".config"))
+}
+
+fn xdg_state_home() -> PathBuf {
+    env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/state"))
+}
+
+fn xdg_data_home() -> PathBuf {
+    env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join(".local/share"))
+}
+
+fn vicinae_config_dir() -> PathBuf {
+    xdg_config_home().join("vicinae")
+}
+
+fn vicinae_settings_state_path() -> PathBuf {
+    config_root().join("vicinae.conf")
+}
+
+fn vicinae_import_path() -> PathBuf {
+    vicinae_config_dir().join("vesper.json")
+}
+
+fn vicinae_theme_path(mode: &str) -> PathBuf {
+    xdg_data_home()
+        .join("vicinae/themes")
+        .join(format!("vesper-{mode}.toml"))
+}
+
+fn write_atomic(path: &Path, body: &str) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("invalid path: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let name = path.file_name().and_then(|value| value.to_str()).unwrap_or("vesper");
+    let temporary = parent.join(format!(".{name}.{}.tmp", std::process::id()));
+    fs::write(&temporary, body).map_err(|error| error.to_string())?;
+    fs::rename(&temporary, path).map_err(|error| error.to_string())
+}
+
+fn parse_bool(value: &str) -> bool {
+    matches!(value.trim(), "1" | "true" | "on" | "yes")
+}
+
+fn load_vicinae_settings() -> VicinaeSettings {
+    let mut settings = VicinaeSettings::default();
+    let content = fs::read_to_string(vicinae_settings_state_path()).unwrap_or_default();
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        match key.trim() {
+            "followTheme" => settings.follow_theme = parse_bool(value),
+            "followIcons" => settings.follow_icons = parse_bool(value),
+            "useGlass" => settings.use_glass = parse_bool(value),
+            "closeOnFocusLoss" => settings.close_on_focus_loss = parse_bool(value),
+            "popToRootOnClose" => settings.pop_to_root_on_close = parse_bool(value),
+            "layerShell" => settings.layer_shell = parse_bool(value),
+            _ => {}
+        }
+    }
+    settings
+}
+
+fn save_vicinae_settings(settings: VicinaeSettings) -> Result<(), String> {
+    let body = format!(
+        "followTheme={}\nfollowIcons={}\nuseGlass={}\ncloseOnFocusLoss={}\npopToRootOnClose={}\nlayerShell={}\n",
+        if settings.follow_theme { 1 } else { 0 },
+        if settings.follow_icons { 1 } else { 0 },
+        if settings.use_glass { 1 } else { 0 },
+        if settings.close_on_focus_loss { 1 } else { 0 },
+        if settings.pop_to_root_on_close { 1 } else { 0 },
+        if settings.layer_shell { 1 } else { 0 },
+    );
+    write_atomic(&vicinae_settings_state_path(), &body)
+}
+
+fn normalise_hex(value: &str) -> Option<String> {
+    let value = value
+        .trim()
+        .trim_matches(|ch| matches!(ch, '"' | '\'' | ';' | ','))
+        .trim_start_matches('#');
+    if value.len() == 6 && value.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        Some(format!("#{}", value.to_ascii_lowercase()))
+    } else {
+        None
+    }
+}
+
+fn current_accent() -> String {
+    let lua = xdg_config_home().join("hypr/scheme/current.lua");
+    if let Ok(content) = fs::read_to_string(lua) {
+        if let Some(value) = content.lines().find_map(|line| {
+            let (key, value) = line.split_once('=')?;
+            (key.trim() == "primary").then(|| normalise_hex(value)).flatten()
+        }) {
+            return value;
+        }
+    }
+
+    let generated = xdg_state_home().join("caelestia/theme/vesper-icons");
+    fs::read_to_string(generated)
+        .ok()
+        .and_then(|value| normalise_hex(&value))
+        .unwrap_or_else(|| "#89b4fa".to_string())
+}
+
+fn vicinae_theme(mode: &str, accent: &str) -> String {
+    let light = mode == "light";
+    let (background, foreground, secondary, border, selection) = if light {
+        ("#f7f8fc", "#1a1d24", "#eef0f6", "#8a919f", "#dbe5ff")
+    } else {
+        ("#111318", "#f1f3f9", "#1c1f26", "#3f4654", "#29344a")
+    };
+    let name = if light { "Vesper Light" } else { "Vesper Dark" };
+    format!(
+        "[meta]\nversion = 1\nname = \"{name}\"\ndescription = \"Vesper system palette with the current Caelestia accent\"\nvariant = \"{mode}\"\ninherits = \"vicinae-{mode}\"\n\n[colors.core]\nbackground = \"{background}\"\nforeground = \"{foreground}\"\nsecondary_background = \"{secondary}\"\nborder = \"{border}\"\naccent = \"{accent}\"\n\n[colors.accents]\nblue = \"{accent}\"\ngreen = \"#81c995\"\nmagenta = \"#d7a8e8\"\norange = \"#f2b880\"\npurple = \"#c6b1f5\"\nred = \"#f28b82\"\nyellow = \"#fdd663\"\ncyan = \"#78d5e8\"\n\n[colors.list.item.selection]\nbackground = \"{selection}\"\nsecondary_background = \"{secondary}\"\n\n[colors.grid.item]\nbackground = \"{secondary}\"\n"
+    )
+}
+
+fn vicinae_import(settings: VicinaeSettings) -> String {
+    let light_theme = if settings.follow_theme { "vesper-light" } else { "vicinae-light" };
+    let dark_theme = if settings.follow_theme { "vesper-dark" } else { "vicinae-dark" };
+    let icon_theme = if settings.follow_icons { "Vesper-Adaptive" } else { "auto" };
+    let opacity = if settings.use_glass { "0.92" } else { "1.0" };
+    format!(
+        "{{\n  \"$schema\": \"https://vicinae.com/schemas/config.json\",\n  \"close_on_focus_loss\": {},\n  \"pop_to_root_on_close\": {},\n  \"theme\": {{\n    \"light\": {{\"name\": \"{light_theme}\", \"icon_theme\": \"{icon_theme}\"}},\n    \"dark\": {{\"name\": \"{dark_theme}\", \"icon_theme\": \"{icon_theme}\"}}\n  }},\n  \"launcher_window\": {{\n    \"layer_shell\": {{\"enabled\": {}}},\n    \"opacity\": {opacity}\n  }}\n}}\n",
+        if settings.close_on_focus_loss { "true" } else { "false" },
+        if settings.pop_to_root_on_close { "true" } else { "false" },
+        if settings.layer_shell { "true" } else { "false" },
+    )
+}
+
+fn vicinae_sync_theme() -> Result<(), String> {
+    let settings = load_vicinae_settings();
+    let accent = current_accent();
+    save_vicinae_settings(settings)?;
+    write_atomic(&vicinae_import_path(), &vicinae_import(settings))?;
+    write_atomic(&vicinae_theme_path("light"), &vicinae_theme("light", &accent))?;
+    write_atomic(&vicinae_theme_path("dark"), &vicinae_theme("dark", &accent))
+}
+
+fn vicinae_status() {
+    let settings = load_vicinae_settings();
+    println!(
+        "{{\"followTheme\":{},\"followIcons\":{},\"useGlass\":{},\"closeOnFocusLoss\":{},\"popToRootOnClose\":{},\"layerShell\":{},\"accent\":\"{}\"}}",
+        settings.follow_theme,
+        settings.follow_icons,
+        settings.use_glass,
+        settings.close_on_focus_loss,
+        settings.pop_to_root_on_close,
+        settings.layer_shell,
+        json_escape(&current_accent()),
+    );
+}
+
+fn vicinae_set(key: &str, value: &str) -> Result<(), String> {
+    let mut settings = load_vicinae_settings();
+    let value = match value {
+        "on" | "off" | "true" | "false" | "1" | "0" => parse_bool(value),
+        _ => return Err("Vicinae setting value must be on or off".to_string()),
+    };
+    match key {
+        "follow-theme" => settings.follow_theme = value,
+        "follow-icons" => settings.follow_icons = value,
+        "use-glass" => settings.use_glass = value,
+        "close-on-focus-loss" => settings.close_on_focus_loss = value,
+        "pop-to-root-on-close" => settings.pop_to_root_on_close = value,
+        "layer-shell" => settings.layer_shell = value,
+        _ => return Err(format!("unknown Vicinae setting: {key}")),
+    }
+    save_vicinae_settings(settings)?;
+    vicinae_sync_theme()
+}
+
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 16);
     for ch in value.chars() {
@@ -346,10 +551,26 @@ fn wifi_qr() -> Result<PathBuf, String> {
     fs::create_dir_all(&root).map_err(|error| error.to_string())?;
     let path = root.join("wifi-share.svg");
     let path_string = path.to_string_lossy().into_owned();
-    let result = Command::new("qrencode")
-        .args(["-t", "SVG", "-o", &path_string, "-m", "2", &payload])
-        .output()
-        .map_err(|error| format!("failed to run qrencode: {error}"))?;
+    let mut child = Command::new("qrencode")
+        .args(["-t", "SVG", "-o", &path_string, "-m", "2"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start qrencode: {error}"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(payload.as_bytes())
+            .map_err(|error| error.to_string())?;
+        stdin
+            .write_all(b"\n")
+            .map_err(|error| error.to_string())?;
+    }
+
+    let result = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for qrencode: {error}"))?;
     if !result.status.success() {
         return Err(String::from_utf8_lossy(&result.stderr).trim().to_string());
     }
@@ -589,16 +810,18 @@ fn flatpak_id(id: &str) -> &str {
 fn app_status(id: &str) {
     let flatpak_id = flatpak_id(id);
     let is_flatpak = success("flatpak", &["info", flatpak_id]);
+    let removable = is_flatpak && success("flatpak", &["info", "--user", flatpak_id]);
     let permissions = if is_flatpak {
         output("flatpak", &["info", "--show-permissions", flatpak_id]).unwrap_or_default()
     } else {
         String::new()
     };
     println!(
-        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"todaySeconds\":{}}}",
+        "{{\"sandbox\":\"{}\",\"flatpakId\":\"{}\",\"permissions\":\"{}\",\"removable\":{},\"todaySeconds\":{}}}",
         if is_flatpak { "flatpak" } else { "native" },
         json_escape(flatpak_id),
         json_escape(&permissions),
+        if removable { "true" } else { "false" },
         wellbeing_seconds_for(id)
     );
 }
@@ -642,6 +865,28 @@ fn app_reset_permissions(id: &str) -> Result<(), String> {
     }
 }
 
+fn app_remove(id: &str) -> Result<(), String> {
+    let id = flatpak_id(id);
+    if !success("flatpak", &["info", "--user", id]) {
+        return Err("removal is only available for user-installed Flatpak apps here".to_string());
+    }
+
+    let result = Command::new("flatpak")
+        .args(["uninstall", "--user", "-y", id])
+        .output()
+        .map_err(|error| format!("failed to run flatpak: {error}"))?;
+    if result.status.success() {
+        Ok(())
+    } else {
+        let message = String::from_utf8_lossy(&result.stderr).trim().to_string();
+        Err(if message.is_empty() {
+            "Flatpak removal failed".to_string()
+        } else {
+            message
+        })
+    }
+}
+
 fn usage() -> ! {
     eprintln!(
         "vesper-control\n\
@@ -653,11 +898,15 @@ fn usage() -> ! {
            network airplane on|off\n\
            network wifi-qr\n\
            proxy status|set|clear\n\
+           vicinae-status\n\
+           vicinae-setting follow-theme|follow-icons|use-glass|close-on-focus-loss|pop-to-root-on-close|layer-shell on|off\n\
+           vicinae-sync-theme\n\
            wellbeing-daemon\n\
            wellbeing-summary\n\
            app-status <desktop-id>\n\
            app-permission <desktop-id> network|home on|off\n\
-           app-reset-permissions <desktop-id>"
+           app-reset-permissions <desktop-id>\n\
+           app-remove <desktop-id>"
     );
     std::process::exit(2);
 }
@@ -700,6 +949,13 @@ fn main() {
         [group, action] if group == "proxy" && action == "clear" => {
             proxy_clear().unwrap_or_else(|error| print_error(&error));
         }
+        [command] if command == "vicinae-status" => vicinae_status(),
+        [command, key, value] if command == "vicinae-setting" => {
+            vicinae_set(key, value).unwrap_or_else(|error| print_error(&error));
+        }
+        [command] if command == "vicinae-sync-theme" => {
+            vicinae_sync_theme().unwrap_or_else(|error| print_error(&error));
+        }
         [command] if command == "wellbeing-daemon" => {
             wellbeing_daemon().unwrap_or_else(|error| print_error(&error));
         }
@@ -715,6 +971,9 @@ fn main() {
         }
         [command, id] if command == "app-reset-permissions" => {
             app_reset_permissions(id).unwrap_or_else(|error| print_error(&error));
+        }
+        [command, id] if command == "app-remove" => {
+            app_remove(id).unwrap_or_else(|error| print_error(&error));
         }
         _ => usage(),
     }

@@ -34,7 +34,7 @@ impl Fixture {
         fs::create_dir_all(&canonical_dir).unwrap();
         fs::write(
             canonical_dir.join("canonical.svg"),
-            r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><circle cx="512" cy="512" r="320" fill="#ff3366"/></svg>"#,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><circle cx="512" cy="512" r="320" fill="#ff3366"/></svg>"##,
         )
         .unwrap();
         fs::write(
@@ -45,14 +45,20 @@ impl Fixture {
         )
         .unwrap();
 
-        let inventory = self.state.join("vesper/adaptive-icons/inventory.tsv");
-        fs::write(
-            inventory,
-            format!(
-                "{desktop_id}\tfixture\t/tmp/fixture.svg\t{fingerprint}\tsvg\tvalidated\t1\t0\t\n"
-            ),
-        )
-        .unwrap();
+        let db = self.state.join("vesper/adaptive-icons/state.sqlite3");
+        let schema = format!(
+            "CREATE TABLE application_inventory (desktop_id TEXT PRIMARY KEY, desktop_path TEXT NOT NULL, icon_key TEXT NOT NULL, source_path TEXT NOT NULL, source_fingerprint TEXT NOT NULL, source_kind TEXT NOT NULL, canonical_state TEXT NOT NULL, active INTEGER NOT NULL, excluded INTEGER NOT NULL, error TEXT NOT NULL, updated_ms INTEGER NOT NULL); INSERT INTO application_inventory VALUES ('{desktop_id}', '/tmp/{desktop_id}', 'fixture', '/tmp/fixture.svg', '{fingerprint}', 'svg', 'validated', 1, 0, '', 1);"
+        );
+        let output = Command::new("sqlite3")
+            .arg(&db)
+            .arg(schema)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "could not seed inventory db: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         canonical_dir
     }
 

@@ -9,13 +9,11 @@ on:
       - 'home/yargc/packages/tests/**'
       - 'home/yargc/packages/vesper-icon-*.rs'
       - 'home/yargc/packages/vesper-icons.rs'
-      - 'home/yargc/packages/vesper-icon-*.patch'
-      - 'home/yargc/packages/vesper-icons-*.patch'
       - 'home/yargc/packages/vesper-control.rs'
       - 'home/yargc/packages/vesper-control-router.rs'
-      - 'home/yargc/packages/vesper-control-*.patch'
       - 'home/yargc/packages/vesper-control.nix'
       - 'home/yargc/packages/VesperThemeSettings.qml'
+      - 'home/yargc/packages/VesperVicinaeSettings.qml'
       - 'home/yargc/packages/AiPage.qml'
       - 'home/yargc/packages/VesperAppControls.qml'
       - 'home/yargc/packages/caelestia-ai-hub.patch'
@@ -27,13 +25,11 @@ on:
       - 'home/yargc/packages/tests/**'
       - 'home/yargc/packages/vesper-icon-*.rs'
       - 'home/yargc/packages/vesper-icons.rs'
-      - 'home/yargc/packages/vesper-icon-*.patch'
-      - 'home/yargc/packages/vesper-icons-*.patch'
       - 'home/yargc/packages/vesper-control.rs'
       - 'home/yargc/packages/vesper-control-router.rs'
-      - 'home/yargc/packages/vesper-control-*.patch'
       - 'home/yargc/packages/vesper-control.nix'
       - 'home/yargc/packages/VesperThemeSettings.qml'
+      - 'home/yargc/packages/VesperVicinaeSettings.qml'
       - 'home/yargc/packages/AiPage.qml'
       - 'home/yargc/packages/VesperAppControls.qml'
       - 'home/yargc/packages/caelestia-ai-hub.patch'
@@ -60,7 +56,7 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
 
-      - name: Apply production icon patches, compile and test
+      - name: Compile and test production icon sources
         shell: bash
         run: |
           set -euo pipefail
@@ -69,26 +65,8 @@ jobs:
           chmod -R u+w "$work"
           cd "$work"
 
-          nix shell nixpkgs#cargo nixpkgs#rustc nixpkgs#gnupatch -c bash -c '
+          nix shell nixpkgs#cargo nixpkgs#rustc nixpkgs#sqlite -c bash -c '
             set -euo pipefail
-            patch vesper-icons.rs < vesper-icons-source-guard.patch
-            patch vesper-icons.rs < vesper-icons-material-axis.patch
-            patch vesper-icons.rs < vesper-icons-format-support.patch
-            patch vesper-icons.rs < vesper-icons-appstream-recovery.patch
-            patch vesper-icons.rs < vesper-icons-grid-recipe.patch
-            patch vesper-icons.rs < vesper-icons-appearance-axis.patch
-            patch vesper-icons.rs < vesper-icons-state-db.patch
-            patch vesper-icons.rs < vesper-icons-remote-consent.patch
-            patch vesper-icon-queue.rs < vesper-icon-queue-inventory-db.patch
-            patch vesper-icon-queue.rs < vesper-icon-queue-consent.patch
-            patch vesper-icon-queue.rs < vesper-icon-queue-vector-semantic.patch
-            patch vesper-icon-worker.rs < vesper-icon-worker-provider-defaults.patch
-            patch vesper-icon-worker.rs < vesper-icon-worker-inventory-db.patch
-            patch vesper-icon-worker.rs < vesper-icon-worker-validation.patch
-            patch vesper-icon-worker.rs < vesper-icon-worker-consent.patch
-            patch vesper-icon-worker.rs < vesper-icon-worker-vector-semantic.patch
-            patch vesper-icon-worker.rs < vesper-icon-worker-export-axis.patch
-            patch vesper-icon-identity.rs < vesper-icon-identity-inventory-db.patch
             cargo check --locked
             cargo test --locked
           '
@@ -101,15 +79,40 @@ jobs:
           mkdir -p "$work"
           cp home/yargc/packages/vesper-control.rs "$work/vesper-control.rs"
           cp home/yargc/packages/vesper-control-router.rs "$work/vesper-control-router.rs"
-          cp home/yargc/packages/vesper-control-wifi-qr.patch "$work/"
           cd "$work"
 
-          nix shell nixpkgs#rustc nixpkgs#gnupatch -c bash -c '
+          nix shell nixpkgs#rustc -c bash -c '
             set -euo pipefail
-            patch vesper-control.rs < vesper-control-wifi-qr.patch
             rustc --edition=2021 vesper-control.rs -o vesper-control-core
             rustc --edition=2021 vesper-control-router.rs -o vesper-control
           '
+
+          fake_bin="$RUNNER_TEMP/fake-flatpak-bin"
+          mkdir -p "$fake_bin"
+          cat > "$fake_bin/flatpak" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          case "$*" in
+            "info --user org.example.App") exit 0 ;;
+            "uninstall --user -y org.example.App") printf '%s\n' "$*" > "$VESPER_FLATPAK_TEST_LOG" ;;
+            *) exit 1 ;;
+          esac
+          EOF
+          chmod +x "$fake_bin/flatpak"
+          export VESPER_FLATPAK_TEST_LOG="$RUNNER_TEMP/flatpak-command.log"
+          PATH="$fake_bin:$PATH" ./vesper-control-core app-remove org.example.App.desktop
+          grep -Fx 'uninstall --user -y org.example.App' "$VESPER_FLATPAK_TEST_LOG"
+
+          vicinae_home="$RUNNER_TEMP/vicinae-home"
+          vicinae_data="$vicinae_home/.local/share"
+          mkdir -p "$vicinae_home"
+          HOME="$vicinae_home" XDG_CONFIG_HOME="$vicinae_home/.config" XDG_DATA_HOME="$vicinae_data" XDG_STATE_HOME="$vicinae_home/.local/state" ./vesper-control-core vicinae-sync-theme
+          jq -e '.followTheme == true and .followIcons == true and .useGlass == true and .accent == "#89b4fa"' \
+            <(HOME="$vicinae_home" XDG_CONFIG_HOME="$vicinae_home/.config" XDG_DATA_HOME="$vicinae_data" XDG_STATE_HOME="$vicinae_home/.local/state" ./vesper-control-core vicinae-status)
+          jq -e '.theme.dark.name == "vesper-dark" and .theme.dark.icon_theme == "Vesper-Adaptive" and .launcher_window.opacity == 0.92' \
+            "$vicinae_home/.config/vicinae/vesper.json"
+          test -s "$vicinae_data/vicinae/themes/vesper-dark.toml"
+          grep -F 'accent = "#89b4fa"' "$vicinae_data/vicinae/themes/vesper-dark.toml"
 
       - name: Validate Caelestia patch syntax
         shell: bash

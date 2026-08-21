@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -10,12 +11,25 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const THEME_NAME: &str = "Vesper-Adaptive";
 const SCHEMA_VERSION: u32 = 1;
 const VALIDATOR_VERSION: u32 = 1;
+const GRID_REVISION: &str = "vesper-public-2026-r1";
+
+#[derive(Clone, Copy)]
+struct GridGeometry {
+    content_x: i32,
+    content_size: i32,
+    enclosure_x: i32,
+    enclosure_size: i32,
+    enclosure_radius: i32,
+    needs_enclosure: bool,
+}
 
 #[derive(Clone)]
 struct Config {
     enabled: bool,
     mode: String,
+    material: String,
     provider: String,
+    remote_consent: bool,
     follow_palette: bool,
     scheme_mode: String,
     accent: String,
@@ -25,8 +39,10 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             enabled: false,
-            mode: "original".to_string(),
+            mode: "automatic".to_string(),
+            material: "standard".to_string(),
             provider: "openai".to_string(),
+            remote_consent: false,
             follow_palette: true,
             scheme_mode: "dark".to_string(),
             accent: "#7aa2f7".to_string(),
@@ -74,6 +90,10 @@ fn state_root() -> PathBuf {
         .join("vesper/adaptive-icons")
 }
 
+fn db_path() -> PathBuf {
+    state_root().join("state.sqlite3")
+}
+
 fn config_root() -> PathBuf {
     env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
@@ -104,6 +124,25 @@ fn generations_root() -> PathBuf {
 
 fn theme_link() -> PathBuf {
     data_home().join("icons").join(THEME_NAME)
+}
+
+fn is_vesper_owned_source(path: &Path) -> bool {
+    let owned_roots = [
+        theme_link(),
+        canonical_root(),
+        generations_root(),
+        cache_root(),
+        data_home().join("vesper/adaptive-icons/exports"),
+    ];
+    if owned_roots.iter().any(|root| path.starts_with(root)) {
+        return true;
+    }
+
+    // User-facing exports live in Downloads. Keep them out of provenance even
+    // when a desktop entry later points at an exported file by absolute path.
+    path.to_string_lossy()
+        .split(std::path::MAIN_SEPARATOR)
+        .any(|part| part.starts_with("Vesper-Adaptive-Icons-"))
 }
 
 fn config_path() -> PathBuf {
@@ -164,37 +203,51 @@ fn write_atomic(path: &Path, data: impl AsRef<[u8]>) -> Result<(), String> {
     fs::rename(&tmp, path).map_err(|error| error.to_string())
 }
 
-fn command_output(command: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new(command)
-        .args(args)
-        .output()
-        .map_err(|error| format!("failed to run {command}: {error}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("{command} exited with {}", output.status.code().unwrap_or(-1))
-        } else {
-            stderr
-        });
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+fn sql_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
 }
 
-fn command_success(command: &str, args: &[&str]) -> bool {
-    Command::new(command)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|status| status.success())
-        .unwrap_or(false)
+fn sqlite(sql: &str) -> Result<String, String> {
+    fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
+    let mut child = Command::new("sqlite3")
+        .arg("-batch")
+        .arg("-noheader")
+        .arg("-separator")
+        .arg("\t")
+        .arg(db_path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("failed to start sqlite3: {error}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(sql.as_bytes())
+            .map_err(|error| format!("failed to write sqlite query: {error}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("failed to wait for sqlite3: {error}"))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            format!("sqlite3 exited with {}", output.status.code().unwrap_or(-1))
+        } else {
+            message
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
 fn valid_mode(value: &str) -> bool {
     matches!(
         value,
-        "original" | "light" | "dark" | "tinted" | "clear" | "glass"
+        "automatic" | "default" | "dark" | "tinted" | "clear" | "original" | "light"
     )
+}
+
+fn valid_material(value: &str) -> bool {
+    matches!(value, "standard" | "glass")
 }
 
 fn valid_provider(value: &str) -> bool {
@@ -224,8 +277,17 @@ fn load_config() -> Config {
         let value = value.trim();
         match key.trim() {
             "enabled" => config.enabled = value == "1" || value.eq_ignore_ascii_case("true"),
+            "mode" if value == "glass" => {
+                config.mode = "clear".to_string();
+                config.material = "glass".to_string();
+            }
+            "mode" if value == "light" => config.mode = "default".to_string(),
             "mode" if valid_mode(value) => config.mode = value.to_string(),
+            "material" if valid_material(value) => config.material = value.to_string(),
             "provider" if valid_provider(value) => config.provider = value.to_string(),
+            "remoteConsent" => {
+                config.remote_consent = value == "1" || value.eq_ignore_ascii_case("true")
+            }
             "followPalette" => {
                 config.follow_palette = value == "1" || value.eq_ignore_ascii_case("true")
             }
@@ -251,10 +313,12 @@ fn load_config() -> Config {
 
 fn save_config(config: &Config) -> Result<(), String> {
     let body = format!(
-        "enabled={}\nmode={}\nprovider={}\nfollowPalette={}\nschemeMode={}\naccent={}\n",
+        "enabled={}\nmode={}\nmaterial={}\nprovider={}\nremoteConsent={}\nfollowPalette={}\nschemeMode={}\naccent={}\n",
         if config.enabled { 1 } else { 0 },
         config.mode,
+        config.material,
         config.provider,
+        if config.remote_consent { 1 } else { 0 },
         if config.follow_palette { 1 } else { 0 },
         config.scheme_mode,
         config.accent
@@ -373,6 +437,7 @@ fn parse_desktop(path: &Path, id: String) -> Option<DesktopRecord> {
     let mut hidden = false;
     let mut no_display = false;
     let mut icon = String::new();
+    let mut vesper_shadow = false;
 
     for raw in content.lines() {
         let line = raw.trim();
@@ -391,11 +456,12 @@ fn parse_desktop(path: &Path, id: String) -> Option<DesktopRecord> {
             "Hidden" => hidden = value.trim().eq_ignore_ascii_case("true"),
             "NoDisplay" => no_display = value.trim().eq_ignore_ascii_case("true"),
             "Icon" => icon = value.trim().to_string(),
+            "X-Vesper-Adaptive-Shadow" => vesper_shadow = value.trim().eq_ignore_ascii_case("true"),
             _ => {}
         }
     }
 
-    if kind != "Application" || hidden || no_display || icon.is_empty() {
+    if kind != "Application" || hidden || no_display || icon.is_empty() || vesper_shadow {
         return None;
     }
 
@@ -455,6 +521,8 @@ fn icon_score(path: &Path, root_rank: usize) -> i64 {
         "svg" | "svgz" => 100_000,
         "png" => 70_000,
         "webp" => 60_000,
+        "jpg" | "jpeg" => 55_000,
+        "ico" => 45_000,
         "xpm" => 20_000,
         _ => 0,
     };
@@ -477,11 +545,17 @@ fn index_icon_tree(
     if depth > 12 {
         return;
     }
+    if is_vesper_owned_source(current) {
+        return;
+    }
     let Ok(entries) = fs::read_dir(current) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
+        if is_vesper_owned_source(&path) {
+            continue;
+        }
         if path.is_dir() {
             index_icon_tree(root, &path, root_rank, depth + 1, index);
             continue;
@@ -491,7 +565,10 @@ fn index_icon_tree(
             .and_then(|extension| extension.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if !matches!(extension.as_str(), "svg" | "svgz" | "png" | "webp" | "xpm") {
+        if !matches!(
+            extension.as_str(),
+            "svg" | "svgz" | "png" | "webp" | "jpg" | "jpeg" | "ico" | "xpm"
+        ) {
             continue;
         }
         let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
@@ -531,7 +608,7 @@ fn resolve_icon(
     index: &BTreeMap<String, Vec<IconCandidate>>,
 ) -> Option<PathBuf> {
     let path = PathBuf::from(icon);
-    if path.is_absolute() && path.is_file() {
+    if path.is_absolute() && path.is_file() && !is_vesper_owned_source(&path) {
         return Some(path);
     }
 
@@ -543,6 +620,97 @@ fn resolve_icon(
         .get(stem)
         .and_then(|candidates| candidates.first())
         .map(|candidate| candidate.path.clone())
+}
+
+fn xml_tag_values(content: &str, tag: &str) -> Vec<(String, String)> {
+    let mut values = Vec::new();
+    let open = format!("<{tag}");
+    let close = format!("</{tag}>");
+    let mut offset = 0usize;
+
+    while let Some(relative) = content[offset..].find(&open) {
+        let start = offset + relative;
+        let Some(open_end_relative) = content[start..].find('>') else {
+            break;
+        };
+        let open_end = start + open_end_relative;
+        let Some(close_relative) = content[open_end + 1..].find(&close) else {
+            break;
+        };
+        let close_start = open_end + 1 + close_relative;
+        let attrs = content[start + open.len()..open_end].trim().to_string();
+        let value = content[open_end + 1..close_start].trim().to_string();
+        if !value.is_empty() && !value.contains('<') && value.len() <= 4096 {
+            values.push((attrs, value));
+        }
+        offset = close_start + close.len();
+    }
+
+    values
+}
+
+fn attr_is(attrs: &str, name: &str, value: &str) -> bool {
+    let double = format!("{name}=\"{value}\"");
+    let single = format!("{name}='{value}'");
+    attrs.split_whitespace().any(|part| part == double || part == single)
+}
+
+fn build_appstream_icon_map(data_dirs: &[PathBuf]) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+
+    for data_dir in data_dirs {
+        for metadata_dir in [data_dir.join("metainfo"), data_dir.join("appdata")] {
+            let Ok(entries) = fs::read_dir(metadata_dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() || is_vesper_owned_source(&path) {
+                    continue;
+                }
+                let extension = path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("");
+                if !matches!(extension, "xml" | "metainfo" | "appdata") {
+                    continue;
+                }
+                if fs::metadata(&path).map(|meta| meta.len() > 2_000_000).unwrap_or(true) {
+                    continue;
+                }
+                let Ok(content) = fs::read_to_string(&path) else {
+                    continue;
+                };
+
+                let desktop_ids = xml_tag_values(&content, "launchable")
+                    .into_iter()
+                    .filter(|(attrs, _)| attr_is(attrs, "type", "desktop-id"))
+                    .map(|(_, value)| value)
+                    .collect::<Vec<_>>();
+                if desktop_ids.is_empty() {
+                    continue;
+                }
+
+                let icon = xml_tag_values(&content, "icon")
+                    .into_iter()
+                    .find(|(attrs, value)| {
+                        (attr_is(attrs, "type", "stock") || attr_is(attrs, "type", "local"))
+                            && !value.starts_with("http://")
+                            && !value.starts_with("https://")
+                    })
+                    .map(|(_, value)| value);
+                let Some(icon) = icon else {
+                    continue;
+                };
+
+                for desktop_id in desktop_ids {
+                    map.entry(desktop_id).or_insert_with(|| icon.clone());
+                }
+            }
+        }
+    }
+
+    map
 }
 
 fn source_kind(path: &Path) -> String {
@@ -659,9 +827,21 @@ fn unsafe_svg_reason(content: &str) -> Option<&'static str> {
         ("<image", "embedded-image"),
         ("javascript:", "javascript-url"),
         ("data:image", "embedded-raster"),
-        ("http://", "external-url"),
-        ("https://", "external-url"),
-        ("file://", "external-file"),
+        ("href=\"http://", "external-url"),
+        ("href='http://", "external-url"),
+        ("href=\"https://", "external-url"),
+        ("href='https://", "external-url"),
+        ("href=\"file://", "external-file"),
+        ("href='file://", "external-file"),
+        ("src=\"http://", "external-url"),
+        ("src='http://", "external-url"),
+        ("src=\"https://", "external-url"),
+        ("src='https://", "external-url"),
+        ("src=\"file://", "external-file"),
+        ("src='file://", "external-file"),
+        ("url(http://", "external-url"),
+        ("url(https://", "external-url"),
+        ("url(file://", "external-file"),
         ("@import", "css-import"),
         ("@font-face", "external-font"),
         ("<iframe", "foreign-frame"),
@@ -851,28 +1031,115 @@ fn nested_svg(inner: &str, viewbox: &str, x: i32, y: i32, size: i32) -> String {
     )
 }
 
+fn canonical_silhouette(canonical: &Path) -> String {
+    let manifest = canonical
+        .parent()
+        .map(|dir| dir.join("icon.vicon/manifest.json"));
+    if let Some(path) = manifest {
+        if let Ok(content) = fs::read_to_string(path) {
+            let needle = "\"silhouette\":\"";
+            if let Some(start) = content.find(needle) {
+                let rest = &content[start + needle.len()..];
+                if let Some(end) = rest.find('"') {
+                    let value = &rest[..end];
+                    if matches!(value, "enclosed" | "circular" | "glyph" | "irregular" | "full-bleed") {
+                        return value.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    let content = fs::read_to_string(canonical).unwrap_or_default().to_ascii_lowercase();
+    let circles = content.matches("<circle").count() + content.matches("<ellipse").count();
+    let rects = content.matches("<rect").count();
+    if circles > 0 && rects == 0 {
+        "circular".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn grid_geometry(silhouette: &str) -> GridGeometry {
+    match silhouette {
+        // Existing tiles and intentional full-bleed artwork keep their own
+        // enclosure. The renderer must not place another tile behind them.
+        "enclosed" | "full-bleed" => GridGeometry {
+            content_x: 0,
+            content_size: 1024,
+            enclosure_x: 32,
+            enclosure_size: 960,
+            enclosure_radius: 224,
+            needs_enclosure: false,
+        },
+        "circular" => GridGeometry {
+            content_x: 176,
+            content_size: 672,
+            enclosure_x: 96,
+            enclosure_size: 832,
+            enclosure_radius: 190,
+            needs_enclosure: true,
+        },
+        "glyph" | "irregular" => GridGeometry {
+            content_x: 164,
+            content_size: 696,
+            enclosure_x: 96,
+            enclosure_size: 832,
+            enclosure_radius: 190,
+            needs_enclosure: true,
+        },
+        _ => GridGeometry {
+            content_x: 148,
+            content_size: 728,
+            enclosure_x: 96,
+            enclosure_size: 832,
+            enclosure_radius: 190,
+            needs_enclosure: true,
+        },
+    }
+}
+
 fn compile_icon(canonical: &Path, config: &Config) -> Result<String, String> {
     let (inner, viewbox) = svg_inner_and_viewbox(canonical)?;
-    if config.mode == "original" {
+    let render_mode = match config.mode.as_str() {
+        "automatic" => if config.scheme_mode == "light" { "default" } else { "dark" },
+        "light" => "default",
+        value => value,
+    };
+
+    if render_mode == "original" {
         return Ok(format!(
             "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\">{}</svg>\n",
             nested_svg(&inner, &viewbox, 0, 0, 1024)
         ));
     }
 
-    let glyph = nested_svg(&inner, &viewbox, 136, 136, 752);
+    let silhouette = canonical_silhouette(canonical);
+    let grid = grid_geometry(&silhouette);
+    let glyph = nested_svg(
+        &inner,
+        &viewbox,
+        grid.content_x,
+        grid.content_x,
+        grid.content_size,
+    );
+    let enclosure = |fill: &str, fill_opacity: &str, stroke: &str, stroke_opacity: &str, stroke_width: i32| -> String {
+        if !grid.needs_enclosure {
+            return String::new();
+        }
+        format!("<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"{}\" fill-opacity=\"{}\" stroke=\"{}\" stroke-opacity=\"{}\" stroke-width=\"{}\"/>", grid.enclosure_x, grid.enclosure_x, grid.enclosure_size, grid.enclosure_size, grid.enclosure_radius, fill, fill_opacity, stroke, stroke_opacity, stroke_width)
+    };
     let matrix = colour_matrix(&config.accent);
-    let body = match config.mode.as_str() {
-        "light" => format!(
-            "<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"#f7f7f8\" stroke=\"#ffffff\" stroke-width=\"10\"/><g>{glyph}</g>"
+    let body = match render_mode {
+        "default" => format!(
+            "{}<g>{glyph}</g>", enclosure("#f7f7f8", "1", "#ffffff", "1", 10)
         ),
         "dark" => format!(
-            "<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"#171719\" stroke=\"#38383d\" stroke-width=\"10\"/><g>{glyph}</g>"
+            "{}<g>{glyph}</g>", enclosure("#171719", "1", "#38383d", "1", 10)
         ),
         "tinted" => format!(
-            "<defs><filter id=\"vesperTint\" color-interpolation-filters=\"sRGB\"><feColorMatrix type=\"matrix\" values=\"{matrix}\"/></filter></defs><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"{}\" fill-opacity=\"0.20\" stroke=\"{}\" stroke-opacity=\"0.55\" stroke-width=\"10\"/><g filter=\"url(#vesperTint)\">{glyph}</g>",
-            config.accent,
-            config.accent
+            "<defs><filter id=\"vesperTint\" color-interpolation-filters=\"sRGB\"><feColorMatrix type=\"matrix\" values=\"{matrix}\"/></filter></defs>{}<g filter=\"url(#vesperTint)\">{glyph}</g>",
+            enclosure(&config.accent, "0.20", &config.accent, "0.55", 10)
         ),
         "clear" => {
             let foreground = if config.scheme_mode == "light" {
@@ -882,16 +1149,22 @@ fn compile_icon(canonical: &Path, config: &Config) -> Result<String, String> {
             };
             let clear_matrix = colour_matrix(foreground);
             format!(
-                "<defs><filter id=\"vesperClear\" color-interpolation-filters=\"sRGB\"><feColorMatrix type=\"matrix\" values=\"{clear_matrix}\"/></filter></defs><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"{}\" fill-opacity=\"0.10\" stroke=\"{}\" stroke-opacity=\"0.28\" stroke-width=\"8\"/><g filter=\"url(#vesperClear)\">{glyph}</g>",
-                if config.scheme_mode == "light" { "#ffffff" } else { "#d8d9de" },
-                foreground
+                "<defs><filter id=\"vesperClear\" color-interpolation-filters=\"sRGB\"><feColorMatrix type=\"matrix\" values=\"{clear_matrix}\"/></filter></defs>{}<g filter=\"url(#vesperClear)\">{glyph}</g>",
+                enclosure(if config.scheme_mode == "light" { "#ffffff" } else { "#d8d9de" }, "0.10", foreground, "0.28", 8)
             )
         }
-        "glass" => format!(
-            "<defs><linearGradient id=\"vesperGlass\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.46\"/><stop offset=\"0.42\" stop-color=\"{}\" stop-opacity=\"0.18\"/><stop offset=\"1\" stop-color=\"#ffffff\" stop-opacity=\"0.08\"/></linearGradient><linearGradient id=\"vesperSpec\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.72\"/><stop offset=\"0.45\" stop-color=\"#ffffff\" stop-opacity=\"0.08\"/><stop offset=\"1\" stop-color=\"#ffffff\" stop-opacity=\"0\"/></linearGradient></defs><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#vesperGlass)\" stroke=\"#ffffff\" stroke-opacity=\"0.42\" stroke-width=\"8\"/><rect x=\"116\" y=\"116\" width=\"792\" height=\"396\" rx=\"172\" fill=\"url(#vesperSpec)\"/>{glyph}",
-            config.accent
-        ),
         _ => glyph,
+    };
+
+    let body = if config.material == "glass" {
+        format!(
+            "<defs><linearGradient id=\"vesperMaterialGlass\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.18\"/><stop offset=\"0.46\" stop-color=\"{}\" stop-opacity=\"0.08\"/><stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.06\"/></linearGradient><linearGradient id=\"vesperMaterialSpec\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.54\"/><stop offset=\"0.48\" stop-color=\"#ffffff\" stop-opacity=\"0.05\"/><stop offset=\"1\" stop-color=\"#ffffff\" stop-opacity=\"0\"/></linearGradient></defs><g>{body}</g><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"url(#vesperMaterialGlass)\" pointer-events=\"none\"/><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" rx=\"{}\" fill=\"url(#vesperMaterialSpec)\" pointer-events=\"none\"/>",
+            config.accent,
+            grid.enclosure_x, grid.enclosure_x, grid.enclosure_size, grid.enclosure_size, grid.enclosure_radius,
+            grid.enclosure_x + 16, grid.enclosure_x + 16, grid.enclosure_size - 32, (grid.enclosure_size * 43) / 100, (grid.enclosure_radius - 16).max(0)
+        )
+    } else {
+        body
     };
 
     Ok(format!(
@@ -965,6 +1238,132 @@ fn gc_generations(current: &Path) {
     }
 }
 
+fn json_i32_field(value: &str, key: &str) -> Option<i32> {
+    let needle = format!("\"{key}\":");
+    let rest = value.get(value.find(&needle)? + needle.len()..)?.trim_start();
+    let end = rest
+        .find(|character: char| !character.is_ascii_digit() && character != '-')
+        .unwrap_or(rest.len());
+    rest.get(..end)?.parse().ok()
+}
+
+fn json_string_field(value: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\":\"");
+    let rest = value.get(value.find(&needle)? + needle.len()..)?;
+    Some(rest.get(..rest.find('"')?)?.to_string())
+}
+
+fn raster_data_uri(asset: &Path) -> Result<String, String> {
+    let output = Command::new("base64")
+        .args(["-w", "0"])
+        .arg(asset)
+        .output()
+        .map_err(|error| format!("failed to encode vicon raster layer: {error}"))?;
+    if !output.status.success() {
+        return Err("failed to encode vicon raster layer".to_string());
+    }
+    Ok(format!(
+        "data:image/png;base64,{}",
+        String::from_utf8_lossy(&output.stdout)
+    ))
+}
+
+fn vicon_static_svg(package: &Path) -> Result<String, String> {
+    if !package.join("manifest.json").is_file() {
+        return Err("vicon manifest unavailable".to_string());
+    }
+
+    let groups_root = package.join("groups");
+    let mut groups = fs::read_dir(&groups_root)
+        .map_err(|error| format!("vicon groups unavailable: {error}"))?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .map(|entry| {
+            let path = entry.path();
+            let metadata = fs::read_to_string(path.join("group.json"))
+                .map_err(|error| format!("vicon group metadata unavailable: {error}"))?;
+            let depth = json_i32_field(&metadata, "depth")
+                .ok_or_else(|| "vicon group depth unavailable".to_string())?;
+            let material = json_string_field(&metadata, "material")
+                .unwrap_or_else(|| "standard".to_string());
+            let mut layers = fs::read_dir(path.join("layers"))
+                .map_err(|error| format!("vicon group layers unavailable: {error}"))?
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.is_file())
+                .collect::<Vec<_>>();
+            layers.sort();
+            if layers.is_empty() {
+                return Err("vicon group has no layers".to_string());
+            }
+            Ok((depth, path, material, layers))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    if !(1..=4).contains(&groups.len()) {
+        return Err(format!("vicon must contain 1 to 4 groups, found {}", groups.len()));
+    }
+    groups.sort_by(|left, right| left.0.cmp(&right.0).then_with(|| left.1.cmp(&right.1)));
+
+    let mut defs = String::new();
+    let mut body = String::new();
+    for (index, (depth, _path, material, layers)) in groups.into_iter().enumerate() {
+        let depth = depth.clamp(0, 8);
+        let filter = format!("vesperViconDepth{index}");
+        let shadow_opacity = 0.10 + f64::from(depth) * 0.035;
+        defs.push_str(&format!(
+            "<filter id=\"{filter}\" x=\"-30%\" y=\"-30%\" width=\"160%\" height=\"170%\"><feDropShadow dx=\"0\" dy=\"{}\" stdDeviation=\"{}\" flood-color=\"#000000\" flood-opacity=\"{shadow_opacity:.3}\"/></filter>",
+            depth * 4,
+            2 + depth * 2
+        ));
+        let opacity = if material == "glass" { "0.88" } else { "1" };
+        body.push_str(&format!(
+            "<g data-vesper-depth=\"{depth}\" data-vesper-material=\"{}\" opacity=\"{opacity}\" filter=\"url(#{filter})\">",
+            json_escape(&material)
+        ));
+        for asset in layers {
+            match asset
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .as_str()
+            {
+                "svg" => {
+                    let (inner, viewbox) = svg_inner_and_viewbox(&asset)?;
+                    body.push_str(&nested_svg(&inner, &viewbox, 0, 0, 1024));
+                }
+                "png" => body.push_str(&format!(
+                    "<image x=\"0\" y=\"0\" width=\"1024\" height=\"1024\" preserveAspectRatio=\"xMidYMid meet\" href=\"{}\"/>",
+                    raster_data_uri(&asset)?
+                )),
+                _ => return Err(format!("unsupported vicon layer: {}", asset.display())),
+            }
+        }
+        body.push_str("</g>");
+    }
+
+    Ok(format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\"><defs>{defs}</defs>{body}</svg>\n"
+    ))
+}
+
+fn static_render_source(id: &str, fingerprint: &str) -> Result<(PathBuf, bool), String> {
+    let canonical_dir = canonical_dir(id, fingerprint);
+    let package = canonical_dir.join("icon.vicon");
+    if !package.join("manifest.json").is_file() {
+        return existing_canonical(id, fingerprint)
+            .map(|path| (path, false))
+            .ok_or_else(|| "canonical source unavailable".to_string());
+    }
+
+    let scratch = canonical_dir.join(format!(
+        ".vicon-static-source.{}.svg",
+        std::process::id()
+    ));
+    fs::write(&scratch, vicon_static_svg(&package)?).map_err(|error| error.to_string())?;
+    Ok((scratch, true))
+}
+
 fn compile_theme(items: &mut [InventoryItem], config: &Config) -> Result<usize, String> {
     let generation = generations_root().join(generation_id());
     let apps_dir = generation.join("scalable/apps");
@@ -984,19 +1383,29 @@ fn compile_theme(items: &mut [InventoryItem], config: &Config) -> Result<usize, 
             if item.excluded || item.canonical_state != "validated" {
                 continue;
             }
-            let Some(source) = existing_canonical(&item.id, &item.fingerprint) else {
-                continue;
+            let (source, scratch) = match static_render_source(&item.id, &item.fingerprint) {
+                Ok(value) => value,
+                Err(error) => {
+                    item.error = format!("canonical: {error}");
+                    continue;
+                }
             };
-            let Some(primary) = icon_theme_name(&item.icon_key) else {
-                continue;
-            };
+            let primary = icon_theme_name(&item.icon_key).unwrap_or_else(|| {
+                safe_name(item.id.strip_suffix(".desktop").unwrap_or(&item.id))
+            });
             let compiled = match compile_icon(&source, config) {
                 Ok(compiled) => compiled,
                 Err(error) => {
+                    if scratch {
+                        let _ = fs::remove_file(&source);
+                    }
                     item.error = format!("compile: {error}");
                     continue;
                 }
             };
+            if scratch {
+                let _ = fs::remove_file(&source);
+            }
 
             let mut aliases = BTreeSet::new();
             aliases.insert(primary);
@@ -1025,6 +1434,134 @@ fn compile_theme(items: &mut [InventoryItem], config: &Config) -> Result<usize, 
     Ok(active)
 }
 
+fn desktop_has_exec_icon_field_code(content: &str) -> bool {
+    let mut in_desktop = false;
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            in_desktop = line == "[Desktop Entry]";
+            continue;
+        }
+        if in_desktop {
+            if let Some(value) = line.strip_prefix("Exec=") {
+                return value.split_whitespace().any(|token| token == "%i" || token.contains("%i"));
+            }
+        }
+    }
+    false
+}
+
+fn shadow_content(upstream: &str, theme_icon: &str) -> Result<String, String> {
+    let mut out = String::with_capacity(upstream.len() + 128);
+    let mut in_desktop = false;
+    let mut replaced_icon = false;
+    let mut marker_written = false;
+
+    for raw in upstream.lines() {
+        let line = raw.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            if in_desktop && !marker_written {
+                out.push_str("X-Vesper-Adaptive-Shadow=true\n");
+                marker_written = true;
+            }
+            in_desktop = line == "[Desktop Entry]";
+            out.push_str(raw);
+            out.push('\n');
+            continue;
+        }
+        if in_desktop && line.starts_with("X-Vesper-Adaptive-Shadow=") {
+            continue;
+        }
+        if in_desktop && line.starts_with("Icon=") {
+            out.push_str("Icon=");
+            out.push_str(theme_icon);
+            out.push('\n');
+            replaced_icon = true;
+            continue;
+        }
+        out.push_str(raw);
+        out.push('\n');
+    }
+    if in_desktop && !marker_written {
+        out.push_str("X-Vesper-Adaptive-Shadow=true\n");
+    }
+    if !replaced_icon {
+        return Err("upstream desktop entry lost its main Icon field".to_string());
+    }
+    Ok(out)
+}
+
+fn is_vesper_shadow(path: &Path) -> bool {
+    fs::read_to_string(path)
+        .map(|content| content.lines().any(|line| line.trim() == "X-Vesper-Adaptive-Shadow=true"))
+        .unwrap_or(false)
+}
+
+fn persist_shadow_db(desired: &BTreeMap<PathBuf, String>) -> Result<(), String> {
+    let updated_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(i64::MAX as u128) as i64;
+    let mut sql = String::from(
+        "PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS shadow_desktop_entries(path TEXT PRIMARY KEY, desktop_id TEXT NOT NULL, updated_ms INTEGER NOT NULL); BEGIN IMMEDIATE; DELETE FROM shadow_desktop_entries;\n",
+    );
+    for (path, desktop_id) in desired {
+        sql.push_str(&format!(
+            "INSERT INTO shadow_desktop_entries(path,desktop_id,updated_ms) VALUES({}, {}, {});\n",
+            sql_quote(&path.to_string_lossy()),
+            sql_quote(desktop_id),
+            updated_ms,
+        ));
+    }
+    sql.push_str("COMMIT;\n");
+    sqlite(&sql)?;
+    Ok(())
+}
+
+fn sync_shadow_entries(items: &[InventoryItem], config: &Config) -> Result<(), String> {
+    let applications = data_home().join("applications");
+    fs::create_dir_all(&applications).map_err(|error| error.to_string())?;
+    let mut desired = BTreeMap::<PathBuf, String>::new();
+
+    if config.enabled {
+        for item in items {
+            if !item.active || item.excluded || !Path::new(&item.icon_key).is_absolute() {
+                continue;
+            }
+            if item.desktop_path.starts_with(&applications) {
+                continue;
+            }
+            let upstream = match fs::read_to_string(&item.desktop_path) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+            if desktop_has_exec_icon_field_code(&upstream) {
+                continue;
+            }
+            let theme_icon = safe_name(item.id.strip_suffix(".desktop").unwrap_or(&item.id));
+            let target = applications.join(&item.id);
+            if target.exists() && !is_vesper_shadow(&target) {
+                continue;
+            }
+            let content = shadow_content(&upstream, &theme_icon)?;
+            write_atomic(&target, content)?;
+            desired.insert(target, item.id.clone());
+        }
+    }
+
+    if let Ok(entries) = fs::read_dir(&applications) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() && is_vesper_shadow(&path) && !desired.contains_key(&path) {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+    persist_shadow_db(&desired)?;
+    Ok(())
+}
+
 fn retire_legacy_queue() {
     let queue = state_root().join("queue");
     if !queue.exists() {
@@ -1042,12 +1579,25 @@ fn build_inventory(config: &Config) -> Vec<InventoryItem> {
     let data_dirs = effective_data_dirs();
     let records = discover_desktops(&data_dirs);
     let index = build_icon_index(&data_dirs);
+    let appstream_icons = build_appstream_icon_map(&data_dirs);
     let exclusions = load_exclusions();
     let mut items = Vec::with_capacity(records.len());
 
     for record in records {
         let excluded = exclusions.contains(&record.id);
-        let source_path = resolve_icon(&record.icon, &index);
+        let source_path = resolve_icon(&record.icon, &index).or_else(|| {
+            let recovery = appstream_icons.get(&record.id)?;
+            let path = PathBuf::from(recovery);
+            if path.is_absolute() {
+                if path.is_file() && !is_vesper_owned_source(&path) {
+                    Some(path)
+                } else {
+                    None
+                }
+            } else {
+                resolve_icon(recovery, &index)
+            }
+        });
         let mut item = InventoryItem {
             id: record.id.clone(),
             desktop_path: record.path.clone(),
@@ -1103,7 +1653,7 @@ fn build_inventory(config: &Config) -> Vec<InventoryItem> {
                 item.canonical_state = "pending-ai".to_string();
                 item.error = "compressed-svg-requires-normalization".to_string();
             }
-            "png" | "webp" | "xpm" => {
+            "png" | "webp" | "jpg" | "jpeg" | "ico" | "xpm" => {
                 item.canonical_state = "pending-ai".to_string();
             }
             _ => {
@@ -1202,11 +1752,14 @@ fn status_json(items: &[InventoryItem], config: &Config, current: &str) -> Strin
     let active = items.iter().filter(|item| item.active).count();
 
     format!(
-        "{{\"enabled\":{},\"mode\":\"{}\",\"provider\":\"{}\",\"providerConfigured\":{},\"followPalette\":{},\"schemeMode\":\"{}\",\"accent\":\"{}\",\"theme\":\"{}\",\"discovered\":{},\"canonical\":{},\"pending\":{},\"failed\":{},\"excluded\":{},\"active\":{},\"current\":\"{}\",\"aiTransport\":\"pending\"}}\n",
+        "{{\"enabled\":{},\"mode\":\"{}\",\"material\":\"{}\",\"gridRevision\":\"{}\",\"provider\":\"{}\",\"providerConfigured\":{},\"remoteConsent\":{},\"followPalette\":{},\"schemeMode\":\"{}\",\"accent\":\"{}\",\"theme\":\"{}\",\"discovered\":{},\"canonical\":{},\"pending\":{},\"failed\":{},\"excluded\":{},\"active\":{},\"current\":\"{}\",\"aiTransport\":\"worker\"}}\n",
         if config.enabled { "true" } else { "false" },
         json_escape(&config.mode),
+        json_escape(&config.material),
+        GRID_REVISION,
         json_escape(&config.provider),
         if provider_configured(&config.provider) { "true" } else { "false" },
+        if config.remote_consent { "true" } else { "false" },
         if config.follow_palette { "true" } else { "false" },
         json_escape(&config.scheme_mode),
         json_escape(&config.accent),
@@ -1221,8 +1774,90 @@ fn status_json(items: &[InventoryItem], config: &Config, current: &str) -> Strin
     )
 }
 
+fn persist_inventory_db(items: &[InventoryItem]) -> Result<(), String> {
+    let mut sql = String::from(
+        "PRAGMA journal_mode=WAL;\n\
+         PRAGMA synchronous=NORMAL;\n\
+         PRAGMA busy_timeout=5000;\n\
+         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);\n\
+         CREATE TABLE IF NOT EXISTS application_inventory (\n\
+           desktop_id TEXT PRIMARY KEY,\n\
+           desktop_path TEXT NOT NULL,\n\
+           icon_key TEXT NOT NULL,\n\
+           source_path TEXT NOT NULL,\n\
+           source_fingerprint TEXT NOT NULL,\n\
+           source_kind TEXT NOT NULL,\n\
+           canonical_state TEXT NOT NULL,\n\
+           active INTEGER NOT NULL,\n\
+           excluded INTEGER NOT NULL,\n\
+           error TEXT NOT NULL,\n\
+           updated_ms INTEGER NOT NULL\n\
+         );\n\
+         CREATE INDEX IF NOT EXISTS application_inventory_fingerprint_idx ON application_inventory(source_fingerprint);\n\
+         CREATE TABLE IF NOT EXISTS source_provenance (\n\
+           fingerprint TEXT PRIMARY KEY,\n\
+           source_path TEXT NOT NULL,\n\
+           source_kind TEXT NOT NULL,\n\
+           reference_count INTEGER NOT NULL,\n\
+           updated_ms INTEGER NOT NULL\n\
+         );\n\
+         BEGIN IMMEDIATE;\n\
+         DELETE FROM application_inventory;\n\
+         DELETE FROM source_provenance;\n",
+    );
+    let updated_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .min(i64::MAX as u128) as i64;
+    let mut sources = BTreeMap::<String, (String, String, usize)>::new();
+    for item in items {
+        let source_path = item
+            .source_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        sql.push_str(&format!(
+            "INSERT INTO application_inventory(desktop_id, desktop_path, icon_key, source_path, source_fingerprint, source_kind, canonical_state, active, excluded, error, updated_ms) VALUES({}, {}, {}, {}, {}, {}, {}, {}, {}, {}, {});\n",
+            sql_quote(&item.id),
+            sql_quote(&item.desktop_path.to_string_lossy()),
+            sql_quote(&item.icon_key),
+            sql_quote(&source_path),
+            sql_quote(&item.fingerprint),
+            sql_quote(&item.source_kind),
+            sql_quote(&item.canonical_state),
+            if item.active { 1 } else { 0 },
+            if item.excluded { 1 } else { 0 },
+            sql_quote(&item.error),
+            updated_ms,
+        ));
+        if !item.fingerprint.is_empty() {
+            let entry = sources
+                .entry(item.fingerprint.clone())
+                .or_insert_with(|| (source_path, item.source_kind.clone(), 0));
+            entry.2 += 1;
+        }
+    }
+    for (fingerprint, (source_path, source_kind, reference_count)) in sources {
+        sql.push_str(&format!(
+            "INSERT INTO source_provenance(fingerprint, source_path, source_kind, reference_count, updated_ms) VALUES({}, {}, {}, {}, {});\n",
+            sql_quote(&fingerprint),
+            sql_quote(&source_path),
+            sql_quote(&source_kind),
+            reference_count,
+            updated_ms,
+        ));
+    }
+    sql.push_str(
+        "INSERT INTO meta(key, value) VALUES('inventorySchemaVersion', '1') ON CONFLICT(key) DO UPDATE SET value=excluded.value;\nCOMMIT;\n",
+    );
+    sqlite(&sql)?;
+    Ok(())
+}
+
 fn write_state(items: &[InventoryItem], config: &Config, current: &str) -> Result<(), String> {
     fs::create_dir_all(state_root()).map_err(|error| error.to_string())?;
+    persist_inventory_db(items)?;
     write_atomic(&state_root().join("inventory.json"), inventory_json(items))?;
     write_atomic(&state_root().join("inventory.tsv"), inventory_tsv(items))?;
     write_atomic(
@@ -1237,6 +1872,7 @@ fn reconcile() -> Result<String, String> {
     let config = load_config();
     let mut items = build_inventory(&config);
     let active = compile_theme(&mut items, &config)?;
+    sync_shadow_entries(&items, &config)?;
     write_state(&items, &config, "idle")?;
     Ok(format!(
         "discovered={} canonical={} active={}",
@@ -1298,12 +1934,31 @@ fn set_mode(mode: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn set_material(material: &str) -> Result<(), String> {
+    if !valid_material(material) {
+        return Err(format!("unsupported icon material: {material}"));
+    }
+    let mut config = load_config();
+    config.material = material.to_string();
+    save_config(&config)?;
+    reconcile()?;
+    Ok(())
+}
+
 fn set_provider(provider: &str) -> Result<(), String> {
     if !valid_provider(provider) {
         return Err(format!("unsupported provider: {provider}"));
     }
     let mut config = load_config();
     config.provider = provider.to_string();
+    save_config(&config)?;
+    reconcile()?;
+    Ok(())
+}
+
+fn set_remote_consent(enabled: bool) -> Result<(), String> {
+    let mut config = load_config();
+    config.remote_consent = enabled;
     save_config(&config)?;
     reconcile()?;
     Ok(())
@@ -1492,8 +2147,11 @@ fn usage() -> ! {
            enable|disable\n\
            reconcile\n\
            ensure-theme\n\
-           mode original|light|dark|tinted|clear|glass\n\
+           grid-info\n\
+           mode automatic|default|dark|tinted|clear\n\
+           material standard|glass\n\
            provider openai|anthropic|xai|openrouter|google\n\
+           remote-consent on|off\n\
            follow-palette on|off\n\
            sync-theme light|dark\n\
            app-status <desktop-id>\n\
@@ -1513,8 +2171,17 @@ fn main() {
         [command] if command == "disable" => set_enabled(false),
         [command] if command == "reconcile" => reconcile().map(|summary| println!("{summary}")),
         [command] if command == "ensure-theme" => ensure_theme(),
+        [command] if command == "grid-info" => Ok(println!(
+            "{{\"revision\":\"{}\",\"canvas\":1024,\"enclosure\":832,\"circularContent\":672,\"primaryContent\":696}}", GRID_REVISION
+        )),
         [command, mode] if command == "mode" => set_mode(mode),
+        [command, material] if command == "material" => set_material(material),
         [command, provider] if command == "provider" => set_provider(provider),
+        [command, value] if command == "remote-consent" => match value.as_str() {
+            "on" => set_remote_consent(true),
+            "off" => set_remote_consent(false),
+            _ => usage(),
+        },
         [command, value] if command == "follow-palette" => match value.as_str() {
             "on" => set_follow_palette(true),
             "off" => set_follow_palette(false),
@@ -1536,5 +2203,70 @@ fn main() {
     if let Err(error) = result {
         eprintln!("{error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{unsafe_svg_reason, vicon_static_svg};
+    use std::fs;
+
+    #[test]
+    fn standard_svg_namespace_is_not_treated_as_external_content() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>"#;
+        assert_eq!(unsafe_svg_reason(svg), None);
+    }
+
+    #[test]
+    fn external_svg_reference_is_rejected() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><image href="https://example.invalid/icon.svg"/></svg>"#;
+        assert_eq!(unsafe_svg_reason(svg), Some("embedded-image"));
+    }
+
+    #[test]
+    fn vicon_static_render_uses_every_group_and_semantic_depth() {
+        let root = std::env::temp_dir().join(format!(
+            "vesper-vicon-render-test-{}",
+            std::process::id()
+        ));
+        let first = root.join("groups/01-background/layers");
+        let second = root.join("groups/02-foreground/layers");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+        fs::write(root.join("manifest.json"), "{}\n").unwrap();
+        fs::write(
+            root.join("groups/01-background/group.json"),
+            r#"{"id":"background","depth":0,"material":"standard"}"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("groups/02-foreground/group.json"),
+            r#"{"id":"foreground","depth":2,"material":"glass"}"#,
+        )
+        .unwrap();
+        fs::write(
+            first.join("01.svg"),
+            r##"<svg viewBox="0 0 1024 1024"><rect width="1024" height="1024" fill="#ff0000"/></svg>"##,
+        )
+        .unwrap();
+        fs::write(
+            second.join("01.svg"),
+            r##"<svg viewBox="0 0 1024 1024"><circle cx="512" cy="512" r="256" fill="#0000ff"/></svg>"##,
+        )
+        .unwrap();
+
+        let rendered = vicon_static_svg(&root).unwrap();
+        assert!(rendered.contains("#ff0000"));
+        assert!(rendered.contains("#0000ff"));
+        assert!(rendered.contains("data-vesper-depth=\"2\""));
+        assert!(rendered.contains("data-vesper-material=\"glass\""));
+
+        fs::write(
+            root.join("groups/02-foreground/group.json"),
+            r#"{"id":"foreground","depth":5,"material":"standard"}"#,
+        )
+        .unwrap();
+        assert_ne!(rendered, vicon_static_svg(&root).unwrap());
+        let _ = fs::remove_dir_all(root);
     }
 }

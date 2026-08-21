@@ -1,4 +1,3 @@
-use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -9,6 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const VICON_SCHEMA_VERSION: u32 = 1;
 const PROMPT_REVISION: u32 = 1;
+const MAX_SOURCE_BYTES: u64 = 20 * 1024 * 1024;
+const MAX_RASTER_DIMENSION: u64 = 16_384;
+const MAX_RASTER_PIXELS: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 struct Claim {
@@ -50,6 +52,10 @@ fn state_root() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".local/state"))
         .join("vesper/adaptive-icons")
+}
+
+fn db_path() -> PathBuf {
+    state_root().join("state.sqlite3")
 }
 
 fn data_home() -> PathBuf {
@@ -232,14 +238,54 @@ fn model_for(provider: &str) -> String {
         "xai" => "grok-4.5".to_string(),
         "openrouter" => "openai/gpt-5".to_string(),
         "google" => "gemini-3.6-flash".to_string(),
-        "anthropic" => "claude-sonnet-4-20250514".to_string(),
+        "anthropic" => "claude-sonnet-5".to_string(),
         _ => String::new(),
     }
 }
 
+fn sqlite_read(sql: &str) -> Result<String, String> {
+    let output = Command::new("sqlite3")
+        .args(["-batch", "-noheader", "-separator", "\t"])
+        .arg(db_path())
+        .arg(sql)
+        .output()
+        .map_err(|error| format!("failed to read adaptive icon state db: {error}"))?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if message.is_empty() {
+            format!("sqlite3 exited with {}", output.status.code().unwrap_or(-1))
+        } else {
+            message
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 fn load_inventory() -> Vec<InventoryItem> {
-    let content = fs::read_to_string(inventory_path()).unwrap_or_default();
     let mut items = Vec::new();
+    if let Ok(content) = sqlite_read(
+        "PRAGMA busy_timeout=5000; SELECT desktop_id,icon_key,source_fingerprint,source_kind,canonical_state,excluded FROM application_inventory ORDER BY desktop_id;",
+    ) {
+        for line in content.lines() {
+            let parts = line.split('\t').collect::<Vec<_>>();
+            if parts.len() < 6 {
+                continue;
+            }
+            items.push(InventoryItem {
+                id: parts[0].to_string(),
+                icon_key: parts[1].to_string(),
+                fingerprint: parts[2].to_string(),
+                source_kind: parts[3].to_string(),
+                canonical_state: parts[4].to_string(),
+                excluded: parts[5] == "1",
+            });
+        }
+        if !items.is_empty() {
+            return items;
+        }
+    }
+
+    let content = fs::read_to_string(inventory_path()).unwrap_or_default();
     for line in content.lines() {
         let parts = line.split('\t').collect::<Vec<_>>();
         if parts.len() < 9 {
@@ -320,14 +366,58 @@ fn source_is_unsafe_svg(path: &Path) -> bool {
         "<script",
         "<foreignobject",
         "javascript:",
-        "http://",
-        "https://",
-        "file://",
+        "href=\"http://",
+        "href='http://",
+        "href=\"https://",
+        "href='https://",
+        "href=\"file://",
+        "href='file://",
+        "src=\"http://",
+        "src='http://",
+        "src=\"https://",
+        "src='https://",
+        "src=\"file://",
+        "src='file://",
+        "url(http://",
+        "url(https://",
+        "url(file://",
         "@import",
         "@font-face",
     ]
     .iter()
     .any(|needle| lower.contains(needle))
+}
+
+fn raster_dimensions(path: &Path) -> Result<(u64, u64), String> {
+    let result = Command::new("magick")
+        .args(["identify", "-quiet", "-format", "%w %h"])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("failed to inspect raster dimensions: {error}"))?;
+    if !result.status.success() {
+        return Err("raster dimensions could not be inspected safely".to_string());
+    }
+    let text = String::from_utf8_lossy(&result.stdout);
+    let first = text.lines().next().unwrap_or("");
+    let mut parts = first.split_whitespace();
+    let width = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| "invalid raster width".to_string())?;
+    let height = parts
+        .next()
+        .and_then(|value| value.parse::<u64>().ok())
+        .ok_or_else(|| "invalid raster height".to_string())?;
+    if width == 0 || height == 0 {
+        return Err("raster has zero dimensions".to_string());
+    }
+    if width > MAX_RASTER_DIMENSION
+        || height > MAX_RASTER_DIMENSION
+        || width.saturating_mul(height) > MAX_RASTER_PIXELS
+    {
+        return Err(format!("raster pixel budget exceeded: {width}x{height}"));
+    }
+    Ok((width, height))
 }
 
 fn normalize_source(claim: &Claim, work: &Path) -> Result<PathBuf, String> {
@@ -336,13 +426,17 @@ fn normalize_source(claim: &Claim, work: &Path) -> Result<PathBuf, String> {
     if !metadata.is_file() {
         return Err("source icon is not a regular file".to_string());
     }
-    if metadata.len() > 20 * 1024 * 1024 {
+    if metadata.len() > MAX_SOURCE_BYTES {
         return Err("source icon exceeds 20 MiB input limit".to_string());
     }
     if matches!(claim.source_kind.as_str(), "svg" | "svgz")
         && source_is_unsafe_svg(&claim.source_path)
     {
         return Err("unsafe SVG cannot be sent or rasterized".to_string());
+    }
+
+    if !matches!(claim.source_kind.as_str(), "svg" | "svgz") {
+        raster_dimensions(&claim.source_path)?;
     }
 
     fs::create_dir_all(work).map_err(|error| error.to_string())?;
@@ -376,9 +470,10 @@ fn normalize_source(claim: &Claim, work: &Path) -> Result<PathBuf, String> {
         return Err("source icon could not be normalized safely".to_string());
     }
     let target_size = fs::metadata(&target).map(|value| value.len()).unwrap_or(0);
-    if target_size == 0 || target_size > 20 * 1024 * 1024 {
+    if target_size == 0 || target_size > MAX_SOURCE_BYTES {
         return Err("normalized icon is empty or too large".to_string());
     }
+    raster_dimensions(&target)?;
     Ok(target)
 }
 
@@ -470,21 +565,29 @@ fn provider_request(claim: &Claim, image: &Path, work: &Path) -> Result<Decompos
     let headers_path = work.join("headers.txt");
 
     let (url, headers, body, filter) = match claim.provider.as_str() {
-        "openai" => (
-            "https://api.openai.com/v1/responses".to_string(),
-            vec![
-                format!("Authorization: Bearer {key}"),
-                "Content-Type: application/json".to_string(),
-            ],
-            format!(
-                "{{\"model\":\"{}\",\"store\":false,\"input\":[{{\"role\":\"user\",\"content\":[{{\"type\":\"input_text\",\"text\":\"{}\"}},{{\"type\":\"input_image\",\"image_url\":\"data:image/png;base64,{}\",\"detail\":\"high\"}}]}}],\"text\":{{\"format\":{{\"type\":\"json_schema\",\"name\":\"vesper_icon_decomposition\",\"strict\":true,\"schema\":{}}}}}}}}",
-                json_escape(&model),
-                json_escape(prompt),
-                image_b64,
-                schema_json(),
-            ),
-            "[.. | objects | select(.type? == \"output_text\") | .text?] | map(select(. != null)) | join(\"\\n\")",
-        ),
+        "openai" => {
+            let schema = schema_json();
+            (
+                "https://api.openai.com/v1/responses".to_string(),
+                vec![
+                    format!("Authorization: Bearer {key}"),
+                    "Content-Type: application/json".to_string(),
+                ],
+                [
+                    "{\"model\":\"",
+                    &json_escape(&model),
+                    "\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"",
+                    &json_escape(prompt),
+                    "\"},{\"type\":\"input_image\",\"image_url\":\"data:image/png;base64,",
+                    &image_b64,
+                    "\",\"detail\":\"high\"}]}],\"text\":{\"format\":{\"type\":\"json_schema\",\"name\":\"vesper_icon_decomposition\",\"strict\":true,\"schema\":",
+                    &schema,
+                    "}}}}",
+                ]
+                .concat(),
+                "[.. | objects | select(.type? == \"output_text\") | .text?] | map(select(. != null)) | join(\"\\n\")",
+            )
+        },
         "xai" => (
             "https://api.x.ai/v1/responses".to_string(),
             vec![
@@ -644,6 +747,85 @@ fn install_vicon_dir(stage: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_vicon_tree(root: &Path, current: &Path, files: &mut usize, bytes: &mut u64) -> Result<(), String> {
+    let metadata = fs::symlink_metadata(current).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!("vicon contains symlink: {}", current.display()));
+    }
+    if metadata.is_file() {
+        *files += 1;
+        *bytes = bytes.saturating_add(metadata.len());
+        if *files > 128 || *bytes > 32 * 1024 * 1024 {
+            return Err("vicon package exceeds file or byte budget".to_string());
+        }
+        let extension = current
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !matches!(extension.as_str(), "json" | "svg" | "png") {
+            return Err(format!("unsupported vicon asset: {}", current.display()));
+        }
+        if extension == "svg" {
+            if source_is_unsafe_svg(current) {
+                return Err(format!("unsafe SVG in vicon: {}", current.display()));
+            }
+            let content = fs::read_to_string(current).map_err(|error| error.to_string())?;
+            let lower = content.to_ascii_lowercase();
+            if !lower.contains("<svg") || lower.matches('<').count() > 12_000 {
+                return Err(format!("invalid or over-complex SVG in vicon: {}", current.display()));
+            }
+        } else if extension == "png" {
+            let (width, height) = raster_dimensions(current)?;
+            if width > 4096 || height > 4096 || width.saturating_mul(height) > 16 * 1024 * 1024 {
+                return Err(format!("vicon raster layer exceeds canonical budget: {width}x{height}"));
+            }
+        }
+        return Ok(());
+    }
+    if !metadata.is_dir() {
+        return Err(format!("unsupported vicon filesystem entry: {}", current.display()));
+    }
+    for entry in fs::read_dir(current).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        validate_vicon_tree(root, &entry.path(), files, bytes)?;
+    }
+    let _ = root;
+    Ok(())
+}
+
+fn validate_vicon(stage: &Path) -> Result<(), String> {
+    let manifest_path = stage.join("manifest.json");
+    let manifest = fs::read_to_string(&manifest_path)
+        .map_err(|error| format!("vicon manifest missing: {error}"))?;
+    if manifest.len() > 256 * 1024 {
+        return Err("vicon manifest exceeds 256 KiB".to_string());
+    }
+    if !manifest.contains(&format!("\"schemaVersion\":{VICON_SCHEMA_VERSION}"))
+        || !manifest.contains("\"canvas\":{\"width\":1024,\"height\":1024,\"masked\":false}")
+    {
+        return Err("vicon manifest has unsupported schema or canvas".to_string());
+    }
+    for appearance in ["default", "dark", "mono"] {
+        if !stage.join(format!("appearances/{appearance}.json")).is_file() {
+            return Err(format!("vicon missing {appearance} appearance"));
+        }
+    }
+    let groups_root = stage.join("groups");
+    let groups = fs::read_dir(&groups_root)
+        .map_err(|error| format!("vicon groups missing: {error}"))?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .count();
+    if !(1..=4).contains(&groups) {
+        return Err(format!("vicon must contain 1 to 4 groups, found {groups}"));
+    }
+    let mut files = 0usize;
+    let mut bytes = 0u64;
+    validate_vicon_tree(stage, stage, &mut files, &mut bytes)?;
+    Ok(())
+}
+
 fn raster_compat_svg(png: &[u8]) -> String {
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\"><image x=\"0\" y=\"0\" width=\"1024\" height=\"1024\" preserveAspectRatio=\"xMidYMid meet\" href=\"data:image/png;base64,{}\"/></svg>\n",
@@ -696,6 +878,7 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
             json_escape(&decomposition.notes),
         );
         fs::write(stage.join("manifest.json"), manifest).map_err(|error| error.to_string())?;
+        validate_vicon(&stage)?;
         install_vicon_dir(&stage, &dir.join("icon.vicon"))?;
 
         let compatibility = raster_compat_svg(&png);
@@ -709,6 +892,70 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
             json_escape(&claim.source_kind),
         );
         write_atomic(&dir.join("metadata.json"), metadata.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn vector_semantic_ready(claim: &Claim) -> bool {
+    claim.source_kind == "svg"
+        && claim.app_ids.iter().all(|app_id| {
+            let canonical = canonical_dir(app_id, &claim.key).join("canonical.svg");
+            canonical.is_file() && !source_is_unsafe_svg(&canonical)
+        })
+}
+
+fn build_vector_semantic_vicon(claim: &Claim, decomposition: &Decomposition) -> Result<(), String> {
+    for app_id in &claim.app_ids {
+        let dir = canonical_dir(app_id, &claim.key);
+        let canonical = dir.join("canonical.svg");
+        let svg = fs::read_to_string(&canonical)
+            .map_err(|error| format!("cannot read preserved vector geometry: {error}"))?;
+        if source_is_unsafe_svg(&canonical) {
+            return Err("preserved vector failed SVG safety validation".to_string());
+        }
+
+        let stage = dir.join(format!(".icon.vicon.{}.semantic.tmp", std::process::id()));
+        if stage.exists() {
+            fs::remove_dir_all(&stage).map_err(|error| error.to_string())?;
+        }
+        let layers = stage.join("groups/01-primary/layers");
+        fs::create_dir_all(&layers).map_err(|error| error.to_string())?;
+        fs::create_dir_all(stage.join("appearances")).map_err(|error| error.to_string())?;
+        fs::write(layers.join("01.svg"), svg).map_err(|error| error.to_string())?;
+        fs::write(
+            stage.join("groups/01-primary/group.json"),
+            "{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"depth\":1}\n",
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(stage.join("appearances/default.json"), appearance_json("default"))
+            .map_err(|error| error.to_string())?;
+        fs::write(stage.join("appearances/dark.json"), appearance_json("dark"))
+            .map_err(|error| error.to_string())?;
+        fs::write(stage.join("appearances/mono.json"), appearance_json("mono"))
+            .map_err(|error| error.to_string())?;
+
+        let apps = claim
+            .app_ids
+            .iter()
+            .map(|id| format!("\"{}\"", json_escape(id)))
+            .collect::<Vec<_>>()
+            .join(",");
+        let manifest = format!(
+            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-local-vector\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
+            VICON_SCHEMA_VERSION,
+            json_escape(&claim.key),
+            apps,
+            json_escape(&decomposition.provider),
+            json_escape(&decomposition.model),
+            PROMPT_REVISION,
+            json_escape(&decomposition.silhouette),
+            json_escape(&decomposition.background),
+            decomposition.confidence,
+            json_escape(&decomposition.notes),
+        );
+        fs::write(stage.join("manifest.json"), manifest).map_err(|error| error.to_string())?;
+        validate_vicon(&stage)?;
+        install_vicon_dir(&stage, &dir.join("icon.vicon"))?;
     }
     Ok(())
 }
@@ -764,6 +1011,7 @@ fn ensure_local_vector_vicon(item: &InventoryItem) -> Result<(), String> {
         local_silhouette(&svg),
     );
     fs::write(stage.join("manifest.json"), manifest).map_err(|error| error.to_string())?;
+    validate_vicon(&stage)?;
     install_vicon_dir(&stage, &target)
 }
 
@@ -776,8 +1024,25 @@ fn sync_local_vicons() -> Result<(), String> {
     Ok(())
 }
 
+fn remote_consent() -> bool {
+    let content = fs::read_to_string(config_root().join("adaptive-icons.conf")).unwrap_or_default();
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == "remoteConsent" {
+            let value = value.trim();
+            return value == "1" || value.eq_ignore_ascii_case("true");
+        }
+    }
+    false
+}
+
 fn process_once() -> Result<bool, String> {
     sync_local_vicons()?;
+    if !remote_consent() {
+        return Ok(false);
+    }
     let Some(claim) = claim_job()? else {
         return Ok(false);
     };
@@ -790,7 +1055,11 @@ fn process_once() -> Result<bool, String> {
     let result = (|| {
         let normalized = normalize_source(&claim, &work)?;
         let decomposition = provider_request(&claim, &normalized, &work)?;
-        build_raster_vicon(&claim, &normalized, &decomposition)?;
+        if vector_semantic_ready(&claim) {
+            build_vector_semantic_vicon(&claim, &decomposition)?;
+        } else {
+            build_raster_vicon(&claim, &normalized, &decomposition)?;
+        }
         Ok::<(), String>(())
     })();
 
@@ -860,18 +1129,18 @@ fn read_accent() -> String {
     "#7aa2f7".to_string()
 }
 
-fn render_appearance(canonical: &[u8], mode: &str, accent: &str) -> String {
+fn render_appearance(canonical: &[u8], appearance: &str, material: &str, accent: &str) -> String {
     let encoded = base64(canonical);
     let image = format!(
         "<image x=\"136\" y=\"136\" width=\"752\" height=\"752\" preserveAspectRatio=\"xMidYMid meet\" href=\"data:image/svg+xml;base64,{}\"/>",
         encoded
     );
-    let body = match mode {
+    let body = match appearance {
         "original" => format!(
             "<image x=\"0\" y=\"0\" width=\"1024\" height=\"1024\" preserveAspectRatio=\"xMidYMid meet\" href=\"data:image/svg+xml;base64,{}\"/>",
             encoded
         ),
-        "light" => format!(
+        "default" => format!(
             "<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"#f7f7f8\" stroke=\"#ffffff\" stroke-width=\"10\"/>{image}"
         ),
         "dark" => format!(
@@ -883,10 +1152,14 @@ fn render_appearance(canonical: &[u8], mode: &str, accent: &str) -> String {
         "clear" => format!(
             "<rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"#ffffff\" fill-opacity=\"0.10\" stroke=\"#ffffff\" stroke-opacity=\"0.36\" stroke-width=\"8\"/>{image}"
         ),
-        "glass" => format!(
-            "<defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.38\"/><stop offset=\"0.48\" stop-color=\"{accent}\" stop-opacity=\"0.18\"/><stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.16\"/></linearGradient><filter id=\"shadow\"><feDropShadow dx=\"0\" dy=\"18\" stdDeviation=\"24\" flood-opacity=\"0.24\"/></filter></defs><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#g)\" stroke=\"#ffffff\" stroke-opacity=\"0.45\" stroke-width=\"8\" filter=\"url(#shadow)\"/>{image}"
-        ),
         _ => image,
+    };
+    let body = if material == "glass" && appearance != "original" {
+        format!(
+            "<defs><linearGradient id=\"g\" x1=\"0\" y1=\"0\" x2=\"1\" y2=\"1\"><stop offset=\"0\" stop-color=\"#ffffff\" stop-opacity=\"0.20\"/><stop offset=\"0.48\" stop-color=\"{accent}\" stop-opacity=\"0.08\"/><stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.07\"/></linearGradient></defs><g>{body}</g><rect x=\"100\" y=\"100\" width=\"824\" height=\"824\" rx=\"188\" fill=\"url(#g)\" stroke=\"#ffffff\" stroke-opacity=\"0.30\" stroke-width=\"6\"/>"
+        )
+    } else {
+        body
     };
     format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1024\" height=\"1024\" viewBox=\"0 0 1024 1024\">{body}</svg>\n"
@@ -915,9 +1188,19 @@ fn export_app(id: &str) -> Result<PathBuf, String> {
     if canonical.is_file() {
         let bytes = fs::read(&canonical).map_err(|error| error.to_string())?;
         let accent = read_accent();
-        for mode in ["original", "light", "dark", "tinted", "clear", "glass"] {
-            fs::write(root.join(format!("{mode}.svg")), render_appearance(&bytes, mode, &accent))
+        fs::write(
+            root.join("original.svg"),
+            render_appearance(&bytes, "original", "standard", &accent),
+        )
+        .map_err(|error| error.to_string())?;
+        for appearance in ["default", "dark", "tinted", "clear"] {
+            for material in ["standard", "glass"] {
+                fs::write(
+                    root.join(format!("{appearance}-{material}.svg")),
+                    render_appearance(&bytes, appearance, material, &accent),
+                )
                 .map_err(|error| error.to_string())?;
+            }
         }
     }
     if dir.join("icon.vicon").is_dir() {

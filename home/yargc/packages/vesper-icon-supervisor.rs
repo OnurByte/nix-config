@@ -201,8 +201,10 @@ fn main() {
         std::process::exit(status.code().unwrap_or(1));
     }
 
-    if matches!(args.as_slice(), [command, id] if command == "app-retry") {
-        retry_queue_app(id);
+    if let [command, id] = args.as_slice() {
+        if command == "app-retry" {
+            retry_queue_app(id);
+        }
     }
 
     if matches!(
