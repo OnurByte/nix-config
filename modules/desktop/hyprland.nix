@@ -15,12 +15,6 @@
     };
   };
 
-  # Vesper's API-key manager uses freedesktop Secret Service. Greetd unlocks the
-  # desktop keyring with the login session instead of keeping plaintext keys in
-  # Nix or environment variables.
-  services.gnome.gnome-keyring.enable = true;
-  security.pam.services.greetd.enableGnomeKeyring = true;
-
   # App permissions are real only for sandboxed apps. Native Nix packages stay
   # explicitly marked unsandboxed; Flatpak apps can use per-app overrides.
   services.flatpak.enable = true;
