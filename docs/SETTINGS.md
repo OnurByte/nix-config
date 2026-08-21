@@ -1,6 +1,6 @@
 # Vesper Settings
 
-Status: **spec**
+Status: **partial**
 
 This document is the single source of truth for the Vesper Settings information architecture, cross-page UX rules and the runtime-to-declarative control model.
 
@@ -15,6 +15,7 @@ Vesper extends Caelestia Nexus instead of shipping a second general settings app
 Current Vesper-specific Settings integration includes:
 
 - `Appearance` integration over the upstream wallpaper/style surface
+- `Vicinae` launcher settings for the primary Super shortcut, Vesper theme/accent following, controlled-glass opacity and launcher behavior
 - extended `Network` controls
 - `AI` settings and credentials
 - installed-app controls for permissions, wellbeing and adaptive icons
@@ -62,6 +63,7 @@ Use these boundaries consistently:
 | Automations | Hermes job management UX | `HERMES.md` |
 | Apps | installed-app inspector and wellbeing UX | `APPS-SETTINGS.md` |
 | Appearance | desktop visual controls | this document; adaptive icons remain `ADAPTIVE-ICONS.md` |
+| Vicinae | launcher entry point, Vesper theme integration and enforceable launcher behavior | `APPS-SETTINGS.md` |
 | Services & Startup | curated Vesper service UX | this document + owning Nix modules |
 | Store | discovery/install application | `MARKETPLACE.md` |
 
@@ -86,6 +88,7 @@ Connectivity & privacy
 
 Personalization
 ├── Appearance
+├── Vicinae
 ├── Input
 └── Shortcuts
 

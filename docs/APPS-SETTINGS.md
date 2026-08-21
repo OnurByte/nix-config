@@ -4,7 +4,7 @@ Status: **partial**
 
 This document owns Vesper-specific installed-application settings behavior, default-application handling, the Spotlight/launcher boundary, and the handoff between `Settings -> Apps` and Vesper Store.
 
-Vesper extends Caelestia's native Apps surface instead of adding a second settings application. Vesper Store is a separate native Qt 6 / QML application for discovery and installation. Vicinae is the default Spotlight-style launcher/search surface; it is not an application manager or package owner.
+Vesper extends Caelestia's native Apps surface instead of adding a second settings application. Vesper Store is a separate native Qt 6 / QML application for discovery and installation. [Vicinae](https://github.com/vicinaehq/vicinae) is the default Spotlight-style launcher/search surface; it is not an application manager or package owner.
 
 `SETTINGS.md` owns where Apps, App Inspector and Wellbeing appear in the wider Settings information architecture.
 
@@ -13,8 +13,9 @@ Vesper extends Caelestia's native Apps surface instead of adding a second settin
 Implemented Vesper-specific pieces include:
 
 - `Find New Apps` in Apps, launching `vesper-store`;
-- Vicinae enabled as the default Spotlight-style launcher with a user systemd service;
-- `Super + Space` toggling Vicinae instead of the Caelestia app launcher;
+- Vicinae enabled as the default Spotlight-style launcher with a Home Manager user systemd service; the Hyprland session bridge starts and stops `graphical-session.target` for that service;
+- bare `Super` toggling Vicinae instead of the Caelestia app launcher, with `Super + Space` retained as an alternate;
+- a `Settings -> Vicinae` page for launcher behavior, Vesper theme/accent sync, controlled-glass opacity and Vesper adaptive icons;
 - the installed Apps list using the existing Quickshell `DesktopEntries` registry;
 - category filtering derived from real desktop-entry `Categories` metadata;
 - installed-app rows showing icon, name, description, default-role state and an inline Open action;
@@ -25,6 +26,8 @@ Implemented Vesper-specific pieces include:
 - native-app state that does not pretend ordinary Nix applications are Flatpak-sandboxed;
 - per-app adaptive-icon status/actions through the existing Vesper app controls;
 - shared adaptive-icon identity after an installed desktop entry is discovered.
+
+The Default Agent selector, physical Assistant/Copilot-key handling and Quake Agent Console are not implemented in the current Hyprland/QML tree. Their shared contract is target work owned by `DESKTOP-ERGONOMICS.md`; the current AI HUD shortcut is `Super + U -> codexbar-popup`.
 
 Caelestia may provide base installed-app list/detail behavior independently of these Vesper extensions. Inspect the current QML and backend before assuming every target field or transaction below is already wired end to end.
 
@@ -73,19 +76,23 @@ Vicinae is Vesper's primary keyboard-first launcher/search surface, analogous to
 Default entry point:
 
 ```text
-Super + Space -> vicinae toggle
+Super -> vicinae toggle
+Super + Space -> vicinae toggle (alternate)
 ```
 
-Vesper uses the packaged Nix/Home Manager integration and runs the Vicinae server as a user service. Do not introduce a separate hand-written daemon wrapper when the upstream/Home Manager service is sufficient.
+Vesper uses the packaged Nix/Home Manager integration and runs the Vicinae server as a user service. The Hyprland Lua session bridge imports the Wayland environment, starts `graphical-session.target` on session start and stops it on shutdown; do not introduce a separate hand-written daemon wrapper when the upstream/Home Manager service is sufficient.
+
+Vesper owns a small imported runtime file at `~/.config/vicinae/vesper.json`. `vesper-control vicinae-sync-theme` regenerates it and the XDG data themes at `$XDG_DATA_HOME/vicinae/themes/vesper-light.toml` and `vesper-dark.toml` (normally `~/.local/share/vicinae/themes`) from the active Caelestia scheme and `primary` accent. Settings writes only the Vesper state at `~/.config/vesper/vicinae.conf`; it does not rewrite arbitrary Nix source or the user's whole Vicinae configuration.
 
 The initial integration intentionally keeps ownership narrow:
 
 - Vicinae is primary for Spotlight-style search, application launch and command-palette workflows;
 - Caelestia remains the desktop shell and keeps shell-native panels, settings, clipboard, emoji, capture and other existing capabilities unless a later migration explicitly moves one;
 - do not run two competing primary launcher shortcuts;
-- the old Caelestia launcher may remain available internally, but `Super + Space` belongs to Vicinae;
+- the old Caelestia launcher may remain available internally, but bare `Super` belongs to Vicinae and `Super + Space` remains its compatibility alias;
 - Vesper-specific actions should integrate with Vicinae through supported commands/deeplinks/extensions rather than forking Vicinae when practical;
-- Vicinae theme integration should follow Vesper appearance work without creating a second independent visual identity database.
+- Vicinae theme integration follows Vesper appearance work without creating a second independent visual identity database;
+- the Vicinae Settings page exposes only controls enforced by the imported runtime configuration: focus-loss behavior, root reset, layer-shell, controlled-glass opacity, theme following and adaptive-icon following.
 
 Vicinae's application index and Settings -> Apps both ultimately refer to desktop applications, but Vesper must not create a third app identity database merely to reconcile them. Canonical desktop IDs and `.desktop` metadata remain the common identity layer.
 
@@ -251,7 +258,7 @@ Development  <- Development
 Internet     <- Network, WebBrowser, Email
 Office       <- Office
 Graphics     <- Graphics
-Audio & Video<- AudioVideo, Audio, Video
+Audio & Video <- AudioVideo, Audio, Video
 Games        <- Game
 Utilities    <- Utility
 System       <- System, Settings
@@ -413,7 +420,7 @@ When implementing or extending this surface:
 1. inspect the current Caelestia Apps/DesktopEntries behavior first;
 2. extend rather than duplicate existing installed-app UI and identity;
 3. keep Vicinae as the primary Spotlight/command-palette surface, not an installed-app manager;
-4. keep `Super + Space` as one primary launcher binding rather than two competing surfaces;
+4. keep bare `Super` as the primary launcher binding and `Super + Space` as its alternate rather than adding a competing surface;
 5. use `.desktop` metadata for icon/name/description/category/window hints;
 6. use canonical desktop-entry execution, never raw `Exec=` shell evaluation;
 7. keep Default Agent and other defaults in the existing/native Default Apps surface;

@@ -33,6 +33,18 @@ in
 {
   home.packages = [ vesperOcr ];
 
+  # Hyprland is the compositor owner of the graphical session. Starting this
+  # target from the compositor lets user services follow its real lifetime.
+  systemd.user.targets.hyprland-session = {
+    Unit = {
+      Description = "Hyprland compositor session";
+      BindsTo = [ "graphical-session.target" ];
+      Wants = [ "graphical-session-pre.target" ];
+      After = [ "graphical-session-pre.target" ];
+      PropagatesStopTo = [ "graphical-session.target" ];
+    };
+  };
+
   xdg.configFile = {
     "hypr/hyprland.lua".source = ./hypr/hyprland.lua;
     "hypr/vesper/appearance.lua".source = ./hypr/appearance.lua;

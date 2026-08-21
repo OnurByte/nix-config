@@ -21,6 +21,12 @@ A document marked `partial` describes both existing and target behavior and must
 
 Do not restore removed components merely because an older document names them.
 
+## tool and documentation contract
+
+- Before using a non-trivial CLI, API, MCP server, package, library or project tool, read its current official or primary documentation, built-in help or repository source first.
+- Do not guess flags, request/response shapes, versions, config paths, ownership or side effects. If the documentation is unavailable or contradictory, keep the result unknown until a read-only probe or source check resolves it.
+- Treat documentation as the intended contract and observed output/runtime state as separate evidence. Re-read the relevant result after a mutating tool call.
+
 ## writing contract
 
 - Write like the person maintaining the machine, not like a product page or generated project summary.
@@ -35,7 +41,7 @@ Do not restore removed components merely because an older document names them.
 
 ## desktop and UX contract
 
-- Caelestia is the only shell/bar and owns network, Bluetooth, audio, notifications, idle/lock, clipboard, capture and wallpaper UI. Vicinae is the primary Spotlight-style application launcher and `Super + Space` entry point; do not restore Caelestia as the primary launcher while current code keeps Vicinae in that role.
+- Caelestia is the only shell/bar and owns network, Bluetooth, audio, notifications, idle/lock, clipboard, capture and wallpaper UI. Vicinae is the primary Spotlight-style application launcher and bare `Super` entry point; keep `Super + Space` as its alternate shortcut and do not restore Caelestia as the primary launcher.
 - Vesper Settings extends Caelestia Nexus. `docs/SETTINGS.md` owns the Settings information architecture and cross-page UX contract; do not create a second general settings application.
 - Settings should expose real Vesper-owned system capabilities instead of accumulating decorative toggles. NixOS state, recovery, privacy, AI, automation and system health are the distinguishing control-plane areas.
 - Do not turn Vesper Settings into a generic KDE-style systemd/package/config browser. Curate the capabilities Vesper actually owns and can enforce.

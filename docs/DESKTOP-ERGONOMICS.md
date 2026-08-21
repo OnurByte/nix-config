@@ -1,12 +1,14 @@
 # Desktop Ergonomics
 
-Status: **implementation plan / spec**
+Status: **plan**
 
 This document is the canonical implementation plan for Vesper's high-frequency desktop ergonomics on top of the existing Caelestia + Hyprland desktop.
 
 It consolidates selected interaction ideas from Omarchy and related desktop research into one Vesper-native plan. Omarchy is an interaction reference only. Vesper must reuse its existing shell, Settings, input, audio, notification, sharing, AI, compositor and Nix/systemd infrastructure instead of creating parallel subsystems.
 
 Current implementation must always be inspected before claiming any target below is complete.
+
+The physical Assistant/Copilot key and Quake Agent Console described below are target-only. The current Hyprland/QML tree has no `KEY_ASSISTANT` binding or `special:agent-console` workspace; the existing AI HUD shortcut is `Super + U -> codexbar-popup`.
 
 ## goals
 
@@ -875,7 +877,7 @@ Zoom
 
 Rules:
 
-- `Super + Space` remains the primary entry point once unified;
+- bare `Super` remains the primary entry point once unified; `Super + Space` remains an alternate Vicinae binding;
 - application launch remains desktop-entry based;
 - Settings results navigate to the real row rather than reimplement the setting inside the palette;
 - privileged/destructive actions keep existing confirmation policy;

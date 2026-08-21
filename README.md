@@ -44,10 +44,12 @@ most of the machine lives in nixos and home manager with Hyprland for the compos
 ## desktop
 
 Hyprland config lives in Lua under `home/yargc/hypr/`
-Caelestia owns the bar control center notifications lock idle clipboard screenshots and recording while Vicinae is the primary `Super + Space` application launcher
+Caelestia owns the bar control center notifications lock idle clipboard screenshots and recording while Vicinae is the primary `Super` application launcher
 
 Vesper follows an Apple-aligned controlled-glass direction without making every application transparent
-persistent and transient shell surfaces follow the component-specific rules in `docs/TOP-BAR-DOCK.md` and the active Caelestia theme
+the planned persistent/transient shell redesign is tracked in `docs/TOP-BAR-DOCK.md`
+current shell behavior follows the active Caelestia theme
+Vicinae follows the same light/dark scheme and primary accent; its Vesper-specific controls live in `Settings -> Vicinae`
 
 Hyprland currently uses 22 px window rounding 12 px blur with 4 passes and a soft 24 px shadow
 
@@ -55,7 +57,8 @@ Hyprland currently uses 22 px window rounding 12 px blur with 4 passes and a sof
 
 | key | action |
 |---|---|
-| `Super + Space` | launcher |
+| `Super` | Vicinae launcher |
+| `Super + Space` | Vicinae launcher alternate |
 | `Super + C` | control center |
 | `Super + /` | command palette |
 | `Super + Shift + /` | keybind sheet |
@@ -130,6 +133,8 @@ See `docs/HERMES.md` and the Hermes research docs for the current contracts
 
 ## apps
 
+- Vicinae
+- Vesper Store
 - Zen Browser
 - Helium
 - Tor Browser

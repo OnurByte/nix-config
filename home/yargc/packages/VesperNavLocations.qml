@@ -52,6 +52,12 @@ VerticalFadeFlickable {
                     description: qsTr("Wallpaper, colours, icons")
                 },
                 {
+                    pageIcon: "search",
+                    label: qsTr("Vicinae"),
+                    icon: "search",
+                    description: qsTr("Spotlight launcher, theme, Vesper controls")
+                },
+                {
                     pageIcon: "dock_to_bottom",
                     label: qsTr("Panels"),
                     icon: "dock_to_bottom",

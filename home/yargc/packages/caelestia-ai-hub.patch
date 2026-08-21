@@ -58,7 +58,7 @@
                          objectName: "taskbarClock"
 --- a/modules/dashboard/Content.qml
 +++ b/modules/dashboard/Content.qml
-@@ -33,10 +33,16 @@ Item {
+@@ -33,10 +33,22 @@ Item {
                  component: performanceComponent,
                  iconName: "speed",
                  text: qsTr("Performance"),
@@ -70,12 +70,18 @@
 +                text: qsTr("AI"),
 +                enabled: true
 +            },
++            {
++                component: xpatlaComponent,
++                iconName: "newspaper",
++                text: qsTr("X news"),
++                enabled: true
++            },
              {
                  component: weatherComponent,
                  iconName: "cloud",
                  text: qsTr("Weather"),
                  enabled: Config.dashboard.showWeather
-@@ -172,10 +172,16 @@ Item {
+@@ -172,10 +172,22 @@ Item {
              Component {
                  id: performanceComponent
  
@@ -87,14 +93,27 @@
 +
 +                AiHub {}
 +            }
- 
++
++            Component {
++                id: xpatlaComponent
++
++                XPatlaPanel {}
++            }
+
              Component {
                  id: weatherComponent
  
                  WeatherTab {}
 --- a/modules/nexus/PageRegistry.qml
 +++ b/modules/nexus/PageRegistry.qml
-@@ -51,7 +51,7 @@ QtObject {
+@@ -16,0 +17,6 @@ QtObject {
++        {
++            label: qsTr("Vicinae"),
++            icon: "search",
++            description: qsTr("Spotlight launcher, theme, Vesper controls"),
++            category: "appearance"
++        },
+@@ -51,7 +57,7 @@ QtObject {
          },
          {
 -            label: qsTr("Plugins"),
@@ -107,6 +126,11 @@
          },
 --- a/modules/nexus/PageCompRegistry.qml
 +++ b/modules/nexus/PageCompRegistry.qml
+@@ -41,0 +42,4 @@ QtObject {
++        Component {
++            // Vicinae
++            VesperVicinaeSettings {}
++        },
 @@ -64,5 +64,8 @@ QtObject {
                  Component {
                      SavedNetworksPage {}

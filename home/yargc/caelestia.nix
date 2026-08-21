@@ -10,6 +10,7 @@ let
   agentCockpit = pkgs.callPackage ./packages/agent-cockpit.nix { };
   privacyHud = pkgs.callPackage ./packages/privacy-hud.nix { };
   vesperControl = pkgs.callPackage ./packages/vesper-control.nix { };
+  vesperXpatla = pkgs.callPackage ./packages/vesper-xpatla.nix { };
   aiHub = pkgs.callPackage ./packages/ai-hub.nix {
     inherit
       codexbar
@@ -18,6 +19,115 @@ let
       ;
   };
   mcpServerNames = builtins.attrNames config.programs.mcp.servers;
+  caelestiaSettings = {
+    # Shell surfaces follow the Vesper glass contract: layered translucency,
+    # readable backdrop blur, calm spacing and larger continuous rounding.
+    appearance = {
+      rounding.scale = 1.25;
+      spacing.scale = 1.05;
+      padding.scale = 1.05;
+      anim.durations.scale = 0.85;
+      transparency = {
+        enabled = true;
+        base = 0.68;
+        layers = 0.34;
+      };
+    };
+
+    paths.wallpaperDir = "~/Pictures/Wallpapers";
+
+    general = {
+      apps = {
+        terminal = [ "ghostty" ];
+        explorer = [ "thunar" ];
+        audio = [
+          "caelestia"
+          "shell"
+          "nexus"
+          "open"
+        ];
+      };
+
+      idle = {
+        lockBeforeSleep = true;
+        inhibitWhenAudio = true;
+        inhibitWhenCharging = false;
+        timeouts = [
+          {
+            timeout = 300;
+            idleAction = "lock";
+          }
+          {
+            timeout = 600;
+            idleAction = "dpms off";
+            returnAction = "dpms on";
+          }
+        ];
+      };
+    };
+
+    services = {
+      defaultPlayer = "Spotify";
+      smartScheme = true;
+      useTwelveHourClock = false;
+    };
+
+    dashboard = {
+      enabled = true;
+      showPerformance = true;
+      resourceUpdateInterval = 1000;
+      performance = {
+        showBattery = true;
+        showCpu = true;
+        showGpu = true;
+        showMemory = true;
+        showNetwork = true;
+        showStorage = true;
+      };
+    };
+
+    launcher = {
+      vimKeybinds = true;
+      useFuzzy = {
+        apps = true;
+        actions = true;
+        schemes = true;
+        variants = true;
+        wallpapers = true;
+      };
+    };
+
+    utilities = {
+      quickToggles = [
+        { id = "wifi"; enabled = true; }
+        { id = "bluetooth"; enabled = true; }
+        { id = "mic"; enabled = true; }
+        { id = "settings"; enabled = true; }
+        { id = "dnd"; enabled = true; }
+        { id = "gameMode"; enabled = false; }
+        { id = "vpn"; enabled = false; }
+      ];
+      toasts.gameModeChanged = false;
+    };
+
+    bar.entries = [
+      { id = "logo"; enabled = true; }
+      { id = "workspaces"; enabled = true; }
+      { id = "spacer"; enabled = true; }
+      { id = "activeWindow"; enabled = true; }
+      { id = "spacer"; enabled = true; }
+      { id = "tray"; enabled = true; }
+      { id = "systemMonitor"; enabled = true; }
+      { id = "agentCockpit"; enabled = true; }
+      { id = "privacyHud"; enabled = true; }
+      { id = "hermesBriefing"; enabled = true; }
+      { id = "aiUsage"; enabled = true; }
+      { id = "clock"; enabled = true; }
+      { id = "statusIcons"; enabled = true; }
+      { id = "power"; enabled = true; }
+    ];
+  };
+  caelestiaSeed = pkgs.writeText "vesper-caelestia-shell.json" (builtins.toJSON caelestiaSettings);
   caelestiaPatch = pkgs.writeText "caelestia-ai-hub.patch" (
     builtins.readFile ./packages/caelestia-ai-hub.patch + "\n"
   );
@@ -30,6 +140,8 @@ let
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
       substitute ${./packages/AiHub.qml} modules/dashboard/AiHub.qml \
         --subst-var-by aiHub ${aiHub}/bin/vesper-ai-hub
+      substitute ${./packages/XPatlaPanel.qml} modules/dashboard/XPatlaPanel.qml \
+        --subst-var-by xpatla ${vesperXpatla}/bin/vesper-xpatla
       substituteInPlace modules/dashboard/AiHub.qml \
         --replace-fail 'qsTr("Vesper Hub")' 'qsTr("AI")' \
         --replace-fail 'AI Hub returned invalid data' 'AI returned invalid data'
@@ -55,6 +167,8 @@ let
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperThemeSettings.qml} modules/nexus/pages/VesperThemeSettings.qml \
         --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
+      substitute ${./packages/VesperVicinaeSettings.qml} modules/nexus/pages/VesperVicinaeSettings.qml \
+        --subst-var-by vesperControl ${vesperControl}/bin/vesper-control
       substitute ${./packages/VesperNavLocations.qml} modules/nexus/navpane/NavLocations.qml
       substituteInPlace modules/nexus/PageRegistry.qml \
         --replace-fail 'label: qsTr("Wallpaper & style")' 'label: qsTr("Appearance")' \
@@ -76,115 +190,9 @@ in
   programs.caelestia = {
     enable = true;
     package = agenticCaelestia;
-    systemd.enable = false;
-
-    settings = {
-      # Shell surfaces follow the Vesper glass contract: layered translucency,
-      # readable backdrop blur, calm spacing and larger continuous rounding.
-      appearance = {
-        rounding.scale = 1.25;
-        spacing.scale = 1.05;
-        padding.scale = 1.05;
-        anim.durations.scale = 0.85;
-        transparency = {
-          enabled = true;
-          base = 0.68;
-          layers = 0.34;
-        };
-      };
-
-      paths.wallpaperDir = "~/Pictures/Wallpapers";
-
-      general = {
-        apps = {
-          terminal = [ "ghostty" ];
-          explorer = [ "thunar" ];
-          audio = [
-            "caelestia"
-            "shell"
-            "nexus"
-            "open"
-          ];
-        };
-
-        idle = {
-          lockBeforeSleep = true;
-          inhibitWhenAudio = true;
-          inhibitWhenCharging = false;
-          timeouts = [
-            {
-              timeout = 300;
-              idleAction = "lock";
-            }
-            {
-              timeout = 600;
-              idleAction = "dpms off";
-              returnAction = "dpms on";
-            }
-          ];
-        };
-      };
-
-      services = {
-        defaultPlayer = "Spotify";
-        smartScheme = true;
-        useTwelveHourClock = false;
-      };
-
-      dashboard = {
-        enabled = true;
-        showPerformance = true;
-        resourceUpdateInterval = 1000;
-        performance = {
-          showBattery = true;
-          showCpu = true;
-          showGpu = true;
-          showMemory = true;
-          showNetwork = true;
-          showStorage = true;
-        };
-      };
-
-      launcher = {
-        vimKeybinds = true;
-        useFuzzy = {
-          apps = true;
-          actions = true;
-          schemes = true;
-          variants = true;
-          wallpapers = true;
-        };
-      };
-
-      utilities = {
-        quickToggles = [
-          { id = "wifi"; enabled = true; }
-          { id = "bluetooth"; enabled = true; }
-          { id = "mic"; enabled = true; }
-          { id = "settings"; enabled = true; }
-          { id = "dnd"; enabled = true; }
-          { id = "gameMode"; enabled = false; }
-          { id = "vpn"; enabled = false; }
-        ];
-        toasts.gameModeChanged = false;
-      };
-
-      bar.entries = [
-        { id = "logo"; enabled = true; }
-        { id = "workspaces"; enabled = true; }
-        { id = "spacer"; enabled = true; }
-        { id = "activeWindow"; enabled = true; }
-        { id = "spacer"; enabled = true; }
-        { id = "tray"; enabled = true; }
-        { id = "systemMonitor"; enabled = true; }
-        { id = "agentCockpit"; enabled = true; }
-        { id = "privacyHud"; enabled = true; }
-        { id = "hermesBriefing"; enabled = true; }
-        { id = "aiUsage"; enabled = true; }
-        { id = "clock"; enabled = true; }
-        { id = "statusIcons"; enabled = true; }
-        { id = "power"; enabled = true; }
-      ];
+    systemd = {
+      enable = true;
+      target = "graphical-session.target";
     };
 
     cli = {
@@ -218,6 +226,7 @@ in
             ${pkgs.dconf}/bin/dconf write /org/gnome/desktop/interface/gtk-theme "'adw-gtk3-dark'"
           fi
           ${vesperControl}/bin/vesper-control icon sync-theme "$SCHEME_MODE" || true
+          ${vesperControl}/bin/vesper-control vicinae-sync-theme || true
           hyprctl reload
         '';
       };
@@ -264,23 +273,114 @@ in
   # The configured icon theme name must always resolve, even when adaptive
   # icons are disabled. In that state the generated theme is intentionally
   # empty and inherits Papirus, giving an immediate visual rollback.
+  # shell.json is intentionally not an xdg.configFile: Caelestia's native
+  # GlobalConfig writes this file at runtime, so Home Manager only seeds it.
+  home.activation.vesperCaelestiaConfigMigration = lib.hm.dag.entryBefore [ "linkGeneration" ] ''
+    config="$HOME/.config/caelestia/shell.json"
+    managed="$(readlink "$config" 2>/dev/null || true)"
+    case "$managed" in
+      /nix/store/*)
+        if [ -r "$config" ]; then
+          temporary="$(${pkgs.coreutils}/bin/mktemp "$config.vesper-migrate.XXXXXX")"
+          if ${pkgs.coreutils}/bin/install -Dm644 "$config" "$temporary"; then
+            ${pkgs.coreutils}/bin/mv -f "$temporary" "$config"
+          else
+            ${pkgs.coreutils}/bin/rm -f "$temporary"
+          fi
+        else
+          ${pkgs.coreutils}/bin/rm -f "$config"
+        fi
+        ;;
+    esac
+  '';
+
+  home.activation.vesperCaelestiaConfigSeed = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    config="$HOME/.config/caelestia/shell.json"
+    if [ ! -e "$config" ] && [ ! -L "$config" ]; then
+      ${pkgs.coreutils}/bin/install -Dm644 ${caelestiaSeed} "$config"
+    fi
+  '';
+
   home.activation.vesperAdaptiveIconTheme = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
     ${vesperControl}/bin/vesper-control icon ensure-theme
+  '';
+
+  home.activation.vesperVicinaeSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    ${vesperControl}/bin/vesper-control vicinae-sync-theme
   '';
 
   # Filesystem notifications are the primary discovery path. The daemon also
   # performs a bounded periodic full scan as recovery for missed profile or
   # exported Flatpak changes.
-  systemd.user.services.vesper-adaptive-icons = {
-    Unit = {
-      Description = "Vesper adaptive application icon reconciliation";
-      After = [ "graphical-session-pre.target" ];
+  systemd.user.services = {
+    vesper-adaptive-icons = {
+      Unit = {
+        Description = "Vesper adaptive application icon reconciliation";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${vesperControl}/bin/vesper-icon-engine daemon";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
     };
-    Service = {
-      ExecStart = "${vesperControl}/bin/vesper-icon-engine daemon";
-      Restart = "on-failure";
-      RestartSec = 5;
+
+    vesper-cliphist-text = {
+      Unit = {
+        Description = "Vesper text clipboard history watcher";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${pkgs.wl-clipboard}/bin/wl-paste --type text --watch ${pkgs.cliphist}/bin/cliphist store";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
     };
-    Install.WantedBy = [ "default.target" ];
+
+    vesper-cliphist-image = {
+      Unit = {
+        Description = "Vesper image clipboard history watcher";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${pkgs.wl-clipboard}/bin/wl-paste --type image --watch ${pkgs.cliphist}/bin/cliphist store";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    vesper-polkit-agent = {
+      Unit = {
+        Description = "Vesper graphical polkit agent";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${pkgs.hyprpolkitagent}/bin/hyprpolkitagent";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+
+    vesper-wellbeing = {
+      Unit = {
+        Description = "Vesper local wellbeing collector";
+        After = [ "graphical-session.target" ];
+        PartOf = [ "graphical-session.target" ];
+      };
+      Service = {
+        ExecStart = "${vesperControl}/bin/vesper-control wellbeing-daemon";
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
   };
 }
