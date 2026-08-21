@@ -319,6 +319,7 @@ The queue must support:
 - pause/resume;
 - crash-safe recovery of `running` jobs;
 - source-hash in-flight deduplication;
+- a per-job semantic contract revision so prompt/schema/renderer changes requeue existing work without changing the source fingerprint;
 - cancellation/superseding when an application source changes before processing;
 - fair scheduling so a huge old backlog does not indefinitely starve a newly installed app;
 - progress counters such as `38 / 147 canonicalized`;

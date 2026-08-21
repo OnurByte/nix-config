@@ -14,6 +14,7 @@ const MAX_RASTER_DIMENSION: u64 = 16_384;
 const MAX_RASTER_PIXELS: u64 = 64 * 1024 * 1024;
 const LEASE_HEARTBEAT_SECS: u64 = 60;
 const MAX_RETRY_AFTER_MS: i64 = 10 * 60 * 1000;
+const CONVERSION_CONTRACT_REVISION: i64 = 2;
 
 #[derive(Clone, Debug)]
 struct Claim {
@@ -22,6 +23,7 @@ struct Claim {
     source_kind: String,
     source_path: PathBuf,
     app_ids: Vec<String>,
+    contract_revision: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -321,6 +323,12 @@ fn claim_job() -> Result<Option<Claim>, String> {
     let provider = jq_text(&result.stdout, ".job.provider // empty")?;
     let source_kind = jq_text(&result.stdout, ".job.sourceKind // empty")?;
     let source_path = jq_text(&result.stdout, ".job.sourcePath // empty")?;
+    let contract_revision = jq_text(
+        &result.stdout,
+        &format!(".job.contractRevision // {CONVERSION_CONTRACT_REVISION}"),
+    )?
+        .parse::<i64>()
+        .unwrap_or(CONVERSION_CONTRACT_REVISION);
     let apps = jq_text(&result.stdout, ".job.appIds[]? // empty")?
         .lines()
         .map(str::trim)
@@ -336,29 +344,38 @@ fn claim_job() -> Result<Option<Claim>, String> {
         source_kind,
         source_path: PathBuf::from(source_path),
         app_ids: apps,
+        contract_revision,
     }))
 }
 
-fn queue_complete(key: &str) {
+fn queue_complete(key: &str, contract_revision: i64) {
     let _ = Command::new("vesper-icon-queue")
-        .args(["complete", key])
+        .args(["complete", key, &contract_revision.to_string()])
         .status();
 }
 
-fn queue_fail(key: &str, permanent: bool, message: &str, retry_after_ms: Option<i64>) {
+fn queue_fail(
+    key: &str,
+    permanent: bool,
+    message: &str,
+    retry_after_ms: Option<i64>,
+    contract_revision: i64,
+) {
     let clean = message
         .chars()
         .map(|ch| if matches!(ch, '\n' | '\r' | '\t') { ' ' } else { ch })
         .collect::<String>();
-    let retry_after = retry_after_ms.map(|value| value.clamp(0, MAX_RETRY_AFTER_MS).to_string());
+    let retry_after = retry_after_ms
+        .map(|value| value.clamp(0, MAX_RETRY_AFTER_MS).to_string())
+        .unwrap_or_else(|| "-1".to_string());
+    let contract_revision = contract_revision.to_string();
     let mut args = vec![
         "fail",
         key,
         if permanent { "permanent" } else { "transient" },
+        retry_after.as_str(),
+        contract_revision.as_str(),
     ];
-    if let Some(retry_after) = retry_after.as_deref() {
-        args.push(retry_after);
-    }
     args.push(clean.as_str());
     let _ = Command::new("vesper-icon-queue")
         .args(args)
@@ -910,13 +927,14 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
             .collect::<Vec<_>>()
             .join(",");
         let manifest = format!(
-            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-retained-raster\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"preserved-artwork\",\"assetType\":\"raster\",\"asset\":\"groups/01-primary/layers/01.png\",\"effects\":\"limited\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
+            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-retained-raster\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{},\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"preserved-artwork\",\"assetType\":\"raster\",\"asset\":\"groups/01-primary/layers/01.png\",\"effects\":\"limited\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
             VICON_SCHEMA_VERSION,
             json_escape(&claim.key),
             apps,
             json_escape(&decomposition.provider),
             json_escape(&decomposition.model),
             PROMPT_REVISION,
+            CONVERSION_CONTRACT_REVISION,
             json_escape(&decomposition.silhouette),
             json_escape(&decomposition.background),
             decomposition.confidence,
@@ -986,13 +1004,14 @@ fn build_vector_semantic_vicon(claim: &Claim, decomposition: &Decomposition) -> 
             .collect::<Vec<_>>()
             .join(",");
         let manifest = format!(
-            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-local-vector\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
+            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-local-vector\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{},\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
             VICON_SCHEMA_VERSION,
             json_escape(&claim.key),
             apps,
             json_escape(&decomposition.provider),
             json_escape(&decomposition.model),
             PROMPT_REVISION,
+            CONVERSION_CONTRACT_REVISION,
             json_escape(&decomposition.silhouette),
             json_escape(&decomposition.background),
             decomposition.confidence,
@@ -1049,10 +1068,11 @@ fn ensure_local_vector_vicon(item: &InventoryItem) -> Result<(), String> {
     fs::write(stage.join("appearances/mono.json"), appearance_json("mono"))
         .map_err(|error| error.to_string())?;
     let manifest = format!(
-        "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[\"{}\"],\"provenance\":{{\"kind\":\"local-vector\"}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"transparent\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"status\":\"passed\"}}}}\n",
+        "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[\"{}\"],\"provenance\":{{\"kind\":\"local-vector\",\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"transparent\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"status\":\"passed\"}}}}\n",
         VICON_SCHEMA_VERSION,
         json_escape(&item.fingerprint),
         json_escape(&item.id),
+        CONVERSION_CONTRACT_REVISION,
         local_silhouette(&svg),
     );
     fs::write(stage.join("manifest.json"), manifest).map_err(|error| error.to_string())?;
@@ -1113,7 +1133,7 @@ fn process_once() -> Result<bool, String> {
 
     match result {
         Ok(()) => {
-            queue_complete(&claim.key);
+            queue_complete(&claim.key, claim.contract_revision);
             let _ = Command::new("vesper-icon-engine-core").arg("reconcile").status();
         }
         Err(error) => {
@@ -1126,7 +1146,13 @@ fn process_once() -> Result<bool, String> {
             let retry_after_ms = fs::read_to_string(work.join("retry-after-ms"))
                 .ok()
                 .and_then(|value| value.trim().parse::<i64>().ok());
-            queue_fail(&claim.key, permanent, &error, retry_after_ms);
+            queue_fail(
+                &claim.key,
+                permanent,
+                &error,
+                retry_after_ms,
+                claim.contract_revision,
+            );
         }
     }
     let _ = fs::remove_dir_all(work);

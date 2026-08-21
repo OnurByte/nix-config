@@ -7,10 +7,11 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const QUEUE_SCHEMA_VERSION: u32 = 2;
+const QUEUE_SCHEMA_VERSION: u32 = 3;
 const LEASE_MS: i64 = 5 * 60 * 1000;
 const MAX_ATTEMPTS: u32 = 4;
 const MAX_RETRY_DELAY_MS: i64 = 10 * 60 * 1000;
+const CONVERSION_CONTRACT_REVISION: i64 = 2;
 
 #[derive(Clone, Debug)]
 struct InventoryItem {
@@ -35,6 +36,7 @@ struct QueueJob {
     next_run_ms: i64,
     lease_until_ms: i64,
     last_error: String,
+    contract_revision: i64,
 }
 
 fn home() -> PathBuf {
@@ -174,16 +176,31 @@ fn init_db() -> Result<(), String> {
            updated_ms INTEGER NOT NULL,\n\
            next_run_ms INTEGER NOT NULL DEFAULT 0,\n\
            lease_until_ms INTEGER NOT NULL DEFAULT 0,\n\
-           last_error TEXT NOT NULL DEFAULT ''\n\
+           last_error TEXT NOT NULL DEFAULT '',\n\
+           contract_revision INTEGER NOT NULL DEFAULT 1\n\
          );\n\
          CREATE INDEX IF NOT EXISTS jobs_state_next_idx ON jobs(state, next_run_ms, updated_ms);\n\
-         INSERT INTO meta(key, value) VALUES('schemaVersion', '2')\n\
+         INSERT INTO meta(key, value) VALUES('schemaVersion', '3')\n\
            ON CONFLICT(key) DO UPDATE SET value=excluded.value;\n\
          INSERT INTO meta(key, value) VALUES('paused', '0')\n\
            ON CONFLICT(key) DO NOTHING;\n",
     )?;
+    ensure_contract_column()?;
     migrate_legacy_queue()?;
     cleanup_legacy_manual_queue()
+}
+
+fn ensure_contract_column() -> Result<(), String> {
+    let columns = sqlite("PRAGMA table_info(jobs);")?;
+    if columns
+        .lines()
+        .filter_map(|line| line.split('\t').nth(1))
+        .any(|name| name == "contract_revision")
+    {
+        return Ok(());
+    }
+    sqlite("ALTER TABLE jobs ADD COLUMN contract_revision INTEGER NOT NULL DEFAULT 1;")?;
+    Ok(())
 }
 
 fn load_provider() -> String {
@@ -286,12 +303,12 @@ fn app_string(values: &BTreeSet<String>) -> String {
 fn load_jobs() -> Result<BTreeMap<String, QueueJob>, String> {
     init_db()?;
     let output = sqlite(
-        "SELECT key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error FROM jobs ORDER BY key;",
+        "SELECT key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error,contract_revision FROM jobs ORDER BY key;",
     )?;
     let mut jobs = BTreeMap::new();
     for line in output.lines() {
         let parts = line.split('\t').collect::<Vec<_>>();
-        if parts.len() < 11 {
+        if parts.len() < 12 {
             continue;
         }
         let key = parts[0].to_string();
@@ -309,6 +326,7 @@ fn load_jobs() -> Result<BTreeMap<String, QueueJob>, String> {
                 next_run_ms: parts[8].parse().unwrap_or(0),
                 lease_until_ms: parts[9].parse().unwrap_or(0),
                 last_error: parts[10].to_string(),
+                contract_revision: parts[11].parse().unwrap_or(1),
             },
         );
     }
@@ -381,6 +399,7 @@ fn desired_jobs(items: &[InventoryItem], provider: &str, consent: bool) -> BTree
             next_run_ms: 0,
             lease_until_ms: 0,
             last_error: String::new(),
+            contract_revision: CONVERSION_CONTRACT_REVISION,
         });
         entry.app_ids.insert(item.id.clone());
         if entry.source_path.is_empty() && !item.source_path.is_empty() {
@@ -416,7 +435,13 @@ fn sync() -> Result<(), String> {
             let mut next_run = old.next_run_ms;
             let mut lease_until = old.lease_until_ms;
 
-            if old.provider != provider && matches!(state.as_str(), "failed" | "blocked-no-provider" | "ready" | "retry-wait") {
+            if old.contract_revision != CONVERSION_CONTRACT_REVISION && state != "running" {
+                state = ready_state.to_string();
+                attempts = 0;
+                last_error.clear();
+                next_run = 0;
+                lease_until = 0;
+            } else if old.provider != provider && matches!(state.as_str(), "failed" | "blocked-no-provider" | "ready" | "retry-wait") {
                 state = ready_state.to_string();
                 attempts = 0;
                 last_error.clear();
@@ -452,7 +477,7 @@ fn sync() -> Result<(), String> {
             }
 
             sql.push_str(&format!(
-                "UPDATE jobs SET state={},provider={},source_kind={},source_path={},app_ids={},attempts={},updated_ms={},next_run_ms={},lease_until_ms={},last_error={} WHERE key={};\n",
+                "UPDATE jobs SET state={},provider={},source_kind={},source_path={},app_ids={},attempts={},updated_ms={},next_run_ms={},lease_until_ms={},last_error={},contract_revision={} WHERE key={};\n",
                 sql_quote(&state),
                 sql_quote(&provider),
                 sql_quote(&target.source_kind),
@@ -463,11 +488,12 @@ fn sync() -> Result<(), String> {
                 next_run,
                 lease_until,
                 sql_quote(&last_error),
+                CONVERSION_CONTRACT_REVISION,
                 sql_quote(key),
             ));
         } else {
             sql.push_str(&format!(
-                "INSERT INTO jobs(key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error) VALUES({},{},{},{},{},{},0,{},0,0,'');\n",
+                "INSERT INTO jobs(key,state,provider,source_kind,source_path,app_ids,attempts,updated_ms,next_run_ms,lease_until_ms,last_error,contract_revision) VALUES({},{},{},{},{},{},0,{},0,0,'',{});\n",
                 sql_quote(key),
                 sql_quote(ready_state),
                 sql_quote(&provider),
@@ -475,6 +501,7 @@ fn sync() -> Result<(), String> {
                 sql_quote(&target.source_path),
                 sql_quote(&apps),
                 timestamp,
+                CONVERSION_CONTRACT_REVISION,
             ));
         }
     }
@@ -536,7 +563,7 @@ fn claim() -> Result<(), String> {
         "BEGIN IMMEDIATE;\n\
          UPDATE jobs SET state='running',updated_ms={timestamp},lease_until_ms={lease}\n\
          WHERE key=(SELECT key FROM jobs WHERE state='ready' AND next_run_ms<={timestamp} ORDER BY attempts ASC,updated_ms ASC,key ASC LIMIT 1)\n\
-         RETURNING key,provider,source_kind,source_path,app_ids,attempts;\n\
+         RETURNING key,provider,source_kind,source_path,app_ids,attempts,contract_revision;\n\
          COMMIT;\n"
     );
     let output = sqlite(&sql)?;
@@ -545,7 +572,7 @@ fn claim() -> Result<(), String> {
         return Ok(());
     };
     let parts = line.split('\t').collect::<Vec<_>>();
-    if parts.len() < 6 {
+    if parts.len() < 7 {
         return Err("invalid claimed queue row".to_string());
     }
     let apps = parse_apps(parts[4])
@@ -554,13 +581,14 @@ fn claim() -> Result<(), String> {
         .collect::<Vec<_>>()
         .join(",");
     println!(
-        "{{\"job\":{{\"key\":\"{}\",\"provider\":\"{}\",\"sourceKind\":\"{}\",\"sourcePath\":\"{}\",\"appIds\":[{}],\"attempts\":{}}},\"paused\":false}}",
+        "{{\"job\":{{\"key\":\"{}\",\"provider\":\"{}\",\"sourceKind\":\"{}\",\"sourcePath\":\"{}\",\"appIds\":[{}],\"attempts\":{},\"contractRevision\":{}}},\"paused\":false}}",
         json_escape(parts[0]),
         json_escape(parts[1]),
         json_escape(parts[2]),
         json_escape(parts[3]),
         apps,
         parts[5].parse::<u32>().unwrap_or(0),
+        parts[6].parse::<i64>().unwrap_or(1),
     );
     Ok(())
 }
@@ -575,10 +603,10 @@ fn heartbeat(key: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn complete(key: &str) -> Result<(), String> {
+fn complete(key: &str, claimed_revision: i64) -> Result<(), String> {
     let timestamp = now_ms();
     sqlite(&format!(
-        "UPDATE jobs SET state='succeeded',updated_ms={timestamp},next_run_ms=0,lease_until_ms=0,last_error='' WHERE key={};",
+        "UPDATE jobs SET state=CASE WHEN contract_revision={claimed_revision} THEN 'succeeded' ELSE 'ready' END,updated_ms={timestamp},next_run_ms=0,lease_until_ms=0,last_error=CASE WHEN contract_revision={claimed_revision} THEN '' ELSE 'conversion contract changed; requeued' END WHERE key={} AND state='running';",
         sql_quote(key),
     ))?;
     Ok(())
@@ -589,10 +617,33 @@ fn fail(
     message: &str,
     permanent: bool,
     retry_after_ms: Option<i64>,
+    claimed_revision: Option<i64>,
 ) -> Result<(), String> {
     init_db()?;
-    let query = format!("SELECT attempts FROM jobs WHERE key={};", sql_quote(key));
-    let attempts = sqlite(&query)?.trim().parse::<u32>().unwrap_or(0).saturating_add(1);
+    let query = format!("SELECT attempts,contract_revision FROM jobs WHERE key={};", sql_quote(key));
+    let current = sqlite(&query)?;
+    let current_parts = current.trim().split('\t').collect::<Vec<_>>();
+    let current_revision = current_parts
+        .get(1)
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(CONVERSION_CONTRACT_REVISION);
+    if claimed_revision
+        .map(|revision| revision != current_revision)
+        .unwrap_or(false)
+    {
+        let timestamp = now_ms();
+        sqlite(&format!(
+            "UPDATE jobs SET state='ready',attempts=0,updated_ms={},next_run_ms=0,lease_until_ms=0,last_error='conversion contract changed; requeued' WHERE key={};",
+            timestamp,
+            sql_quote(key),
+        ))?;
+        return Ok(());
+    }
+    let attempts = current_parts
+        .first()
+        .and_then(|value| value.parse::<u32>().ok())
+        .unwrap_or(0)
+        .saturating_add(1);
     let timestamp = now_ms();
     let (state, next_run) = if permanent || attempts >= MAX_ATTEMPTS {
         ("failed", 0)
@@ -638,9 +689,10 @@ fn retry_app(id: &str) -> Result<(), String> {
     let mut sql = String::from("BEGIN IMMEDIATE;\n");
     for key in keys {
         sql.push_str(&format!(
-            "UPDATE jobs SET state={},attempts=0,updated_ms={},next_run_ms=0,lease_until_ms=0,last_error='' WHERE key={};\n",
+            "UPDATE jobs SET state={},attempts=0,updated_ms={},next_run_ms=0,lease_until_ms=0,last_error='',contract_revision={} WHERE key={};\n",
             sql_quote(state),
             timestamp,
+            CONVERSION_CONTRACT_REVISION,
             sql_quote(&key),
         ));
     }
@@ -701,8 +753,9 @@ fn print_status() -> Result<(), String> {
         })
         .count();
     println!(
-        "{{\"schemaVersion\":{},\"provider\":\"{}\",\"providerConfigured\":{},\"consentGranted\":{},\"paused\":{},\"total\":{},\"pending\":{},\"ready\":{},\"running\":{},\"retryWait\":{},\"blockedNoProvider\":{},\"blockedNoConsent\":{},\"failed\":{},\"succeeded\":{},\"superseded\":{},\"transport\":\"active\"}}",
+        "{{\"schemaVersion\":{},\"contractRevision\":{},\"provider\":\"{}\",\"providerConfigured\":{},\"consentGranted\":{},\"paused\":{},\"total\":{},\"pending\":{},\"ready\":{},\"running\":{},\"retryWait\":{},\"blockedNoProvider\":{},\"blockedNoConsent\":{},\"failed\":{},\"succeeded\":{},\"superseded\":{},\"transport\":\"active\"}}",
         QUEUE_SCHEMA_VERSION,
+        CONVERSION_CONTRACT_REVISION,
         json_escape(&provider),
         if provider_configured(&provider) { "true" } else { "false" },
         if consent { "true" } else { "false" },
@@ -751,8 +804,8 @@ fn usage() -> ! {
            app-status <desktop-id>\n\
            claim\n\
            heartbeat <job-key>\n\
-           complete <job-key>\n\
-           fail <job-key> transient|permanent [retry-after-ms] <message>\n\
+           complete <job-key> [contract-revision]\n\
+           fail <job-key> transient|permanent [retry-after-ms] [contract-revision] <message>\n\
            retry-app <desktop-id>\n\
            pause|resume\n\
            daemon"
@@ -768,13 +821,21 @@ fn main() {
         [command, id] if command == "app-status" => app_status(id),
         [command] if command == "claim" => claim(),
         [command, key] if command == "heartbeat" => heartbeat(key),
-        [command, key] if command == "complete" => complete(key),
+        [command, key] if command == "complete" => complete(key, -1),
+        [command, key, revision] if command == "complete" => {
+            complete(key, revision.parse::<i64>().unwrap_or(-1))
+        }
         [command, key, kind, message] if command == "fail" => {
-            fail(key, message, kind == "permanent", None)
+            fail(key, message, kind == "permanent", None, None)
         }
         [command, key, kind, retry_ms, message] if command == "fail" => {
             let retry_after_ms = retry_ms.parse::<i64>().ok().filter(|value| *value >= 0);
-            fail(key, message, kind == "permanent", retry_after_ms)
+            fail(key, message, kind == "permanent", retry_after_ms, None)
+        }
+        [command, key, kind, retry_ms, revision, message] if command == "fail" => {
+            let retry_after_ms = retry_ms.parse::<i64>().ok().filter(|value| *value >= 0);
+            let claimed_revision = revision.parse::<i64>().ok();
+            fail(key, message, kind == "permanent", retry_after_ms, claimed_revision)
         }
         [command, id] if command == "retry-app" => retry_app(id),
         [command] if command == "pause" => set_paused(true),
