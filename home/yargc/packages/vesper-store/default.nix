@@ -80,6 +80,19 @@ stdenv.mkDerivation {
       VESPER_STORE_CATALOG="$fixture" ./vesper-store-core search browser \
       | grep -F '"id":"org.example.Browser"' >/dev/null
 
+    store_home="$TMPDIR/store-home"
+    store_runtime="$TMPDIR/store-runtime"
+    HOME="$store_home" XDG_RUNTIME_DIR="$store_runtime" ./vesper-store-core store-init \
+      | jq -e '.available == true and .profile.present == false' >/dev/null
+    test -f "$store_home/.config/vesper/store/manifest.json"
+    test "$(stat -c '%a' "$store_home/.config/vesper/store/manifest.json")" = 600
+    HOME="$store_home" XDG_RUNTIME_DIR="$store_runtime" ./vesper-store-core manifest-status \
+      | jq -e '.available == true' >/dev/null
+    printf '%s\n' '{"schemaVersion":1,"apps":[{"id":"org.example.Browser","source":"nixpkgs","packageAttr":"example-browser"},{"id":"org.example.Browser","source":"nixpkgs","packageAttr":"example-browser"}]}' \
+      > "$TMPDIR/invalid-manifest.json"
+    VESPER_STORE_MANIFEST="$TMPDIR/invalid-manifest.json" ./vesper-store-core manifest-status \
+      | jq -e '.available == false' >/dev/null
+
     incomplete="$TMPDIR/catalog-incomplete.sqlite"
     sqlite3 "$incomplete" < data/catalog-schema.sql
     sqlite3 "$incomplete" 'DROP TABLE aliases;'

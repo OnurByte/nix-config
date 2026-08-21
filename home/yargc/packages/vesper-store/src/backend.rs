@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -6,6 +7,7 @@ const CATALOG_SCHEMA_VERSION: u32 = 1;
 const REQUIRED_TABLES: u32 = 8;
 const REQUIRED_COLUMNS: u32 = 44;
 const SEARCH_LIMIT: u32 = 24;
+const STORE_STATE_SCHEMA_VERSION: u32 = 1;
 
 const CATALOG_SCHEMA_QUERY: &str = r#"
 PRAGMA user_version;
@@ -71,6 +73,231 @@ fn catalog_path() -> Option<PathBuf> {
     env::var_os("VESPER_STORE_CATALOG")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
+}
+
+struct StorePaths {
+    manifest: PathBuf,
+    state: PathBuf,
+    profile: PathBuf,
+    generations: PathBuf,
+    transactions: PathBuf,
+    media: PathBuf,
+    gc_roots: PathBuf,
+    lock: Option<PathBuf>,
+}
+
+fn xdg_path(variable: &str, home: &Path, fallback: &str) -> PathBuf {
+    env::var_os(variable)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(fallback))
+}
+
+fn store_paths() -> Result<StorePaths, String> {
+    let home = env::var_os("HOME")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "HOME is not configured".to_string())?;
+    let config = xdg_path("XDG_CONFIG_HOME", &home, ".config");
+    let state = xdg_path("XDG_STATE_HOME", &home, ".local/state").join("vesper/store");
+    let cache = xdg_path("XDG_CACHE_HOME", &home, ".cache").join("vesper/store");
+    let runtime = env::var_os("XDG_RUNTIME_DIR")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .map(|path| path.join("vesper/store.lock"));
+
+    Ok(StorePaths {
+        manifest: config.join("vesper/store/manifest.json"),
+        profile: state.join("profile"),
+        generations: state.join("generations.json"),
+        transactions: state.join("transactions"),
+        media: cache.join("media"),
+        gc_roots: state.join("gcroots"),
+        state,
+        lock: runtime,
+    })
+}
+
+fn manifest_path() -> Result<PathBuf, String> {
+    if let Some(path) = env::var_os("VESPER_STORE_MANIFEST").filter(|value| !value.is_empty()) {
+        return Ok(PathBuf::from(path));
+    }
+    Ok(store_paths()?.manifest)
+}
+
+fn json_path(path: &Path) -> String {
+    json_escape(&path.to_string_lossy())
+}
+
+fn json_optional_path(path: Option<&Path>) -> String {
+    path.map(json_path)
+        .map(|value| format!("\"{value}\""))
+        .unwrap_or_else(|| "null".to_string())
+}
+
+fn path_entry_count(path: &Path) -> usize {
+    fs::read_dir(path)
+        .map(|entries| entries.filter_map(Result::ok).count())
+        .unwrap_or(0)
+}
+
+fn print_store_state() {
+    let paths = match store_paths() {
+        Ok(paths) => paths,
+        Err(error) => {
+            println!(
+                "{{\"schemaVersion\":{STORE_STATE_SCHEMA_VERSION},\"available\":false,\"error\":\"{}\"}}",
+                json_escape(&error)
+            );
+            return;
+        }
+    };
+    let profile_target = fs::read_link(&paths.profile)
+        .ok()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let profile_present = fs::symlink_metadata(&paths.profile).is_ok();
+    println!(
+        "{{\"schemaVersion\":{STORE_STATE_SCHEMA_VERSION},\"available\":true,\"paths\":{{\"manifest\":\"{}\",\"state\":\"{}\",\"profile\":\"{}\",\"generations\":\"{}\",\"transactions\":\"{}\",\"media\":\"{}\",\"gcRoots\":\"{}\",\"lock\":{}}},\"profile\":{{\"present\":{},\"target\":\"{}\"}},\"gcRoots\":{{\"entries\":{}}},\"session\":{{\"bin\":\"{}\",\"data\":\"{}\"}}}}",
+        json_path(&paths.manifest),
+        json_path(&paths.state),
+        json_path(&paths.profile),
+        json_path(&paths.generations),
+        json_path(&paths.transactions),
+        json_path(&paths.media),
+        json_path(&paths.gc_roots),
+        json_optional_path(paths.lock.as_deref()),
+        profile_present,
+        json_escape(&profile_target),
+        path_entry_count(&paths.gc_roots),
+        json_path(&paths.profile.join("bin")),
+        json_path(&paths.profile.join("share")),
+    );
+}
+
+#[cfg(unix)]
+fn set_mode(path: &Path, mode: u32) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+        .map_err(|error| format!("could not secure {}: {error}", path.display()))
+}
+
+fn initialize_store_state() -> Result<(), String> {
+    let paths = store_paths()?;
+    let config_store = paths
+        .manifest
+        .parent()
+        .ok_or_else(|| "manifest parent is missing".to_string())?;
+    for directory in [
+        config_store,
+        paths.state.as_path(),
+        paths.transactions.as_path(),
+        paths.media.as_path(),
+        paths.gc_roots.as_path(),
+    ] {
+        fs::create_dir_all(directory)
+            .map_err(|error| format!("could not create {}: {error}", directory.display()))?;
+        #[cfg(unix)]
+        set_mode(directory, 0o700)?;
+    }
+
+    if let Some(lock) = &paths.lock {
+        if let Some(parent) = lock.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+            #[cfg(unix)]
+            set_mode(parent, 0o700)?;
+        }
+    }
+
+    if !paths.manifest.exists() {
+        let temporary = paths.manifest.with_file_name(format!(
+            ".manifest.json.{}.tmp",
+            std::process::id()
+        ));
+        fs::write(&temporary, "{\"schemaVersion\":1,\"apps\":[]}\n")
+            .map_err(|error| format!("could not write initial manifest: {error}"))?;
+        #[cfg(unix)]
+        set_mode(&temporary, 0o600)?;
+        fs::rename(&temporary, &paths.manifest)
+            .map_err(|error| format!("could not install initial manifest: {error}"))?;
+    }
+    Ok(())
+}
+
+fn print_store_init() {
+    match initialize_store_state() {
+        Ok(()) => print_store_state(),
+        Err(error) => println!(
+            "{{\"schemaVersion\":{STORE_STATE_SCHEMA_VERSION},\"available\":false,\"error\":\"{}\"}}",
+            json_escape(&error)
+        ),
+    }
+}
+
+fn inspect_manifest(path: &Path) -> Result<(), String> {
+    if !path.is_file() {
+        return Err("manifest file does not exist".to_string());
+    }
+    let output = Command::new("jq")
+        .args([
+            "-e",
+            r#"
+                def nonempty_string: (type == "string" and length > 0);
+                def valid_app:
+                    (type == "object")
+                    and (.id | nonempty_string)
+                    and (
+                        (.source == "nixpkgs" and (.packageAttr | nonempty_string))
+                        or (.source == "flathub" and (.flatpakId | nonempty_string))
+                    );
+                if type != "object"
+                   or .schemaVersion != 1
+                   or (.apps | type) != "array"
+                   or any(.apps[]; valid_app | not)
+                   or ((.apps | map(.id) | unique | length) != (.apps | length))
+                then error("store manifest contract mismatch")
+                else true
+                end
+            "#,
+        ])
+        .arg(path)
+        .output()
+        .map_err(|error| format!("could not run jq: {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if error.is_empty() {
+        "store manifest contract mismatch".to_string()
+    } else {
+        error
+    })
+}
+
+fn print_manifest_status() {
+    let path = match manifest_path() {
+        Ok(path) => path,
+        Err(error) => {
+            println!(
+                "{{\"schemaVersion\":1,\"available\":false,\"path\":\"\",\"error\":\"{}\"}}",
+                json_escape(&error)
+            );
+            return;
+        }
+    };
+    match inspect_manifest(&path) {
+        Ok(()) => println!(
+            "{{\"schemaVersion\":1,\"available\":true,\"path\":\"{}\",\"error\":\"\"}}",
+            json_path(&path)
+        ),
+        Err(error) => println!(
+            "{{\"schemaVersion\":1,\"available\":false,\"path\":\"{}\",\"error\":\"{}\"}}",
+            json_path(&path),
+            json_escape(&error)
+        ),
+    }
 }
 
 fn catalog_metadata_path(catalog: &Path) -> PathBuf {
@@ -330,7 +557,9 @@ fn print_search(query: &str) {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: vesper-store-core <catalog-status|sources|search QUERY>");
+    eprintln!(
+        "usage: vesper-store-core <catalog-status|sources|search QUERY|store-state|store-init|manifest-status>"
+    );
     std::process::exit(2);
 }
 
@@ -340,6 +569,9 @@ fn main() {
         Some("catalog-status") => print_catalog_status(),
         Some("sources") => print_sources(),
         Some("search") => print_search(&args.collect::<Vec<_>>().join(" ")),
+        Some("store-state") => print_store_state(),
+        Some("store-init") => print_store_init(),
+        Some("manifest-status") => print_manifest_status(),
         _ => usage(),
     }
 }
