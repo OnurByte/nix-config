@@ -21,8 +21,10 @@ stdenv.mkDerivation {
   inherit src;
 
   nativeBuildInputs = [
+    jq
     makeWrapper
     rustc
+    sqlite
   ];
 
   dontConfigure = true;
@@ -31,6 +33,14 @@ stdenv.mkDerivation {
     runHook preBuild
     rustc --edition=2021 -C opt-level=2 server.rs -o vesper-startpage
     runHook postBuild
+  '';
+
+  doCheck = true;
+  checkPhase = ''
+    runHook preCheck
+    rustc --edition=2021 --test server.rs -o vesper-startpage-tests
+    ./vesper-startpage-tests
+    runHook postCheck
   '';
 
   installPhase = ''
