@@ -92,6 +92,10 @@ stdenv.mkDerivation {
       > "$TMPDIR/invalid-manifest.json"
     VESPER_STORE_MANIFEST="$TMPDIR/invalid-manifest.json" ./vesper-store-core manifest-status \
       | jq -e '.available == false' >/dev/null
+    printf '%s\n' '{"schemaVersion":1,"apps":[{"id":"org.example.Browser","source":"nixpkgs","packageAttr":"example-browser;touch"}]}' \
+      > "$TMPDIR/unsafe-manifest.json"
+    VESPER_STORE_MANIFEST="$TMPDIR/unsafe-manifest.json" ./vesper-store-core manifest-status \
+      | jq -e '.available == false' >/dev/null
 
     incomplete="$TMPDIR/catalog-incomplete.sqlite"
     sqlite3 "$incomplete" < data/catalog-schema.sql

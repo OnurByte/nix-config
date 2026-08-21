@@ -244,13 +244,15 @@ fn inspect_manifest(path: &Path) -> Result<(), String> {
         .args([
             "-e",
             r#"
-                def nonempty_string: (type == "string" and length > 0);
+                def safe_identifier:
+                    (type == "string" and length > 0 and length <= 256
+                     and test("^[A-Za-z0-9][A-Za-z0-9._-]*$"));
                 def valid_app:
                     (type == "object")
-                    and (.id | nonempty_string)
+                    and (.id | safe_identifier)
                     and (
-                        (.source == "nixpkgs" and (.packageAttr | nonempty_string))
-                        or (.source == "flathub" and (.flatpakId | nonempty_string))
+                        (.source == "nixpkgs" and (.packageAttr | safe_identifier))
+                        or (.source == "flathub" and (.flatpakId | safe_identifier))
                     );
                 if type != "object"
                    or .schemaVersion != 1
