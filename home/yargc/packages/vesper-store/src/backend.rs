@@ -256,7 +256,7 @@ fn search_catalog(path: &Path, query: &str) -> Result<String, String> {
          FROM apps_fts \
          JOIN apps ON apps.id = apps_fts.app_id \
          WHERE apps_fts MATCH {} \
-         ORDER BY bm25(apps_fts), apps.name \
+         ORDER BY bm25(apps_fts, 0.0, 10.0, 4.0, 9.0, 7.0, 6.0, 2.0, 1.0), apps.name \
          LIMIT {SEARCH_LIMIT};",
         sql_literal(&fts_query)
     );
