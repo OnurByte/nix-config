@@ -2,6 +2,7 @@
   coreutils,
   gnugrep,
   jq,
+  pipewire,
   procps,
   psmisc,
   systemd,
@@ -14,6 +15,7 @@ writeShellApplication {
     coreutils
     gnugrep
     jq
+    pipewire
     procps
     psmisc
     systemd
@@ -30,17 +32,21 @@ writeShellApplication {
       local clipboard="off"
       local node="off"
 
-      if systemctl is-active --quiet tor.service 2>/dev/null || pgrep -x tor >/dev/null 2>&1; then
+      # Tor Browser owns its bundled tor process. Only the system unit proves
+      # that Vesper's system Tor client is active.
+      if systemctl is-active --quiet tor.service 2>/dev/null; then
         tor="on"
       fi
 
-      local mic_line
-      mic_line="$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ 2>/dev/null || true)"
-      if [[ -n "$mic_line" ]]; then
-        if grep -q '\[MUTED\]' <<<"$mic_line"; then
-          mic="muted"
+      # A default-source volume/mute value is only device readiness. A
+      # running PipeWire input stream is the ownership-specific capture
+      # signal we can prove without guessing from application names.
+      local pipewire_dump
+      if pipewire_dump="$(pw-dump -N 2>/dev/null)"; then
+        if jq -e 'any(.[]?; .type == "PipeWire:Interface:Node" and .info.state == "running" and .info.props["media.class"] == "Stream/Input/Audio")' <<<"$pipewire_dump" >/dev/null 2>&1; then
+          mic="active"
         else
-          mic="unmuted"
+          mic="inactive"
         fi
       fi
 
@@ -51,8 +57,18 @@ writeShellApplication {
         fi
       fi
 
-      if pgrep -u "$UID" -f 'caelestia|quickshell' >/dev/null 2>&1; then
-        clipboard="shell"
+      local text_clipboard="off"
+      local image_clipboard="off"
+      if systemctl --user is-active --quiet vesper-cliphist-text.service 2>/dev/null; then
+        text_clipboard="on"
+      fi
+      if systemctl --user is-active --quiet vesper-cliphist-image.service 2>/dev/null; then
+        image_clipboard="on"
+      fi
+      if [[ "$text_clipboard" == "on" && "$image_clipboard" == "on" ]]; then
+        clipboard="ready"
+      elif [[ "$text_clipboard" == "on" || "$image_clipboard" == "on" ]]; then
+        clipboard="degraded"
       fi
 
       if pgrep -x cuprated >/dev/null 2>&1; then
@@ -65,9 +81,12 @@ writeShellApplication {
       if [[ "$camera" == "active" ]]; then
         state="alert"
         label="CAM"
-      elif [[ "$mic" == "unmuted" ]]; then
+      elif [[ "$mic" == "active" ]]; then
         state="attention"
         label="MIC"
+      elif [[ "$clipboard" == "degraded" ]]; then
+        state="attention"
+        label="CLIP"
       elif [[ "$tor" == "on" ]]; then
         state="private"
         label="TOR"
@@ -88,7 +107,9 @@ writeShellApplication {
         --arg state "$state" \
         --arg label "$label" \
         --arg tooltip "$tooltip" \
-        '{tor:$tor,mic:$mic,camera:$camera,clipboard:$clipboard,node:$node,class:$state,label:$label,tooltip:$tooltip}'
+        --arg textClipboard "$text_clipboard" \
+        --arg imageClipboard "$image_clipboard" \
+        '{tor:$tor,mic:$mic,camera:$camera,clipboard:$clipboard,clipboardText:$textClipboard,clipboardImage:$imageClipboard,node:$node,class:$state,label:$label,tooltip:$tooltip}'
     }
 
     case "''${1:-status}" in
