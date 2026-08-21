@@ -291,6 +291,51 @@ fn clean_token(value: &str) -> String {
         .to_string()
 }
 
+fn parse_exec_tokens(value: &str) -> Option<Vec<String>> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut started = false;
+
+    for ch in value.chars() {
+        if escaped {
+            current.push(ch);
+            escaped = false;
+            started = true;
+            continue;
+        }
+        match ch {
+            '\\' => {
+                escaped = true;
+                started = true;
+            }
+            '"' => {
+                quoted = !quoted;
+                started = true;
+            }
+            ch if !quoted && ch.is_whitespace() => {
+                if started {
+                    tokens.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            ch => {
+                current.push(ch);
+                started = true;
+            }
+        }
+    }
+
+    if quoted || escaped {
+        return None;
+    }
+    if started {
+        tokens.push(current);
+    }
+    Some(tokens)
+}
+
 fn is_field_code(value: &str) -> bool {
     let value = value.trim();
     value.len() == 2 && value.starts_with('%')
@@ -325,14 +370,14 @@ fn extract_flag(tokens: &[String], name: &str) -> Option<String> {
     for (index, token) in tokens.iter().enumerate() {
         if let Some(value) = token.strip_prefix(&prefix) {
             let value = clean_token(value);
-            if !value.is_empty() {
+            if !value.is_empty() && !value.starts_with('%') {
                 return Some(value);
             }
         }
         if token == name {
             if let Some(value) = tokens.get(index + 1) {
                 let value = clean_token(value);
-                if !value.is_empty() && !value.starts_with('-') {
+                if !value.is_empty() && !value.starts_with('-') && !value.starts_with('%') {
                     return Some(value);
                 }
             }
@@ -443,11 +488,10 @@ fn build_identity() -> BTreeMap<String, Mapping> {
             );
         }
 
-        let tokens = app
-            .exec
-            .split_whitespace()
-            .map(clean_token)
-            .filter(|value| !value.is_empty() && !is_field_code(value))
+        let tokens = parse_exec_tokens(&app.exec)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|value| !value.is_empty() && !value.starts_with('%'))
             .collect::<Vec<_>>();
 
         if let Some(value) = extract_flag(&tokens, "--class").or_else(|| extract_flag(&tokens, "--name")) {
@@ -678,5 +722,24 @@ mod tests {
         assert!(aliases.contains_key("Example.App"));
         assert!(aliases.contains_key("example.app"));
         assert!(!aliases.contains_key("example"));
+    }
+
+    #[test]
+    fn exec_parser_preserves_quoted_paths_and_escaped_arguments() {
+        assert_eq!(
+            parse_exec_tokens("\"/opt/My App/bin\" --class=\"My\\\"App\" %U"),
+            Some(vec![
+                "/opt/My App/bin".to_string(),
+                "--class=My\"App".to_string(),
+                "%U".to_string(),
+            ])
+        );
+        assert_eq!(parse_exec_tokens("/broken \"path"), None);
+    }
+
+    #[test]
+    fn exec_field_codes_never_become_identity_aliases() {
+        let tokens = parse_exec_tokens("app --class=%U").expect("valid Exec");
+        assert_eq!(extract_flag(&tokens, "--class"), None);
     }
 }
