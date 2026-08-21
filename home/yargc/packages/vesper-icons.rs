@@ -1428,6 +1428,18 @@ fn json_i32_field(value: &str, key: &str) -> Option<i32> {
     rest.get(..end)?.parse().ok()
 }
 
+fn json_bool_field(value: &str, key: &str) -> Option<bool> {
+    let needle = format!("\"{key}\":");
+    let rest = value.get(value.find(&needle)? + needle.len()..)?.trim_start();
+    if rest.starts_with("true") {
+        Some(true)
+    } else if rest.starts_with("false") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 fn json_string_field(value: &str, key: &str) -> Option<String> {
     let needle = format!("\"{key}\":\"");
     let rest = value.get(value.find(&needle)? + needle.len()..)?;
@@ -1467,6 +1479,10 @@ fn vicon_static_svg(package: &Path) -> Result<String, String> {
                 .ok_or_else(|| "vicon group depth unavailable".to_string())?;
             let material = json_string_field(&metadata, "material")
                 .unwrap_or_else(|| "standard".to_string());
+            let semantic_groups = json_i32_field(&metadata, "semanticGroupCount")
+                .unwrap_or(1)
+                .clamp(1, 4);
+            let retain_raster = json_bool_field(&metadata, "retainRaster").unwrap_or(false);
             let mut layers = fs::read_dir(path.join("layers"))
                 .map_err(|error| format!("vicon group layers unavailable: {error}"))?
                 .filter_map(Result::ok)
@@ -1477,7 +1493,7 @@ fn vicon_static_svg(package: &Path) -> Result<String, String> {
             if layers.is_empty() {
                 return Err("vicon group has no layers".to_string());
             }
-            Ok((depth, path, material, layers))
+            Ok((depth, path, material, semantic_groups, retain_raster, layers))
         })
         .collect::<Result<Vec<_>, String>>()?;
     if !(1..=4).contains(&groups.len()) {
@@ -1487,7 +1503,7 @@ fn vicon_static_svg(package: &Path) -> Result<String, String> {
 
     let mut defs = String::new();
     let mut body = String::new();
-    for (index, (depth, _path, material, layers)) in groups.into_iter().enumerate() {
+    for (index, (depth, _path, material, semantic_groups, retain_raster, layers)) in groups.into_iter().enumerate() {
         let depth = depth.clamp(0, 8);
         let filter = format!("vesperViconDepth{index}");
         let shadow_opacity = 0.10 + f64::from(depth) * 0.035;
@@ -1498,8 +1514,8 @@ fn vicon_static_svg(package: &Path) -> Result<String, String> {
         ));
         let opacity = if material == "glass" { "0.88" } else { "1" };
         body.push_str(&format!(
-            "<g data-vesper-depth=\"{depth}\" data-vesper-material=\"{}\" opacity=\"{opacity}\" filter=\"url(#{filter})\">",
-            json_escape(&material)
+            "<g data-vesper-depth=\"{depth}\" data-vesper-material=\"{}\" data-vesper-semantic-groups=\"{semantic_groups}\" data-vesper-retain-raster=\"{retain_raster}\" opacity=\"{opacity}\" filter=\"url(#{filter})\">",
+            json_escape(&material),
         ));
         for asset in layers {
             match asset
@@ -2422,7 +2438,7 @@ mod tests {
         .unwrap();
         fs::write(
             root.join("groups/02-foreground/group.json"),
-            r#"{"id":"foreground","depth":2,"material":"glass"}"#,
+            r#"{"id":"foreground","depth":2,"material":"glass","semanticGroupCount":3,"retainRaster":true}"#,
         )
         .unwrap();
         fs::write(
@@ -2441,6 +2457,8 @@ mod tests {
         assert!(rendered.contains("#0000ff"));
         assert!(rendered.contains("data-vesper-depth=\"2\""));
         assert!(rendered.contains("data-vesper-material=\"glass\""));
+        assert!(rendered.contains("data-vesper-semantic-groups=\"3\""));
+        assert!(rendered.contains("data-vesper-retain-raster=\"true\""));
 
         fs::write(
             root.join("groups/02-foreground/group.json"),

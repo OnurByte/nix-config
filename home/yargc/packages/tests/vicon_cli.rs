@@ -97,8 +97,11 @@ fn clean_svg_becomes_valid_local_vector_vicon() {
     assert!(manifest.contains("\"height\":1024"));
     assert!(manifest.contains("\"masked\":false"));
     assert!(manifest.contains("\"kind\":\"local-vector\""));
+    assert!(manifest.contains("\"semantic\":{\"schemaVersion\":1,\"retainRaster\":false,\"groups\":1}"));
     assert!(manifest.contains("\"assetType\":\"vector\""));
     assert!(manifest.contains("groups/01-primary/layers/01.svg"));
+    let group = fs::read_to_string(package.join("groups/01-primary/group.json")).unwrap();
+    assert!(group.contains("\"semanticGroupCount\":1"));
 
     assert!(package.join("appearances/default.json").is_file());
     assert!(package.join("appearances/dark.json").is_file());

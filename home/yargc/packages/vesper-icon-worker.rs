@@ -14,7 +14,8 @@ const MAX_RASTER_DIMENSION: u64 = 16_384;
 const MAX_RASTER_PIXELS: u64 = 64 * 1024 * 1024;
 const LEASE_HEARTBEAT_SECS: u64 = 60;
 const MAX_RETRY_AFTER_MS: i64 = 10 * 60 * 1000;
-const CONVERSION_CONTRACT_REVISION: i64 = 2;
+const DECOMPOSITION_SCHEMA_VERSION: u32 = 1;
+const CONVERSION_CONTRACT_REVISION: i64 = 3;
 
 #[derive(Clone, Debug)]
 struct Claim {
@@ -28,8 +29,11 @@ struct Claim {
 
 #[derive(Clone, Debug)]
 struct Decomposition {
+    schema_version: u32,
     silhouette: String,
     background: String,
+    retain_raster: bool,
+    groups: u8,
     confidence: f64,
     notes: String,
     provider: String,
@@ -535,11 +539,67 @@ fn normalize_source(claim: &Claim, work: &Path) -> Result<PathBuf, String> {
 }
 
 fn decomposition_prompt() -> &'static str {
-    "Analyze this installed application icon for Vesper adaptive icon canonicalization. Return only JSON. Preserve brand identity. Do not redesign the logo and do not invent 3D geometry. Classify silhouette as exactly one of enclosed, circular, glyph, irregular, full-bleed. Choose backgroundStrategy as exactly one of brand-solid, brand-gradient, system-brand-gradient, system-light, system-dark, palette-surface, transparent, artwork. Use retainRaster=true whenever reconstructing vector geometry would risk changing identity. groups must be an integer from 1 to 4 describing the minimum useful semantic depth groups. notes must be short. Required JSON keys: silhouette, backgroundStrategy, retainRaster, groups, confidence, notes. confidence is 0 to 1."
+    "Analyze this installed application icon for Vesper adaptive icon canonicalization. Return only JSON. Preserve brand identity. Do not redesign the logo and do not invent 3D geometry. schemaVersion must be 1. Classify silhouette as exactly one of enclosed, circular, glyph, irregular, full-bleed. Choose backgroundStrategy as exactly one of brand-solid, brand-gradient, system-brand-gradient, system-light, system-dark, palette-surface, transparent, artwork. Use retainRaster=true whenever reconstructing vector geometry would risk changing identity. groups must be an integer from 1 to 4 describing the minimum useful semantic depth groups. notes must be short. Required JSON keys: schemaVersion, silhouette, backgroundStrategy, retainRaster, groups, confidence, notes. confidence is 0 to 1."
 }
 
 fn schema_json() -> &'static str {
-    "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"silhouette\":{\"type\":\"string\",\"enum\":[\"enclosed\",\"circular\",\"glyph\",\"irregular\",\"full-bleed\"]},\"backgroundStrategy\":{\"type\":\"string\",\"enum\":[\"brand-solid\",\"brand-gradient\",\"system-brand-gradient\",\"system-light\",\"system-dark\",\"palette-surface\",\"transparent\",\"artwork\"]},\"retainRaster\":{\"type\":\"boolean\"},\"groups\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"confidence\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"notes\":{\"type\":\"string\"}},\"required\":[\"silhouette\",\"backgroundStrategy\",\"retainRaster\",\"groups\",\"confidence\",\"notes\"]}"
+    "{\"type\":\"object\",\"additionalProperties\":false,\"properties\":{\"schemaVersion\":{\"type\":\"integer\",\"enum\":[1]},\"silhouette\":{\"type\":\"string\",\"enum\":[\"enclosed\",\"circular\",\"glyph\",\"irregular\",\"full-bleed\"]},\"backgroundStrategy\":{\"type\":\"string\",\"enum\":[\"brand-solid\",\"brand-gradient\",\"system-brand-gradient\",\"system-light\",\"system-dark\",\"palette-surface\",\"transparent\",\"artwork\"]},\"retainRaster\":{\"type\":\"boolean\"},\"groups\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":4},\"confidence\":{\"type\":\"number\",\"minimum\":0,\"maximum\":1},\"notes\":{\"type\":\"string\"}},\"required\":[\"schemaVersion\",\"silhouette\",\"backgroundStrategy\",\"retainRaster\",\"groups\",\"confidence\",\"notes\"]}"
+}
+
+fn parse_decomposition(data: &[u8], claim: &Claim, model: String) -> Result<Decomposition, String> {
+    let valid = jq_text(
+        data,
+        "type == \"object\" and (keys | sort) == [\"backgroundStrategy\",\"confidence\",\"groups\",\"notes\",\"retainRaster\",\"schemaVersion\",\"silhouette\"] and (.schemaVersion | type == \"number\" and floor == . and . == 1) and (.silhouette | type == \"string\") and (.backgroundStrategy | type == \"string\") and (.retainRaster | type == \"boolean\") and (.groups | type == \"number\" and floor == . and . >= 1 and . <= 4) and (.confidence | type == \"number\" and . >= 0 and . <= 1) and (.notes | type == \"string\" and length <= 2048)",
+    )?;
+    if valid != "true" {
+        return Err("provider returned decomposition outside the canonical schema".to_string());
+    }
+
+    let silhouette = jq_text(data, ".silhouette")?;
+    let background = jq_text(data, ".backgroundStrategy")?;
+    let retain_raster = jq_text(data, ".retainRaster")? == "true";
+    let groups = jq_text(data, ".groups")?
+        .parse::<u8>()
+        .map_err(|_| "provider returned invalid semantic group count".to_string())?;
+    let confidence = jq_text(data, ".confidence")?
+        .parse::<f64>()
+        .map_err(|_| "provider returned invalid confidence".to_string())?;
+    let notes = jq_text(data, ".notes")?;
+
+    if !matches!(
+        silhouette.as_str(),
+        "enclosed" | "circular" | "glyph" | "irregular" | "full-bleed"
+    ) {
+        return Err("provider returned invalid silhouette classification".to_string());
+    }
+    if !matches!(
+        background.as_str(),
+        "brand-solid"
+            | "brand-gradient"
+            | "system-brand-gradient"
+            | "system-light"
+            | "system-dark"
+            | "palette-surface"
+            | "transparent"
+            | "artwork"
+    ) {
+        return Err("provider returned invalid background strategy".to_string());
+    }
+    if confidence < 0.45 {
+        return Err(format!("provider confidence too low: {confidence:.2}"));
+    }
+
+    Ok(Decomposition {
+        schema_version: DECOMPOSITION_SCHEMA_VERSION,
+        silhouette,
+        background,
+        retain_raster,
+        groups,
+        confidence,
+        notes,
+        provider: claim.provider.clone(),
+        model,
+    })
 }
 
 fn http_post(
@@ -732,45 +792,7 @@ fn provider_request(claim: &Claim, image: &Path, work: &Path) -> Result<Decompos
     let decomposition_path = work.join("decomposition.json");
     fs::write(&decomposition_path, &text).map_err(|error| error.to_string())?;
     let data = fs::read(&decomposition_path).map_err(|error| error.to_string())?;
-    let silhouette = jq_text(&data, ".silhouette // empty")?;
-    let background = jq_text(&data, ".backgroundStrategy // empty")?;
-    let confidence = jq_text(&data, ".confidence // 0")?
-        .parse::<f64>()
-        .unwrap_or(0.0)
-        .clamp(0.0, 1.0);
-    let notes = jq_text(&data, ".notes // empty")?;
-
-    if !matches!(
-        silhouette.as_str(),
-        "enclosed" | "circular" | "glyph" | "irregular" | "full-bleed"
-    ) {
-        return Err("provider returned invalid silhouette classification".to_string());
-    }
-    if !matches!(
-        background.as_str(),
-        "brand-solid"
-            | "brand-gradient"
-            | "system-brand-gradient"
-            | "system-light"
-            | "system-dark"
-            | "palette-surface"
-            | "transparent"
-            | "artwork"
-    ) {
-        return Err("provider returned invalid background strategy".to_string());
-    }
-    if confidence < 0.45 {
-        return Err(format!("provider confidence too low: {confidence:.2}"));
-    }
-
-    Ok(Decomposition {
-        silhouette,
-        background,
-        confidence,
-        notes,
-        provider: claim.provider.clone(),
-        model,
-    })
+    parse_decomposition(&data, claim, model)
 }
 
 fn canonical_dir(app_id: &str, fingerprint: &str) -> PathBuf {
@@ -784,6 +806,25 @@ fn appearance_json(name: &str) -> String {
         "{{\"schemaVersion\":{},\"name\":\"{}\",\"inherits\":\"default\",\"material\":\"standard\"}}\n",
         VICON_SCHEMA_VERSION,
         json_escape(name)
+    )
+}
+
+fn semantic_manifest_json(decomposition: &Decomposition) -> String {
+    format!(
+        "\"semantic\":{{\"schemaVersion\":{},\"retainRaster\":{},\"groups\":{}}}",
+        decomposition.schema_version, decomposition.retain_raster, decomposition.groups
+    )
+}
+
+fn group_json(id: &str, role: &str, depth: u8, material: &str, groups: u8, retain_raster: bool) -> String {
+    format!(
+        "{{\"id\":\"{}\",\"role\":\"{}\",\"renderMode\":\"combined\",\"depth\":{},\"material\":\"{}\",\"semanticGroupCount\":{},\"retainRaster\":{}}}\n",
+        json_escape(id),
+        json_escape(role),
+        depth,
+        json_escape(material),
+        groups,
+        retain_raster
     )
 }
 
@@ -910,7 +951,7 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
         fs::write(layers.join("01.png"), &png).map_err(|error| error.to_string())?;
         fs::write(
             stage.join("groups/01-primary/group.json"),
-            "{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"depth\":1}\n",
+            group_json("primary", "primary", 1, "standard", decomposition.groups, decomposition.retain_raster),
         )
         .map_err(|error| error.to_string())?;
         fs::write(stage.join("appearances/default.json"), appearance_json("default"))
@@ -927,7 +968,7 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
             .collect::<Vec<_>>()
             .join(",");
         let manifest = format!(
-            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-retained-raster\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{},\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"preserved-artwork\",\"assetType\":\"raster\",\"asset\":\"groups/01-primary/layers/01.png\",\"effects\":\"limited\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
+            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-retained-raster\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{},\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},{},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"preserved-artwork\",\"assetType\":\"raster\",\"asset\":\"groups/01-primary/layers/01.png\",\"effects\":\"limited\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
             VICON_SCHEMA_VERSION,
             json_escape(&claim.key),
             apps,
@@ -937,6 +978,7 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
             CONVERSION_CONTRACT_REVISION,
             json_escape(&decomposition.silhouette),
             json_escape(&decomposition.background),
+            semantic_manifest_json(decomposition),
             decomposition.confidence,
             json_escape(&decomposition.notes),
         );
@@ -959,8 +1001,9 @@ fn build_raster_vicon(claim: &Claim, normalized: &Path, decomposition: &Decompos
     Ok(())
 }
 
-fn vector_semantic_ready(claim: &Claim) -> bool {
-    claim.source_kind == "svg"
+fn vector_semantic_ready(claim: &Claim, decomposition: &Decomposition) -> bool {
+    !decomposition.retain_raster
+        && claim.source_kind == "svg"
         && claim.app_ids.iter().all(|app_id| {
             let canonical = canonical_dir(app_id, &claim.key).join("canonical.svg");
             canonical.is_file() && !source_is_unsafe_svg(&canonical)
@@ -987,7 +1030,7 @@ fn build_vector_semantic_vicon(claim: &Claim, decomposition: &Decomposition) -> 
         fs::write(layers.join("01.svg"), svg).map_err(|error| error.to_string())?;
         fs::write(
             stage.join("groups/01-primary/group.json"),
-            "{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"depth\":1}\n",
+            group_json("primary", "primary", 1, "standard", decomposition.groups, decomposition.retain_raster),
         )
         .map_err(|error| error.to_string())?;
         fs::write(stage.join("appearances/default.json"), appearance_json("default"))
@@ -1004,7 +1047,7 @@ fn build_vector_semantic_vicon(claim: &Claim, decomposition: &Decomposition) -> 
             .collect::<Vec<_>>()
             .join(",");
         let manifest = format!(
-            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-local-vector\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{},\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
+            "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[{}],\"provenance\":{{\"kind\":\"ai-semantic-local-vector\",\"provider\":\"{}\",\"model\":\"{}\",\"promptRevision\":{},\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"{}\"}},{},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"identityConfidence\":{:.3},\"status\":\"passed\",\"notes\":\"{}\"}}}}\n",
             VICON_SCHEMA_VERSION,
             json_escape(&claim.key),
             apps,
@@ -1014,6 +1057,7 @@ fn build_vector_semantic_vicon(claim: &Claim, decomposition: &Decomposition) -> 
             CONVERSION_CONTRACT_REVISION,
             json_escape(&decomposition.silhouette),
             json_escape(&decomposition.background),
+            semantic_manifest_json(decomposition),
             decomposition.confidence,
             json_escape(&decomposition.notes),
         );
@@ -1058,7 +1102,7 @@ fn ensure_local_vector_vicon(item: &InventoryItem) -> Result<(), String> {
     fs::write(layers.join("01.svg"), &svg).map_err(|error| error.to_string())?;
     fs::write(
         stage.join("groups/01-primary/group.json"),
-        "{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"depth\":1}\n",
+        group_json("primary", "primary", 1, "standard", 1, false),
     )
     .map_err(|error| error.to_string())?;
     fs::write(stage.join("appearances/default.json"), appearance_json("default"))
@@ -1068,12 +1112,13 @@ fn ensure_local_vector_vicon(item: &InventoryItem) -> Result<(), String> {
     fs::write(stage.join("appearances/mono.json"), appearance_json("mono"))
         .map_err(|error| error.to_string())?;
     let manifest = format!(
-        "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[\"{}\"],\"provenance\":{{\"kind\":\"local-vector\",\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"transparent\"}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"status\":\"passed\"}}}}\n",
+        "{{\"schemaVersion\":{},\"canvas\":{{\"width\":1024,\"height\":1024,\"masked\":false}},\"sourceFingerprint\":\"{}\",\"applicationIds\":[\"{}\"],\"provenance\":{{\"kind\":\"local-vector\",\"contractRevision\":{}}},\"silhouette\":\"{}\",\"background\":{{\"strategy\":\"transparent\"}},\"semantic\":{{\"schemaVersion\":{},\"retainRaster\":false,\"groups\":1}},\"groups\":[{{\"id\":\"primary\",\"role\":\"primary\",\"renderMode\":\"combined\",\"layers\":[{{\"id\":\"official-vector\",\"assetType\":\"vector\",\"asset\":\"groups/01-primary/layers/01.svg\"}}]}}],\"appearances\":[\"default\",\"dark\",\"mono\"],\"validation\":{{\"status\":\"passed\"}}}}\n",
         VICON_SCHEMA_VERSION,
         json_escape(&item.fingerprint),
         json_escape(&item.id),
         CONVERSION_CONTRACT_REVISION,
         local_silhouette(&svg),
+        DECOMPOSITION_SCHEMA_VERSION,
     );
     fs::write(stage.join("manifest.json"), manifest).map_err(|error| error.to_string())?;
     validate_vicon(&stage)?;
@@ -1121,7 +1166,7 @@ fn process_once() -> Result<bool, String> {
     let result = (|| {
         let normalized = normalize_source(&claim, &work)?;
         let decomposition = provider_request(&claim, &normalized, &work)?;
-        if vector_semantic_ready(&claim) {
+        if vector_semantic_ready(&claim, &decomposition) {
             build_vector_semantic_vicon(&claim, &decomposition)?;
         } else {
             build_raster_vicon(&claim, &normalized, &decomposition)?;
@@ -1174,7 +1219,39 @@ fn daemon() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_retry_after_ms;
+    use super::{parse_decomposition, parse_retry_after_ms, Claim};
+    use std::path::PathBuf;
+
+    fn fixture_claim() -> Claim {
+        Claim {
+            key: "fixture".to_string(),
+            provider: "openai".to_string(),
+            source_kind: "svg".to_string(),
+            source_path: PathBuf::from("/tmp/fixture.svg"),
+            app_ids: vec!["fixture.desktop".to_string()],
+            contract_revision: 3,
+        }
+    }
+
+    #[test]
+    fn decomposition_contract_preserves_semantic_decisions() {
+        let data = br#"{"schemaVersion":1,"silhouette":"circular","backgroundStrategy":"system-brand-gradient","retainRaster":true,"groups":3,"confidence":0.91,"notes":"keep the original raster"}"#;
+        for provider in ["openai", "anthropic", "xai", "openrouter", "google"] {
+            let mut claim = fixture_claim();
+            claim.provider = provider.to_string();
+            let parsed = parse_decomposition(data, &claim, "fixture-model".to_string()).unwrap();
+            assert_eq!(parsed.schema_version, 1);
+            assert!(parsed.retain_raster);
+            assert_eq!(parsed.groups, 3);
+            assert_eq!(parsed.background, "system-brand-gradient");
+        }
+    }
+
+    #[test]
+    fn decomposition_contract_rejects_unknown_or_missing_fields() {
+        let data = br#"{"schemaVersion":1,"silhouette":"circular","backgroundStrategy":"transparent","retainRaster":false,"groups":1,"confidence":0.9,"notes":"ok","extra":true}"#;
+        assert!(parse_decomposition(data, &fixture_claim(), "fixture-model".to_string()).is_err());
+    }
 
     #[test]
     fn retry_after_seconds_are_bounded() {

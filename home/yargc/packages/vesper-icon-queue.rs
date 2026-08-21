@@ -11,7 +11,7 @@ const QUEUE_SCHEMA_VERSION: u32 = 3;
 const LEASE_MS: i64 = 5 * 60 * 1000;
 const MAX_ATTEMPTS: u32 = 4;
 const MAX_RETRY_DELAY_MS: i64 = 10 * 60 * 1000;
-const CONVERSION_CONTRACT_REVISION: i64 = 2;
+const CONVERSION_CONTRACT_REVISION: i64 = 3;
 
 #[derive(Clone, Debug)]
 struct InventoryItem {
