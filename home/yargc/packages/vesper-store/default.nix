@@ -2,6 +2,7 @@
   lib,
   pkg-config,
   qt6,
+  jq,
   rustc,
   sqlite,
   stdenv,
@@ -13,6 +14,7 @@ stdenv.mkDerivation {
   src = ./.;
 
   nativeBuildInputs = [
+    jq
     pkg-config
     qt6.wrapQtAppsHook
     rustc
@@ -51,8 +53,25 @@ stdenv.mkDerivation {
 
     fixture="$TMPDIR/catalog.sqlite"
     sqlite3 "$fixture" < data/catalog-schema.sql
-    VESPER_STORE_CATALOG="$fixture" ./vesper-store-core catalog-status \
+    printf '%s\n' '{"schemaVersion":1,"system":"${stdenv.hostPlatform.system}","nixpkgsRevision":"0000000000000000000000000000000000000000","generatedAt":"2026-01-01T00:00:00Z"}' \
+      > "$TMPDIR/catalog-meta.json"
+    VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_CATALOG="$fixture" ./vesper-store-core catalog-status \
       | grep -F '"available":true' >/dev/null
+
+    incomplete="$TMPDIR/catalog-incomplete.sqlite"
+    sqlite3 "$incomplete" < data/catalog-schema.sql
+    sqlite3 "$incomplete" 'DROP TABLE aliases;'
+    VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_CATALOG="$incomplete" VESPER_STORE_CATALOG_META="$TMPDIR/catalog-meta.json" \
+      ./vesper-store-core catalog-status | grep -F '"available":false' >/dev/null
+
+    invalid_meta="$TMPDIR/catalog-meta-invalid.json"
+    printf '%s\n' '{"schemaVersion":1,"system":"x86_64-linux","nixpkgsRevision":"not-a-revision","generatedAt":"2026-01-01T00:00:00Z"}' \
+      > "$invalid_meta"
+    VESPER_STORE_EXPECTED_SYSTEM="${stdenv.hostPlatform.system}" \
+      VESPER_STORE_CATALOG="$fixture" VESPER_STORE_CATALOG_META="$invalid_meta" \
+      ./vesper-store-core catalog-status | grep -F '"available":false' >/dev/null
 
     runHook postCheck
   '';
@@ -74,7 +93,8 @@ stdenv.mkDerivation {
     qtWrapperArgs+=(
       --set VESPER_STORE_QML "$out/share/vesper-store/qml/Main.qml"
       --set VESPER_STORE_CORE "$out/libexec/vesper-store-core"
-      --prefix PATH : "${lib.makeBinPath [ sqlite ]}"
+      --set VESPER_STORE_EXPECTED_SYSTEM "${stdenv.hostPlatform.system}"
+      --prefix PATH : "${lib.makeBinPath [ jq sqlite ]}"
     )
   '';
 
