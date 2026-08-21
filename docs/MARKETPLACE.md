@@ -200,7 +200,9 @@ failed
 
 ## visual contract
 
-Store follows Vesper's Apple-aligned controlled-glass direction without turning the complete application into a transparent shell overlay.
+Store follows the consumer-agnostic Liquid Glass contract from the sibling
+`../../liquid-glass/` project only when a consumer explicitly adopts it. It must
+not turn the complete application into a transparent shell overlay.
 
 Use:
 

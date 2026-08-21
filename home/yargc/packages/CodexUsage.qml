@@ -27,9 +27,7 @@ StyledRect {
     implicitWidth: Tokens.sizes.bar.innerWidth
     implicitHeight: layout.implicitHeight + Tokens.padding.small * 2
     radius: Tokens.rounding.full
-    color: Qt.alpha(Colours.tPalette.m3surfaceContainerHigh, mouse.containsMouse ? 0.52 : 0.28)
-    border.width: 1
-    border.color: Qt.alpha(root.accent, mouse.containsMouse ? 0.36 : 0.18)
+    color: Qt.alpha(Colours.tPalette.m3surfaceContainerHigh, mouse.containsMouse ? 0.8 : 0.35)
 
     function refresh(force) {
         if (force) {

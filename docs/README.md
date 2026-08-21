@@ -39,7 +39,6 @@ Subsystem architecture must have one canonical document. Do not create parallel 
 | `APPS-SETTINGS.md` | partial | installed-app settings contract and Store handoff |
 | `MARKETPLACE.md` | spec | Vesper Store architecture and target transaction model |
 | `DESKTOP-ERGONOMICS.md` | plan | high-frequency desktop interaction and ergonomics implementation plan |
-| `TOP-BAR-DOCK.md` | plan | Apple-aligned top-bar and Liquid Glass dock design plan |
 
 ## canonical boundaries
 
@@ -108,11 +107,12 @@ Its status is `plan`. It may reference existing implementation primitives but mu
 
 ### visual shell
 
-`TOP-BAR-DOCK.md` is the visual authority for the planned top-bar and dock redesign.
+The consumer-agnostic Liquid Glass contract lives in the sibling project
+`../../liquid-glass/docs/LIQUID-GLASS.md`.
 
-Its status is `plan`. It corrects older generic glass assumptions, but it does not authorize implementation by itself.
-
-For components outside that plan, follow current Caelestia/Vesper code and the repo-wide UX guardrails in `AGENTS.md`.
+Vesper owns only its enforced Settings controls and runtime/declarative mapping.
+Current Caelestia and Hyprland behavior remains the source of truth for the
+shell; the sibling contract does not authorize automatic visual changes.
 
 ## active remediation ledger
 

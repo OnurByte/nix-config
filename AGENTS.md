@@ -50,10 +50,9 @@ Do not restore removed components merely because an older document names them.
 - Keep the two `wl-paste -> cliphist store` watchers; they are Caelestia's clipboard backend.
 - Do not reintroduce `nm-applet`, Blueman UI, Pavucontrol, Waybar, hypridle or hyprlock while Caelestia owns those surfaces.
 - Hyprland config is Lua. Keep `home/yargc/hyprland.nix` as wiring and compositor logic under `home/yargc/hypr/*.lua`.
-- Vesper uses an Apple-aligned controlled-glass visual language. Apply component-specific behavior instead of one generic glass recipe everywhere.
-- For the top bar and dock, `docs/TOP-BAR-DOCK.md` is the visual authority. Its current status is a design/implementation plan, so do not implement it unless the task explicitly activates that plan.
-- Do not treat a static luminous outline, generic visionOS imitation or glass-on-glass nesting as a universal Vesper rule.
-- Keep glass concentrated in appropriate shell, navigation, drawer, popover and HUD surfaces. Do not turn every application transparent.
+- Liquid Glass is a consumer-agnostic sibling project at `../liquid-glass/`; Vesper only owns the Settings controls and their enforced runtime/declarative mapping.
+- Do not reintroduce a Vesper-local visual glass recipe, static luminous outline, generic visionOS imitation or glass-on-glass nesting. Consumer visual rules belong to the sibling project.
+- Keep Vesper Settings glass controls backed by real runtime/declarative behavior. Do not expose a renderer or material toggle that Vesper cannot enforce.
 - Prefer native Caelestia panels/drawers for shell information when practical instead of spawning a terminal-shaped dashboard.
 - Wallpaper assets should come from maintained/public sources or nixpkgs. Do not generate bespoke wallpapers unless explicitly requested.
 - Turkish Q stays the default layout; US switching remains available.

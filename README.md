@@ -46,12 +46,14 @@ most of the machine lives in nixos and home manager with Hyprland for the compos
 Hyprland config lives in Lua under `home/yargc/hypr/`
 Caelestia owns the bar control center notifications lock idle clipboard screenshots and recording while Vicinae is the primary `Super` application launcher
 
-Vesper follows an Apple-aligned controlled-glass direction without making every application transparent
-the planned persistent/transient shell redesign is tracked in `docs/TOP-BAR-DOCK.md`
+Liquid Glass is maintained as the consumer-agnostic sibling project at
+`../liquid-glass/`. Vesper only exposes its enforced transparency and launcher
+surface settings; it does not own the visual contract or renderer.
 current shell behavior follows the active Caelestia theme
 Vicinae follows the same light/dark scheme and primary accent; its Vesper-specific controls live in `Settings -> Vicinae`
 
-Hyprland currently uses 22 px window rounding 12 px blur with 4 passes and a soft 24 px shadow
+Hyprland keeps its own baseline window appearance; Liquid Glass profiles are
+not applied automatically.
 
 ### keys
 

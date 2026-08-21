@@ -56,7 +56,7 @@ All new surfaces must use the active Vesper/Caelestia design system:
 - existing semantic colour, spacing, typography, radius and motion tokens;
 - native Nexus settings rows for Settings surfaces;
 - the active Vesper transient-surface visual language;
-- `TOP-BAR-DOCK.md` when the planned top-bar/dock visual contract is active;
+- the sibling `../../liquid-glass/docs/LIQUID-GLASS.md` contract when a consumer explicitly adopts it;
 - reduced-motion, reduced-transparency and increased-contrast behavior where the owning surface supports it.
 
 Rules:

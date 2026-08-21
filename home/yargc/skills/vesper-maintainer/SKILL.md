@@ -58,8 +58,8 @@ Use `agent-operations` and its reliability reference for long-running jobs, stat
 - keep PychoVIM's own updater and mutable config ownership
 - keep Zed on the locked stable nixpkgs package unless an intentional pin update is requested
 - keep Caelestia as the only desktop shell/bar
-- follow the current component-specific visual authority; for top bar and dock this is `docs/TOP-BAR-DOCK.md`
-- do not generalize one glass recipe, static luminous border or visionOS imitation across every shell surface
+- keep Liquid Glass visual rules in the consumer-agnostic sibling project at `../liquid-glass/`; Vesper owns only enforced Settings controls
+- do not add a Vesper-local glass recipe, static luminous border or visionOS imitation
 - do not turn every application transparent
 - keep Vesper's AI control-plane boundary backend-neutral; optional orchestration backends must remain replaceable
 - do not restore removed control planes or tools because stale documentation mentions them
