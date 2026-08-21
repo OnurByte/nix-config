@@ -14,6 +14,12 @@
     enable = true;
 
     firewall = {
+      # This is a single-host policy. Keep VPN, container, loopback and Wi-Fi
+      # P2P interfaces out of the NFQUEUE path.
+      interfaces = [
+        "wlan0"
+        "enp2s0"
+      ];
       maxPackets = 16;
       tcpPorts = [ 443 ];
       udpPorts = [ ];

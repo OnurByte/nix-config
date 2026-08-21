@@ -58,3 +58,16 @@ When the source is consolidated, keep the stdin behavior and remove the redundan
 ## Zapret2
 
 Zapret2 stays declarative in Nix. The UI reports the current narrow adaptive profile instead of inventing mutable presets that would diverge from `modules/privacy/default.nix`.
+
+The firewall scope is limited to this host's verified physical interfaces:
+
+```text
+wlan0
+enp2s0
+```
+
+That keeps loopback, Wi-Fi P2P, Tailscale, Docker and other bridge/tunnel
+interfaces outside the NFQUEUE path. These names are intentionally concrete
+for the single Vesper laptop. Recheck them if the hardware or interface
+topology changes. The generated nftables rule set still needs an activated
+Nix-capable host check.
