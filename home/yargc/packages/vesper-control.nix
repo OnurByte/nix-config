@@ -50,6 +50,14 @@ stdenv.mkDerivation {
     runHook postBuild
   '';
 
+  doCheck = true;
+  checkPhase = ''
+    runHook preCheck
+    rustc --edition=2021 --test vesper-control.rs -o vesper-control-tests
+    ./vesper-control-tests
+    runHook postCheck
+  '';
+
   installPhase = ''
     runHook preInstall
     install -Dm755 vesper-control $out/bin/vesper-control
