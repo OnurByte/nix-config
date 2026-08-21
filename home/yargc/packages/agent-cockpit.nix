@@ -22,12 +22,15 @@ writeShellApplication {
     set -uo pipefail
 
     state_dir="''${VESPER_AGENT_STATE_DIR:-$HOME/.local/state/vesper/agents}"
+    cache_ttl="''${VESPER_AGENT_CACHE_TTL:-10}"
+    [[ "$cache_ttl" =~ ^[0-9]+$ ]] || cache_ttl=10
     mkdir -p "$state_dir"
 
     cleanup_state() {
       local file pid
       shopt -s nullglob
       for file in "$state_dir"/*.json; do
+        [[ "$file" == "$state_dir/status.json" ]] && continue
         pid="$(jq -r '.pid // 0' "$file" 2>/dev/null || echo 0)"
         if ! [[ "$pid" =~ ^[0-9]+$ ]] || ! kill -0 "$pid" 2>/dev/null; then
           rm -f "$file"
@@ -38,9 +41,24 @@ writeShellApplication {
 
     status_json() {
       local items='[]'
-      local now
+      local now now_epoch snapshot_file snapshot_mtime
       now="$(date --iso-8601=seconds)"
       cleanup_state
+
+      # QML may ask every five seconds. Reuse a bounded diagnostic snapshot so
+      # the visual refresh rate does not become a full process/Git scan rate.
+      # ponytail: one TTL for the whole snapshot; split liveness/Git caches if
+      # a ten-second stale window becomes operationally significant.
+      snapshot_file="$state_dir/status.json"
+      now_epoch="$(date +%s)"
+      snapshot_mtime="$(stat -c %Y "$snapshot_file" 2>/dev/null || echo 0)"
+      if [[ "$snapshot_mtime" =~ ^[0-9]+$ ]] \
+        && (( now_epoch >= snapshot_mtime )) \
+        && (( now_epoch - snapshot_mtime < cache_ttl )) \
+        && jq -e '.schemaVersion == 2 and (.agents | type == "array")' "$snapshot_file" >/dev/null 2>&1; then
+        cat "$snapshot_file"
+        return
+      fi
 
       while IFS='|' read -r agent pattern; do
         [[ -n "$agent" ]] || continue
@@ -48,9 +66,12 @@ writeShellApplication {
         while IFS= read -r pid; do
           [[ -n "$pid" ]] || continue
 
-          local cwd repo_root project branch dirty command item slug state_file first_seen elapsed_seconds
+          local cwd repo_root project branch dirty process_name item slug state_file first_seen elapsed_seconds
           cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
-          command="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+          # Keep process identity, never its argv. Prompts, tokens and paths
+          # passed to an agent can otherwise become durable state.
+          process_name="$(ps -p "$pid" -o comm= 2>/dev/null | sed 's/[[:space:]]*$//' || true)"
+          [[ -n "$process_name" ]] || process_name="unknown"
           elapsed_seconds="$(ps -p "$pid" -o etimes= 2>/dev/null | tr -d ' ' || true)"
           [[ "$elapsed_seconds" =~ ^[0-9]+$ ]] || elapsed_seconds=0
           repo_root=""
@@ -88,7 +109,7 @@ writeShellApplication {
             --arg project "$project" \
             --arg cwd "$cwd" \
             --arg branch "$branch" \
-            --arg command "$command" \
+            --arg command "$process_name" \
             --argjson dirty "$dirty" \
             --arg firstSeen "$first_seen" \
             --arg lastSeen "$now" \
@@ -127,13 +148,17 @@ AGENTS
         end
       ' <<<"$items")"
 
-      jq -cn \
+      local snapshot
+      snapshot="$(jq -cn \
+        --argjson schemaVersion 2 \
         --argjson count "$count" \
         --arg state "$state" \
         --arg tooltip "$tooltip" \
         --arg stateDir "$state_dir" \
         --argjson agents "$items" \
-        '{count:$count,class:$state,tooltip:$tooltip,stateDir:$stateDir,agents:$agents}'
+        '{schemaVersion:$schemaVersion,count:$count,class:$state,tooltip:$tooltip,stateDir:$stateDir,agents:$agents}')"
+      printf '%s\n' "$snapshot" > "$snapshot_file"
+      printf '%s\n' "$snapshot"
     }
 
     focus_pid() {

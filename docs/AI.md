@@ -202,11 +202,10 @@ Persistent Agent Cockpit snapshots belong under:
 
 ### Agent Cockpit collection contract
 
-Current Agent Cockpit status collection inspects live processes and Git working-tree state. The UI may refresh frequently, but that must not force every expensive process and Git probe to rerun at the same cadence.
+Current Agent Cockpit status collection inspects live processes and Git working-tree state. It writes only bounded diagnostic metadata, keeps process identity separate from raw argv, and reuses a schema-versioned status snapshot for a short bounded TTL. The UI may refresh frequently, but that must not force every expensive process and Git probe to rerun at the same cadence.
 
-Required remediation for the current short-poll implementation:
+Remaining remediation for the desktop polling path:
 
-- cache normalized backend snapshots for a bounded TTL
 - separate cheap liveness refresh from slower repository/dirty-state inspection where useful
 - prefer event-driven updates when the source already exposes them
 - make QML consume normalized state rather than independently repeating process or Git commands
