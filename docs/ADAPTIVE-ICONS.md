@@ -848,6 +848,11 @@ The exact serialization may evolve, but equivalent information must exist.
 
 Current Rust worker contract: `schemaVersion=1` requires exactly `schemaVersion`, `silhouette`, `backgroundStrategy`, `retainRaster`, `groups`, `confidence` and `notes`. OpenAI requests the strict JSON schema, while every adapter still passes through the same local validator before acceptance. `retainRaster` now selects the retained-raster versus preserved-vector path, and the validated semantic count is carried into `manifest.json`, `group.json` and static renderer metadata. The current provider response supplies a group count rather than per-layer geometry, so the worker does not invent extra artwork groups; exact geometry assignment remains a later contract revision.
 
+The current static theme compiler reads `icon.vicon/manifest.json` and each
+validated `groups/*/group.json` plus its local layers. It uses `canonical.svg`
+only when the validated package is unavailable, so semantic group/depth/material
+metadata remains the renderer input rather than decorative side data.
+
 ## local and AI reconciliation
 
 Remote output is a proposal. Before accepting it, reconcile:
