@@ -5,7 +5,7 @@ Status: **spec**
 This document is the single source of truth for Vesper Store architecture.
 It defines the target product and transaction contract. It is not proof that every capability below is implemented.
 
-Current implementation is partial: Vesper Store already has a native Qt/QML application shell and a Rust backend with catalogue/source contract plumbing. Catalogue status now rejects incomplete SQLite schemas and missing or incoherent `catalog-meta.json` sidecars, and the packaged backend checks the exact locked nixpkgs revision passed by the flake. The backend now exposes bounded local FTS5 search and the Qt/QML shell renders its result rows, while catalogue building, detail/install transactions, reconciliation, rollback and optional Flathub flow are not complete end to end yet.
+Current implementation is partial: Vesper Store already has a native Qt/QML application shell and a Rust backend with catalogue/source contract plumbing. Catalogue status now rejects incomplete SQLite schemas and missing or incoherent `catalog-meta.json` sidecars, and the packaged backend checks the exact locked nixpkgs revision passed by the flake. The backend now exposes bounded local FTS5 search, validates the Store manifest and owns the XDG state/profile/session path contract, while catalogue building, detail/install transactions, reconciliation, rollback and optional Flathub flow are not complete end to end yet.
 
 The application name is exactly `Vesper Store`.
 
@@ -331,9 +331,21 @@ Suggested state:
 ~/.local/state/vesper/store/profile
 ~/.local/state/vesper/store/generations.json
 ~/.local/state/vesper/store/transactions/
+~/.local/state/vesper/store/gcroots/
 ~/.cache/vesper/store/media/
 $XDG_RUNTIME_DIR/vesper/store.lock
 ```
+
+The Rust Store backend exposes this path contract through `vesper-store-core
+store-state` and creates the private state directories and an empty manifest
+with `vesper-store-core store-init`. `manifest-status` rejects unknown schema,
+duplicate application ids and source entries without the required package or
+Flatpak identifier.
+
+The profile's `bin` and `share` directories are the session handoff paths. The
+profile and retained generation links must still be registered as explicit Nix
+GC roots by the transaction implementation; creating a local `gcroots`
+directory alone is not a GC-root proof.
 
 The manifest is authoritative only for Store-owned selections.
 Existing packages declared by the Vesper configuration remain separate and must not be silently migrated.
