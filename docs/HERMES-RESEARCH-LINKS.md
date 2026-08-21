@@ -73,3 +73,17 @@ vesper-hermes-automations tor-fetch 'http://example.onion/path/'
 The helper validates that the URL authority itself ends in `.onion`; a clearnet URL containing `.onion` only in its path/query is rejected.
 
 Clearnet sources use normal HTTP(S). Tor is transport, not independent corroboration.
+
+## startpage consumer
+
+The local `vesper-startpage` service reads this registry without invoking Hermes
+or mutating research state. It exposes only validated onion metadata to the Tor
+panel and keeps the URL behind a POST action that launches the configured Tor
+Browser. Briefings are read separately from:
+
+```text
+~/.local/share/vesper/briefings/index.json
+```
+
+Missing or unreadable Hermes files are shown as unavailable. The startpage does
+not invent briefing, source or coverage records.
