@@ -139,7 +139,7 @@ fn task_extra(task: &str) -> String {
             source_registry_text()
         ),
         "unknown-frontier-x" => format!(
-            "Coverage budget: target about 150 distinct canonical candidates and about 12 strong deep reads. Direct X is preferred when usable; if blocked, use XCancel/Nitter-compatible mirrors through web or shell/curl. Canonicalize mirror copies back to one x.com status identity. Mirrors are transport, not corroboration.\nAdaptive source state:\n{}",
+            "Coverage budget: target about 150 distinct canonical candidates and about 12 strong deep reads. Use FxTwitter's profile/status API for X discovery and hydration. Do not substitute XCancel, Nitter or generic web/RSS mirrors. Canonicalize every result back to one x.com status identity.\nAdaptive source state:\n{}",
             source_registry_text()
         ),
         "unknown-frontier-web" => format!(
@@ -226,6 +226,9 @@ fn run_single_task(task: &str) -> Result<String, String> {
     }
     if task == "communications-radar" {
         return run_communications_radar();
+    }
+    if task == "xpatla-scan" {
+        return run("vesper-xpatla", &["scan"], None);
     }
     if !ALL_TASKS.contains(&task) || matches!(task, "vesper-health-watch" | "cron-skill-integrity-watch") {
         return Err(format!("unknown research task: {task}"));

@@ -10,9 +10,11 @@ let
   jobs = import ./hermes-jobs.nix;
   hermesAgent = import ./packages/hermes-agent.nix { inherit inputs pkgs; };
   agentMessenger = import ./packages/agent-messenger.nix { inherit pkgs home; };
+  vesperXpatla = pkgs.callPackage ./packages/vesper-xpatla.nix { };
   hermesCore = pkgs.callPackage ./packages/hermes-core.nix {
     inherit hermesAgent;
     agentMessengerRead = agentMessenger.readOnly;
+    inherit vesperXpatla;
   };
 
   researchEnv = ''
@@ -89,10 +91,12 @@ in
   home.packages = [
     hermesCore
     agentMessenger.authOnly
+    vesperXpatla
   ];
 
   home.sessionVariables = {
     VESPER_HERMES_JOB_REGISTRY = "${home}/.config/vesper/hermes-jobs.json";
+    VESPER_XPATLA_SOURCES = "${home}/.config/vesper/xpatla/sources.json";
     VESPER_REDDIT_SEEDS = "opsec,selfhosted,programming,opensource,linux,rust,golang,cybersecurity,webdev";
     VESPER_REDDIT_COMMENT_SEEDS = "MoneroMeansMoney,Monero,vibecoding,ClaudeCode,codex,opencodeCLI,opsec";
     AGENT_MESSENGER_CONFIG_DIR = "${home}/.config/agent-messenger";
@@ -108,6 +112,12 @@ in
     rm -f \
       "${home}/.hermes/scripts/morning-check-deliver.sh" \
       "${home}/.hermes/scripts/sabah-check-deliver.sh"
+  '';
+
+  home.activation.xpatlaSourceConfig = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    if [ ! -e "${home}/.config/vesper/xpatla/sources.json" ]; then
+      install -Dm644 ${./packages/xpatla-sources.example.json} "${home}/.config/vesper/xpatla/sources.json"
+    fi
   '';
 
   # Hermes remains the only recurring scheduler. Reconcile only Vesper-owned

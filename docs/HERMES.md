@@ -88,7 +88,8 @@ Daily lanes currently use a 36-hour window, communications uses a 90-minute fres
 |---|---|---|
 | `08:30` | `unknown-frontier-github` | GitHub coding-agent + Monero/privacy scout |
 | `08:35` | `unknown-frontier-reddit` | Reddit RSS/web + comment/thread scout |
-| `08:40` | `unknown-frontier-x` | X with direct/mirror fallback |
+| `08:40` | `unknown-frontier-x` | X/FxTwitter direct frontier scout |
+| every 3 min | `xpatla-scan` | dynamic Turkish news source intake through FxTwitter, SQLite state and media provenance |
 | `08:45` | `unknown-frontier-web` | clearnet + Tor/onion scout |
 | `08:50` | `free-ai-radar` | legitimate free/cheap coding-agent capability radar |
 | `09:10` | `unknown-frontier-synthesis` | scout synthesis + counter-review |
@@ -320,9 +321,10 @@ Research intake prefers deterministic RSS/API/metadata collection and normalizat
 
 ## Reddit, X and Tor
 
-Reddit and X scouts are allowed shell access because cheap RSS/mirror intake is useful before expensive deep reading. Seed communities/accounts are bootstrap hints rather than an allowlist.
-
-X mirror copies are one evidentiary identity. A mirror is transport, not corroboration.
+Reddit scouts may use bounded RSS/API intake before expensive deep reading. X
+scouts use FxTwitter's direct profile/status API and canonicalize every result
+back to its x.com status identity. Seed communities/accounts are bootstrap
+hints rather than an allowlist. X mirrors are not a fallback for this workflow.
 
 For onion pages the web scout can call:
 

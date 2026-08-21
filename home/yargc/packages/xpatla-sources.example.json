@@ -1,0 +1,30 @@
+{
+  "sources": [
+    {"handle":"bpthaber","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-aggregator","tone":"short-classic-news"}},
+    {"handle":"ZamHaberAjans","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-aggregator","tone":"fast-social-news"}},
+    {"handle":"HaberGlobal","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-broadcast","tone":"broadcast-news"}},
+    {"handle":"tv100","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-broadcast","tone":"headline-news"}},
+    {"handle":"sondakika","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-aggregator","tone":"breaking-news"}},
+    {"handle":"nowhaber","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-broadcast","tone":"assertive-headline"}},
+    {"handle":"tgrthabertv","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-broadcast","tone":"descriptive-news"}},
+    {"handle":"ahaber","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"conservative-mainstream","tone":"emphatic-news"}},
+    {"handle":"Medyascope","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"independent-digital","tone":"contextual-news"}},
+    {"handle":"halktvcomtr","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"social-democratic-opposition","tone":"political-headline"}},
+    {"handle":"tele1comtr","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"secular-opposition","tone":"assertive-political"}},
+    {"handle":"cumhuriyetgzt","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"secular-republican","tone":"formal-newspaper"}},
+    {"handle":"hurriyet","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-newspaper","tone":"general-news"}},
+    {"handle":"milliyet","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-newspaper","tone":"general-news"}},
+    {"handle":"sozcu","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"secular-opposition","tone":"sharp-headline"}},
+    {"handle":"t24comtr","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"independent-digital","tone":"contextual-news"}},
+    {"handle":"BirGun_Gazetesi","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"left-progressive","tone":"activist-newspaper"}},
+    {"handle":"evrenselgzt","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"left-labor","tone":"social-context"}},
+    {"handle":"dikencomtr","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"independent-digital","tone":"concise-analysis"}},
+    {"handle":"haberler","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-aggregator","tone":"structured-headline"}},
+    {"handle":"cnnturk","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-broadcast","tone":"broadcast-news"}},
+    {"handle":"ntv","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"mainstream-broadcast","tone":"formal-breaking"}},
+    {"handle":"trthaber","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"state-broadcaster","tone":"official-news"}},
+    {"handle":"AnadoluAjansi","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"state-news-agency","tone":"wire-service"}},
+    {"handle":"YeniSafak","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"conservative-mainstream","tone":"political-headline"}},
+    {"handle":"gercekgundem","enabled":true,"maxPosts":20,"rightsStatus":"unknown","profile":{"ideology":"independent-digital","tone":"political-news"}}
+  ]
+}

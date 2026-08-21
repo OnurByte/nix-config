@@ -12,6 +12,7 @@
   rustc,
   stdenv,
   systemd,
+  vesperXpatla,
 }:
 stdenv.mkDerivation {
   pname = "vesper-hermes-core";
@@ -47,6 +48,7 @@ stdenv.mkDerivation {
         jq
         libnotify
         systemd
+        vesperXpatla
       ]}
 
     ln -s vesper-hermes-core $out/bin/vesper-hermes

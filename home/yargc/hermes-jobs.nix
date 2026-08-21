@@ -23,7 +23,16 @@
     task = "unknown-frontier-x";
     deliver = "local";
     freshnessMinutes = 2160;
-    description = "X with direct/mirror fallback frontier scout";
+    description = "X/FxTwitter direct frontier scout";
+  };
+
+  xpatla-scan = {
+    schedule = "*/3 * * * *";
+    mode = "dispatch";
+    task = "xpatla-scan";
+    deliver = "local";
+    freshnessMinutes = 10;
+    description = "dynamic Turkish news source scan through FxTwitter";
   };
 
   unknown-frontier-web = {

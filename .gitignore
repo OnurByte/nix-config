@@ -1,6 +1,7 @@
 result
 result-*
 .direnv/
+target/
 .env
 .env.*
 !.env.example

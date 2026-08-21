@@ -10,6 +10,7 @@ pub const ALL_TASKS: &[&str] = &[
     "unknown-frontier-reddit",
     "unknown-frontier-x",
     "unknown-frontier-web",
+    "xpatla-scan",
     "unknown-frontier-synthesis",
     "frontier-daily",
     "free-ai-radar",
@@ -30,8 +31,9 @@ pub fn objective(task: &str) -> &'static str {
     match task {
         "unknown-frontier-github" => "Scout GitHub for overlooked coding-agent workflows, harnesses, MCP/skills/context-engineering techniques, and Monero/privacy engineering. Expand through repositories, issues, PRs, commits, forks, authors and organizations. Prefer working code and primary technical evidence over stars or hype.",
         "unknown-frontier-reddit" => "Scout Reddit for high-signal coding-agent and Monero/privacy techniques. Inspect niche communities and comment branches, treat central subreddits only as seeds, and verify important community claims against repositories, docs, issues, PRs, papers or other primary evidence.",
-        "unknown-frontier-x" => "Scout X/Twitter for low-attention builders and researchers around coding agents and privacy. Inspect replies, quotes, demos and linked primary artifacts. Mirrors are transport, never independent corroboration.",
+        "unknown-frontier-x" => "Scout X/Twitter for low-attention builders and researchers around coding agents and privacy through FxTwitter's direct profile/status API. Inspect replies, quotes, demos and linked primary artifacts. Do not use XCancel, Nitter or generic web/RSS mirrors.",
         "unknown-frontier-web" => "Scout clearnet and Tor/onion surfaces for coding-agent, Monero, privacy and OPSEC techniques. Use the machine Tor client for onion fetches when needed. Treat onion/community material as discovery or operational evidence and explicitly report access failures.",
+        "xpatla-scan" => "Run the local Vesper XPatla FxTwitter ingestion pass. This is a deterministic local operation, not a Hermes research prompt: scan every enabled source in the dynamic source configuration, persist post/media provenance, and report actual partial failures.",
         "unknown-frontier-synthesis" => "Synthesize the fresh GitHub, Reddit, X and web/onion scout reports. Deduplicate familiar items, counter-review strong claims, follow the best candidates to primary evidence, and rank agentic software-engineering plus Monero/privacy findings first.",
         "free-ai-radar" => "Find legitimate currently useful ways to reduce coding-agent and developer-workflow cost. Treat linux.do as a first-class discovery surface, then verify through official docs, repositories, releases or other primary sources. Reject stolen/shared credentials, mass-account abuse, payment bypasses and service-restriction evasion.",
         "agenda" => "Produce a compact current agenda biased toward coding agents/vibe coding/dev tooling and Monero/privacy. Secondary topics are Nix/Linux, Tor/onion, OPSEC, security, private communications, open source and consequential technology changes. Avoid generic benchmark chatter and filler.",
