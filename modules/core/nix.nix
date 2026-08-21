@@ -20,7 +20,6 @@ in
       auto-optimise-store = true;
       trusted-users = [
         "root"
-        "@wheel"
       ];
 
       # numtide/llm-agents.nix publishes CI-built agent packages here. Without
