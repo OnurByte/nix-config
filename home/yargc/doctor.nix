@@ -128,15 +128,18 @@ let
         record ok web "local web stack: stopped"
       fi
 
-      if [ -r /etc/vesper/restic.env ]; then
-        record ok restic "Restic backup configuration exists"
+      restic_env="''${VESPER_RESTIC_ENV_FILE:-/etc/vesper/restic.env}"
+      if [ -f "$restic_env" ]; then
+        # The normal user must not read this root-owned file. Existence is a
+        # configuration signal; repository reachability belongs to backup code.
+        record ok restic "Restic backup configuration exists (contents remain root-only)"
         if systemctl list-timers --all --no-legend 2>/dev/null | grep -q 'vesper-backup'; then
           record ok backup_timers "Vesper backup timers are present"
         else
           record warn backup_timers "Vesper backup timers are not visible"
         fi
       else
-        record warn restic "Restic is not configured yet: /etc/vesper/restic.env is missing"
+        record warn restic "Restic is not configured yet: $restic_env is missing"
       fi
 
       failed="$(systemctl --failed --no-legend --plain 2>/dev/null || true)"
