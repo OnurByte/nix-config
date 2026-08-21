@@ -8,6 +8,30 @@ let
     rev = "f6656c1256d5a8adfa37db9110046ef20bac644c";
   };
 
+  shadcnUi = builtins.fetchGit {
+    url = "https://github.com/shadcn-ui/ui.git";
+    ref = "main";
+    rev = "4e88ab81ae1d1550165db949a903c691a04f699c";
+  };
+
+  vercelAgentSkills = builtins.fetchGit {
+    url = "https://github.com/vercel-labs/agent-skills.git";
+    ref = "main";
+    rev = "b8caa260a420a73042e35521de4b5c8baf6446cc";
+  };
+
+  impeccableSkills = builtins.fetchGit {
+    url = "https://github.com/pbakaus/impeccable.git";
+    ref = "main";
+    rev = "f88b2837a7d7c3182e46307bbbb091a1ed547571";
+  };
+
+  tasteSkills = builtins.fetchGit {
+    url = "https://github.com/leonxlnx/taste-skill.git";
+    ref = "main";
+    rev = "dfb6f9f9e93a39f673b1827c0889cc28326d1800";
+  };
+
   skillSources = {
     frontend-design = "${anthropicSkills.outPath}/skills/frontend-design";
     webapp-testing = "${anthropicSkills.outPath}/skills/webapp-testing";
@@ -19,14 +43,22 @@ let
     xlsx = "${anthropicSkills.outPath}/skills/xlsx";
     pptx = "${anthropicSkills.outPath}/skills/pptx";
 
+    shadcn = "${shadcnUi.outPath}/skills/shadcn";
+    web-design-guidelines = "${vercelAgentSkills.outPath}/skills/web-design-guidelines";
+    impeccable = "${impeccableSkills.outPath}/.agent/skills/impeccable";
+    industrial-brutalist-ui = "${tasteSkills.outPath}/skills/brutalist-skill";
+
     agent-orchestration = ./skills/agent-orchestration;
     agent-operations = ./skills/agent-operations;
     external-review-handoff = ./skills/external-review-handoff;
     vesper-maintainer = ./skills/vesper-maintainer;
+    vesper-skill-authoring = ./skills/vesper-skill-authoring;
     hermes-research-radar = ./skills/hermes-research-radar;
     vesper-obsidian-second-brain = ./skills/vesper-obsidian-second-brain;
     vesper-communications-intelligence = ./skills/vesper-communications-intelligence;
     vesper-adaptive-icons = ./skills/vesper-adaptive-icons;
+    cobalt-screenprint-series = ./skills/cobalt-screenprint-series;
+    x-algorithm-news = ./skills/x-algorithm-news;
   };
 
   skillNames = builtins.attrNames skillSources;

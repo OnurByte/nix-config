@@ -12,17 +12,33 @@ Maintain the Vesper NixOS workstation from current evidence rather than stale pr
 
 1. inspect the current repository and machine state
 2. read `AGENTS.md`, `docs/README.md` and the authoritative subsystem doc
-3. distinguish implemented behavior from `partial`, `spec` and `plan` material
-4. map the physical chain involved in the symptom before inventing a behavioral theory
-5. diagnose the smallest plausible root cause
-6. patch the narrowest declarative layer that owns it
-7. run the relevant parse, evaluation, compile and build checks
-8. run `vesper-doctor --json` when the live machine is available
-9. re-read the resulting state/artifact and prove the intended postcondition
-10. report what changed and what evidence supports it
+3. before using each non-trivial tool, read its official/primary docs, built-in help or current repository source; never guess its interface or side effects
+4. distinguish implemented behavior from `partial`, `spec` and `plan` material
+5. map the physical chain involved in the symptom before inventing a behavioral theory
+6. diagnose the smallest plausible root cause
+7. patch the narrowest declarative layer that owns it
+8. run the relevant parse, evaluation, compile and build checks
+9. run `vesper-doctor --json` when the live machine is available
+10. re-read the resulting state/artifact and prove the intended postcondition
+11. report what changed and what evidence supports it
+
+## diagnosis loop
+
+For a hard bug or performance regression, establish a red-capable feedback loop before settling on a cause.
+
+1. choose the narrowest real seam that can reproduce the user's symptom
+2. run it once and capture the exact failure signal with secrets redacted
+3. minimise the inputs and keep only load-bearing steps
+4. write 3–5 ranked, falsifiable hypotheses before changing one variable
+5. instrument only the boundary that distinguishes the selected hypothesis, using a temporary unique prefix
+6. add or update a regression check at the real seam, then re-run the original scenario
+7. remove temporary probes and record missing runtime evidence when a safe loop cannot be built
+
+For workstation failures, a live service, socket, log or `vesper-doctor` result may be the red-capable signal. Do not manufacture a test fixture when the real failure path is available.
 
 ## evidence and failure rules
 
+- documented behavior is the intended contract, not proof that the current version or runtime behaves that way
 - a command printing `success`, a green service status or an API 200 is an action result, not proof of the intended outcome
 - after a mutation, re-read the version, remote object, generated artifact or effective configuration that should have changed
 - on failure, check whether a partial mutation occurred before retrying
@@ -48,6 +64,7 @@ Use `agent-operations` and its reliability reference for long-running jobs, stat
 - keep Vesper's AI control-plane boundary backend-neutral; optional orchestration backends must remain replaceable
 - do not restore removed control planes or tools because stale documentation mentions them
 - use `~/.agents/skills` as the canonical active skill tree
+- keep reusable agent-documentation guidance in `vesper-skill-authoring` instead of duplicating it here
 - Hermes may write proposed improvements to `~/.local/share/vesper/skill-drafts/`; drafts are not active skills until reviewed and promoted
 - do not duplicate architecture docs when `docs/README.md` names a canonical owner
 

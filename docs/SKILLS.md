@@ -25,16 +25,26 @@ Upstream skills:
 - `xlsx`
 - `pptx`
 
+Pinned external design skills:
+
+- `shadcn` from `shadcn-ui/ui`
+- `web-design-guidelines` from `vercel-labs/agent-skills`
+- `impeccable` from `pbakaus/impeccable` with `critique`, `bolder`, `polish` and related commands
+- `industrial-brutalist-ui` from `leonxlnx/taste-skill`
+
 Vesper-local skills:
 
 - `agent-orchestration`
 - `agent-operations`
 - `external-review-handoff`
 - `vesper-maintainer`
+- `vesper-skill-authoring`
 - `vesper-adaptive-icons`
 - `hermes-research-radar`
 - `vesper-obsidian-second-brain`
 - `vesper-communications-intelligence`
+- `cobalt-screenprint-series`
+- `x-algorithm-news`
 
 Canonical paths:
 
@@ -92,11 +102,14 @@ Use one skill for one procedural boundary.
 - `agent-orchestration` — supervisor/worker/reviewer decomposition, policy-driven model routing, isolated parallelism, evidence gates and final fan-in
 - `agent-operations` — durable execution, postcondition evidence, health/dead-man monitoring, approval/credential boundaries, deterministic pipelines, bounded QA and skill lifecycle governance
 - `external-review-handoff` — secret-safe static code snapshots for deep external review plus mandatory verification against the live repository before implementation
-- `vesper-maintainer` — repository/workstation maintenance rules
+- `vesper-maintainer` — repository/workstation maintenance rules, physical-chain diagnosis and red-capable regression loops
+- `vesper-skill-authoring` — Vesper-specific skill and agent-document authoring
 - `vesper-adaptive-icons` — adaptive icon pipeline operations governed by `docs/ADAPTIVE-ICONS.md`
 - `hermes-research-radar` — scheduled research lanes and discovery behavior
 - `vesper-communications-intelligence` — read-only messaging triage, salience, commitments, evidence-backed person/group/topic context and concrete communication-risk analysis
 - `vesper-obsidian-second-brain` — durable research/communications knowledge consolidation and skill-promotion workflow
+- `cobalt-screenprint-series` — cobalt-blue, warm-ivory and black surreal editorial screen-print image generation
+- `x-algorithm-news` — FxTwitter-only Turkish news intake, provenance-safe media selection, X algorithm signal ranking and publication reconciliation
 
 Do not duplicate repository-wide rules from `AGENTS.md` into every skill. A local skill should add workflow-specific instructions and defer to `AGENTS.md` for global guardrails.
 
@@ -285,16 +298,24 @@ Agents discover their normal compatibility paths automatically. You can also nam
 
 ```text
 use frontend-design for this page
+use shadcn for this component or shadcn/ui project
+use impeccable bolder for a stronger, less generic visual direction
+use impeccable critique for a focused UI review
+use industrial-brutalist-ui for a raw Swiss-print or CRT interface
+use web-design-guidelines for the final accessibility and interface review
 use webapp-testing to test the local app
 use mcp-builder to design this MCP server
 use agent-orchestration for this multi-part coding task
 use agent-operations for this persistent agent/job or reliability workflow
 use external-review-handoff to prepare this subsystem for a deep external audit
 use vesper-maintainer to diagnose and repair this workstation issue
+use vesper-skill-authoring when editing a Vesper skill or agent instruction document
 use vesper-adaptive-icons for adaptive icon pipeline work
 use hermes-research-radar for this scheduled research program
 use vesper-communications-intelligence to triage this read-only communications batch
 use vesper-obsidian-second-brain to consolidate durable research and communications context into Obsidian
+use cobalt-screenprint-series to generate a surreal screen-print artwork
+use x-algorithm-news for FxTwitter-only Turkish X news intake and provenance-safe media analysis
 ```
 
 Hermes may also use its approved bundled helpers directly when the task needs them:
@@ -307,7 +328,7 @@ use youtube-content to inspect this video before following its claims to primary
 
 ## update
 
-The Anthropic pin and active skill mapping live in `home/yargc/skills.nix`.
+External skill pins and the active skill mapping live in `home/yargc/skills.nix`.
 Local skills live under `home/yargc/skills/`.
 
 After changing either:

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cobalt Screenprint Series"
+  short_description: "Make surreal cobalt screen-print artworks"
+  default_prompt: "Use $cobalt-screenprint-series to generate a wide 16:9 surreal screen-print artwork from the tiny figure, staircase, or street lamp motifs."
