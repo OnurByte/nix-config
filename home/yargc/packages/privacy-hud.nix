@@ -6,6 +6,7 @@
   procps,
   psmisc,
   systemd,
+  util-linux,
   wireplumber,
   writeShellApplication,
 }:
@@ -19,11 +20,38 @@ writeShellApplication {
     procps
     psmisc
     systemd
+    util-linux
     wireplumber
   ];
 
   text = ''
     set -uo pipefail
+    umask 077
+
+    cache_is_fresh() {
+      local cache_file="$1"
+      local now="$2"
+      local ttl="$3"
+
+      [[ -r "$cache_file" ]] && jq -e \
+        --argjson now "$now" \
+        --argjson ttl "$ttl" \
+        '(.generatedAt | type == "number") and (($now - .generatedAt) >= 0) and (($now - .generatedAt) <= $ttl)' \
+        "$cache_file" >/dev/null 2>&1
+    }
+
+    refresh_cache() {
+      local cache_file="$1"
+      local temporary="$cache_file.$$"
+      if status_json >"$temporary" && jq -e 'type == "object"' "$temporary" >/dev/null 2>&1; then
+        chmod 600 -- "$temporary"
+        mv -f -- "$temporary" "$cache_file"
+        cat -- "$cache_file"
+        return 0
+      fi
+      rm -f -- "$temporary"
+      return 1
+    }
 
     status_json() {
       local tor="off"
@@ -109,12 +137,75 @@ writeShellApplication {
         --arg tooltip "$tooltip" \
         --arg textClipboard "$text_clipboard" \
         --arg imageClipboard "$image_clipboard" \
-        '{tor:$tor,mic:$mic,camera:$camera,clipboard:$clipboard,clipboardText:$textClipboard,clipboardImage:$imageClipboard,node:$node,class:$state,label:$label,tooltip:$tooltip}'
+        --argjson generatedAt "$(date +%s 2>/dev/null || echo 0)" \
+        '{tor:$tor,mic:$mic,camera:$camera,clipboard:$clipboard,clipboardText:$textClipboard,clipboardImage:$imageClipboard,node:$node,class:$state,label:$label,tooltip:$tooltip,generatedAt:$generatedAt}'
+    }
+
+    cached_status() {
+      local cache_file="$1"
+      local now="$2"
+      local ttl="$3"
+      if cache_is_fresh "$cache_file" "$now" "$ttl"; then
+        cat -- "$cache_file"
+        return 0
+      fi
+      return 1
+    }
+
+    status_cached() {
+      local cache_root="''${XDG_RUNTIME_DIR:-''${XDG_CACHE_HOME:-''${HOME:-/tmp}}}/vesper"
+      local cache_file="$cache_root/privacy-hud.json"
+      local lock_file="$cache_root/privacy-hud.lock"
+      local ttl=10
+      local now="$(date +%s 2>/dev/null || echo 0)"
+
+      if ! mkdir -p -- "$cache_root" || ! chmod 700 -- "$cache_root"; then
+        status_json
+        return
+      fi
+      if cached_status "$cache_file" "$now" "$ttl"; then
+        return 0
+      fi
+
+      local lock_fd
+      if ! exec {lock_fd}>"$lock_file"; then
+        status_json
+        return
+      fi
+      if flock -n "$lock_fd"; then
+        now="$(date +%s 2>/dev/null || echo 0)"
+        if cached_status "$cache_file" "$now" "$ttl"; then
+          flock -u "$lock_fd"
+          exec {lock_fd}>&-
+          return 0
+        fi
+        refresh_cache "$cache_file"
+        local result=$?
+        flock -u "$lock_fd"
+        exec {lock_fd}>&-
+        if [[ "$result" -eq 0 ]]; then
+          return 0
+        fi
+        status_json
+        return
+      fi
+      exec {lock_fd}>&-
+
+      # ponytail: one user-session lock, with a short wait; split locks only
+      # if concurrent HUD callers become a measured bottleneck.
+      for attempt in 1 2 3 4; do
+        sleep 0.05
+        now="$(date +%s 2>/dev/null || echo 0)"
+        if cached_status "$cache_file" "$now" "$ttl"; then
+          return 0
+        fi
+      done
+      status_json
     }
 
     case "''${1:-status}" in
       status|--json)
-        status_json
+        status_cached
         ;;
       *)
         echo "usage: vesper-privacy-hud [status]" >&2
