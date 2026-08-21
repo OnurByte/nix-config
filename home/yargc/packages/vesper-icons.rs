@@ -64,6 +64,28 @@ struct IconCandidate {
 }
 
 #[derive(Clone)]
+struct ThemeDirectory {
+    path: PathBuf,
+    size: i64,
+    scale: i64,
+    min_size: i64,
+    max_size: i64,
+    kind: String,
+}
+
+#[derive(Clone)]
+struct IconTheme {
+    inherits: Vec<String>,
+    directories: Vec<ThemeDirectory>,
+}
+
+#[derive(Clone, Default)]
+struct IconIndex {
+    candidates: BTreeMap<String, Vec<IconCandidate>>,
+    themes: BTreeMap<String, IconTheme>,
+}
+
+#[derive(Clone)]
 struct InventoryItem {
     id: String,
     desktop_path: PathBuf,
@@ -585,31 +607,182 @@ fn index_icon_tree(
     }
 }
 
-fn build_icon_index(data_dirs: &[PathBuf]) -> BTreeMap<String, Vec<IconCandidate>> {
-    let mut index = BTreeMap::<String, Vec<IconCandidate>>::new();
+fn parse_theme_index(root: &Path) -> Option<IconTheme> {
+    let content = fs::read_to_string(root.join("index.theme")).ok()?;
+    let mut section = String::new();
+    let mut inherits = Vec::new();
+    let mut directories = Vec::new();
+    let mut metadata = BTreeMap::<String, BTreeMap<String, String>>::new();
+
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line[1..line.len() - 1].to_string();
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if section == "Icon Theme" {
+            match key {
+                "Inherits" => {
+                    inherits = value
+                        .split(';')
+                        .map(str::trim)
+                        .filter(|item| !item.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect()
+                }
+                "Directories" => {
+                    directories = value
+                        .split(';')
+                        .map(str::trim)
+                        .filter(|item| !item.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect()
+                }
+                _ => {}
+            }
+        } else if section.starts_with("Directory ") {
+            metadata.entry(section[10..].to_string()).or_default().insert(key.to_string(), value.to_string());
+        } else if section != "" && section != "Icon Theme" {
+            metadata.entry(section.clone()).or_default().insert(key.to_string(), value.to_string());
+        }
+    }
+
+    let directories = directories
+        .into_iter()
+        .filter_map(|name| {
+            let values = metadata.get(&name)?;
+            let size = values.get("Size").and_then(|value| value.parse().ok()).unwrap_or(48);
+            let scale = values.get("Scale").and_then(|value| value.parse().ok()).unwrap_or(1).max(1);
+            let min_size = values.get("MinSize").and_then(|value| value.parse().ok()).unwrap_or(size);
+            let max_size = values.get("MaxSize").and_then(|value| value.parse().ok()).unwrap_or(size);
+            let path = root.join(&name);
+            path.is_dir().then_some(ThemeDirectory {
+                path,
+                size,
+                scale,
+                min_size,
+                max_size,
+                kind: values.get("Type").cloned().unwrap_or_else(|| "Threshold".to_string()),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Some(IconTheme { inherits, directories })
+}
+
+fn build_icon_index(data_dirs: &[PathBuf]) -> IconIndex {
+    let mut index = IconIndex::default();
 
     for (rank, data_dir) in data_dirs.iter().enumerate() {
+        let themes_root = data_dir.join("icons");
+        if let Ok(entries) = fs::read_dir(&themes_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                if !path.is_dir() || is_vesper_owned_source(&path) || index.themes.contains_key(name) {
+                    continue;
+                }
+                if let Some(theme) = parse_theme_index(&path) {
+                    index.themes.insert(name.to_string(), theme);
+                }
+            }
+        }
         for root in [data_dir.join("icons"), data_dir.join("pixmaps")] {
             if root.is_dir() {
-                index_icon_tree(&root, &root, rank, 0, &mut index);
+                index_icon_tree(&root, &root, rank, 0, &mut index.candidates);
             }
         }
     }
 
-    for candidates in index.values_mut() {
+    for candidates in index.candidates.values_mut() {
         candidates.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
     }
 
     index
 }
 
-fn resolve_icon(
-    icon: &str,
-    index: &BTreeMap<String, Vec<IconCandidate>>,
-) -> Option<PathBuf> {
+fn theme_chain(name: &str, index: &IconIndex, output: &mut Vec<String>, seen: &mut BTreeSet<String>) {
+    if !seen.insert(name.to_string()) {
+        return;
+    }
+    let Some(theme) = index.themes.get(name) else {
+        return;
+    };
+    output.push(name.to_string());
+    for parent in &theme.inherits {
+        theme_chain(parent, index, output, seen);
+    }
+}
+
+fn theme_file_score(directory: &ThemeDirectory, path: &Path, requested_size: i64) -> i64 {
+    let distance = (directory.size.saturating_mul(directory.scale) - requested_size).abs();
+    let covers = directory.min_size <= requested_size && requested_size <= directory.max_size;
+    let type_score: i64 = match directory.kind.to_ascii_lowercase().as_str() {
+        "scalable" if covers => 120_000,
+        "threshold" if covers => 110_000,
+        "fixed" if covers => 100_000,
+        "scalable" => 60_000,
+        _ => 40_000,
+    };
+    type_score.saturating_sub(distance.saturating_mul(100)) + icon_score(path, 0)
+}
+
+fn resolve_theme_icon(icon: &str, theme_name: &str, index: &IconIndex) -> Option<PathBuf> {
+    let theme = index.themes.get(theme_name)?;
+    let mut best = None::<(i64, PathBuf)>;
+    let direct = Path::new(icon);
+    for directory in &theme.directories {
+        let mut paths = Vec::new();
+        let direct_path = directory.path.join(direct);
+        if direct_path.is_file() {
+            paths.push(direct_path);
+        } else if direct.extension().is_none() {
+            for extension in ["svg", "svgz", "png", "webp", "jpg", "jpeg", "ico", "xpm"] {
+                let path = directory.path.join(format!("{icon}.{extension}"));
+                if path.is_file() {
+                    paths.push(path);
+                }
+            }
+        }
+        for path in paths {
+            if is_vesper_owned_source(&path) {
+                continue;
+            }
+            let score = theme_file_score(directory, &path, 48);
+            if best.as_ref().map(|(old, _)| score > *old).unwrap_or(true) {
+                best = Some((score, path));
+            }
+        }
+    }
+    best.map(|(_, path)| path)
+}
+
+fn resolve_icon_with_theme(icon: &str, requested_theme: &str, index: &IconIndex) -> Option<PathBuf> {
     let path = PathBuf::from(icon);
     if path.is_absolute() && path.is_file() && !is_vesper_owned_source(&path) {
         return Some(path);
+    }
+
+    let mut chain = Vec::new();
+    let mut seen = BTreeSet::new();
+    theme_chain(requested_theme, index, &mut chain, &mut seen);
+    if requested_theme != "hicolor" {
+        theme_chain("hicolor", index, &mut chain, &mut seen);
+    }
+    for theme in chain {
+        if let Some(path) = resolve_theme_icon(icon, &theme, index) {
+            return Some(path);
+        }
     }
 
     let stem = Path::new(icon)
@@ -617,9 +790,17 @@ fn resolve_icon(
         .and_then(|stem| stem.to_str())
         .unwrap_or(icon);
     index
+        .candidates
         .get(stem)
         .and_then(|candidates| candidates.first())
         .map(|candidate| candidate.path.clone())
+}
+
+fn resolve_icon(icon: &str, index: &IconIndex) -> Option<PathBuf> {
+    let requested_theme = env::var("XDG_ICON_THEME")
+        .or_else(|_| env::var("GTK_ICON_THEME"))
+        .unwrap_or_else(|_| "hicolor".to_string());
+    resolve_icon_with_theme(icon, &requested_theme, index)
 }
 
 fn xml_tag_values(content: &str, tag: &str) -> Vec<(String, String)> {
@@ -2208,7 +2389,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{unsafe_svg_reason, vicon_static_svg};
+    use super::{build_icon_index, resolve_icon_with_theme, unsafe_svg_reason, vicon_static_svg};
     use std::fs;
 
     #[test]
@@ -2267,6 +2448,46 @@ mod tests {
         )
         .unwrap();
         assert_ne!(rendered, vicon_static_svg(&root).unwrap());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn theme_lookup_uses_size_and_inheritance() {
+        let root = std::env::temp_dir().join(format!(
+            "vesper-icon-theme-test-{}",
+            std::process::id()
+        ));
+        let share = root.join("share");
+        let brand = share.join("icons/brand");
+        let hicolor = share.join("icons/hicolor");
+        fs::create_dir_all(brand.join("32x32/apps")).unwrap();
+        fs::create_dir_all(brand.join("24x24@2/apps")).unwrap();
+        fs::create_dir_all(brand.join("48x48/apps")).unwrap();
+        fs::create_dir_all(hicolor.join("48x48/apps")).unwrap();
+        fs::write(
+            brand.join("index.theme"),
+            "[Icon Theme]\nInherits = hicolor\nDirectories = 32x32/apps; 24x24@2/apps; 48x48/apps\n\n[32x32/apps]\nSize=32\nType=Fixed\n\n[24x24@2/apps]\nSize=24\nScale=2\nType=Fixed\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
+        )
+        .unwrap();
+        fs::write(
+            hicolor.join("index.theme"),
+            "[Icon Theme]\nDirectories=48x48/apps\n\n[48x48/apps]\nSize=48\nType=Fixed\n",
+        )
+        .unwrap();
+        fs::write(brand.join("32x32/apps/example.png"), b"fixture").unwrap();
+        fs::write(brand.join("48x48/apps/example.png"), b"fixture").unwrap();
+        fs::write(brand.join("32x32/apps/scaled.png"), b"fixture").unwrap();
+        fs::write(brand.join("24x24@2/apps/scaled.png"), b"fixture").unwrap();
+        fs::write(hicolor.join("48x48/apps/fallback.png"), b"fixture").unwrap();
+
+        let index = build_icon_index(&[share]);
+        let chosen = resolve_icon_with_theme("example", "brand", &index).unwrap();
+        assert!(chosen.ends_with("48x48/apps/example.png"));
+        let scaled = resolve_icon_with_theme("scaled", "brand", &index).unwrap();
+        assert!(scaled.ends_with("24x24@2/apps/scaled.png"));
+        let inherited = resolve_icon_with_theme("fallback", "brand", &index).unwrap();
+        assert!(inherited.ends_with("hicolor/48x48/apps/fallback.png"));
+
         let _ = fs::remove_dir_all(root);
     }
 }

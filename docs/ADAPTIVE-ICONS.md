@@ -124,6 +124,8 @@ For every effective `.desktop` entry:
 
 Do not guess an icon from display name when the desktop entry provides resolvable identity.
 
+The Rust resolver reads packaged `index.theme` metadata, follows the selected theme's inheritance chain, prefers a matching 48-pixel directory and falls back through `hicolor` before the global candidate scan. Vesper-owned generated theme roots are excluded. Activated desktop proof remains pending.
+
 ## source resolver and recovery chain
 
 A broken `Icon=` reference must not immediately make an application permanently unadaptable.
