@@ -35,11 +35,11 @@ Remaining operational rules:
 
 ## airplane mode
 
-Current airplane mode toggles NetworkManager radios and Bluetooth together, but the implementation does not yet preserve the pre-airplane radio state and the displayed state does not model WWAN separately.
+Airplane mode now captures Wi-Fi, WWAN and Bluetooth state under the user runtime directory, disables each available radio explicitly and restores the captured state on exit. The displayed network state includes WWAN and records whether a Bluetooth controller is available. Live hardware round-trip proof is still pending.
 
-Required remediation:
+Remaining operational rules:
 
-- capture Wi-Fi, WWAN and Bluetooth state before entering airplane mode
+- keep the captured state runtime-only
 - disable the intended radios and report failures instead of silently ignoring them
 - on exit restore the captured state rather than blindly turning every radio on
 - include WWAN in airplane truth when the hardware/backend exposes it

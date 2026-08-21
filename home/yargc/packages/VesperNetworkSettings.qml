@@ -12,7 +12,7 @@ ColumnLayout {
     id: root
 
     property var nState
-    property var net: ({ airplane: false, wifi: false, bluetooth: false, connection: "", zapret: false, proxy: false })
+    property var net: ({ airplane: false, wifi: false, wwan: false, bluetooth: false, connection: "", zapret: false, proxy: false })
     property string qrPath: ""
     property string errorText: ""
 
@@ -81,7 +81,7 @@ ColumnLayout {
     ToggleRow {
         first: true
         text: qsTr("Airplane mode")
-        subtext: qsTr("turn Wi-Fi and Bluetooth radios off together")
+        subtext: qsTr("turn Wi-Fi, WWAN and Bluetooth radios off together")
         checked: root.net.airplane
         disabled: airplane.running
         onToggled: {

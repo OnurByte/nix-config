@@ -459,14 +459,41 @@ fn ai_status() {
     );
 }
 
-fn radio_status() -> (bool, bool) {
-    let wifi = output("nmcli", &["radio", "wifi"])
-        .map(|value| value == "enabled")
-        .unwrap_or(false);
-    let bluetooth = output("bluetoothctl", &["show"])
-        .map(|value| value.lines().any(|line| line.trim() == "Powered: yes"))
-        .unwrap_or(false);
-    (wifi, bluetooth)
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+struct RadioState {
+    wifi: bool,
+    wwan: bool,
+    bluetooth: Option<bool>,
+}
+
+fn nm_radio_state(radio: &str) -> Result<bool, String> {
+    match output("nmcli", &["radio", radio])?.as_str() {
+        "enabled" => Ok(true),
+        "disabled" => Ok(false),
+        value => Err(format!("NetworkManager returned an unknown {radio} state: {value}")),
+    }
+}
+
+fn bluetooth_power_state() -> Result<Option<bool>, String> {
+    let output = output("bluetoothctl", &["show"])?;
+    for line in output.lines() {
+        if let Some(value) = line.trim().strip_prefix("Powered: ") {
+            return match value {
+                "yes" => Ok(Some(true)),
+                "no" => Ok(Some(false)),
+                value => Err(format!("bluetoothctl returned an unknown power state: {value}")),
+            };
+        }
+    }
+    Ok(None)
+}
+
+fn radio_state() -> Result<RadioState, String> {
+    Ok(RadioState {
+        wifi: nm_radio_state("wifi")?,
+        wwan: nm_radio_state("wwan")?,
+        bluetooth: bluetooth_power_state()?,
+    })
 }
 
 fn active_connection() -> Option<String> {
@@ -482,16 +509,20 @@ fn active_connection() -> Option<String> {
 }
 
 fn network_status() {
-    let (wifi, bluetooth) = radio_status();
+    let radios = radio_state().unwrap_or_default();
+    let wifi = radios.wifi;
+    let bluetooth = radios.bluetooth.unwrap_or(false);
     let connection = active_connection().unwrap_or_default();
     let zapret = success("systemctl", &["is-active", "--quiet", "zapret2.service"])
         || success("systemctl", &["is-active", "--quiet", "zapret2"]);
     let proxy = proxy_environment_path().is_file();
     println!(
-        "{{\"airplane\":{},\"wifi\":{},\"bluetooth\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{}}}",
-        if !wifi && !bluetooth { "true" } else { "false" },
+        "{{\"airplane\":{},\"wifi\":{},\"wwan\":{},\"bluetooth\":{},\"bluetoothAvailable\":{},\"connection\":\"{}\",\"zapret\":{},\"proxy\":{}}}",
+        if airplane_state_path().is_file() { "true" } else { "false" },
         if wifi { "true" } else { "false" },
+        if radios.wwan { "true" } else { "false" },
         if bluetooth { "true" } else { "false" },
+        if radios.bluetooth.is_some() { "true" } else { "false" },
         json_escape(&connection),
         if zapret { "true" } else { "false" },
         if proxy { "true" } else { "false" }
@@ -499,17 +530,101 @@ fn network_status() {
 }
 
 fn airplane(enabled: bool) -> Result<(), String> {
-    let radio = if enabled { "off" } else { "on" };
-    let bt = if enabled { "off" } else { "on" };
-    if !success("nmcli", &["radio", "all", radio]) {
-        return Err("NetworkManager rejected radio change".to_string());
+    let state_path = airplane_state_path();
+    if enabled {
+        if state_path.is_file() {
+            return Err("airplane mode is already enabled".to_string());
+        }
+        let state = radio_state()?;
+        write_airplane_state(state)?;
+        set_nm_radio("wifi", false)?;
+        set_nm_radio("wwan", false)?;
+        if state.bluetooth.is_some() {
+            set_bluetooth_power(false)?;
+        }
+        Ok(())
+    } else {
+        let state = read_airplane_state()?;
+        set_nm_radio("wifi", state.wifi)?;
+        set_nm_radio("wwan", state.wwan)?;
+        if let Some(powered) = state.bluetooth {
+            set_bluetooth_power(powered)?;
+        }
+        match fs::remove_file(state_path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
     }
-    let _ = Command::new("bluetoothctl")
-        .args(["power", bt])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-    Ok(())
+}
+
+fn set_nm_radio(radio: &str, enabled: bool) -> Result<(), String> {
+    let value = if enabled { "on" } else { "off" };
+    if success("nmcli", &["radio", radio, value]) {
+        Ok(())
+    } else {
+        Err(format!("NetworkManager rejected {radio} radio change"))
+    }
+}
+
+fn set_bluetooth_power(enabled: bool) -> Result<(), String> {
+    let value = if enabled { "on" } else { "off" };
+    if success("bluetoothctl", &["power", value]) {
+        Ok(())
+    } else {
+        Err("bluetoothctl rejected the power change".to_string())
+    }
+}
+
+fn airplane_state_path() -> PathBuf {
+    runtime_root().join("airplane-state")
+}
+
+fn write_airplane_state(state: RadioState) -> Result<(), String> {
+    let bluetooth = match state.bluetooth {
+        Some(true) => "on",
+        Some(false) => "off",
+        None => "unavailable",
+    };
+    write_atomic(
+        &airplane_state_path(),
+        &format!("wifi={}\nwwan={}\nbluetooth={bluetooth}\n", if state.wifi { "on" } else { "off" }, if state.wwan { "on" } else { "off" }),
+    )
+}
+
+fn read_airplane_state() -> Result<RadioState, String> {
+    let content = fs::read_to_string(airplane_state_path())
+        .map_err(|error| format!("airplane state is unavailable: {error}"))?;
+    let mut wifi = None;
+    let mut wwan = None;
+    let mut bluetooth = None;
+    for line in content.lines() {
+        let Some((key, value)) = line.split_once('=') else { continue };
+        match key {
+            "wifi" => wifi = Some(parse_radio_state(value)?),
+            "wwan" => wwan = Some(parse_radio_state(value)?),
+            "bluetooth" => bluetooth = match value {
+                "on" => Some(Some(true)),
+                "off" => Some(Some(false)),
+                "unavailable" => Some(None),
+                value => return Err(format!("invalid saved Bluetooth state: {value}")),
+            },
+            _ => {}
+        }
+    }
+    Ok(RadioState {
+        wifi: wifi.ok_or("saved Wi-Fi state is missing")?,
+        wwan: wwan.ok_or("saved WWAN state is missing")?,
+        bluetooth: bluetooth.ok_or("saved Bluetooth state is missing")?,
+    })
+}
+
+fn parse_radio_state(value: &str) -> Result<bool, String> {
+    match value {
+        "on" => Ok(true),
+        "off" => Ok(false),
+        value => Err(format!("invalid saved radio state: {value}")),
+    }
 }
 
 fn wifi_qr() -> Result<PathBuf, String> {
@@ -1031,7 +1146,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::session_allows_wellbeing;
+    use super::{airplane_state_path, read_airplane_state, session_allows_wellbeing, write_airplane_state, RadioState};
+    use std::env;
+    use std::fs;
 
     #[test]
     fn wellbeing_requires_an_explicit_unlocked_active_session() {
@@ -1048,5 +1165,18 @@ mod tests {
             Some(false)
         );
         assert_eq!(session_allows_wellbeing("IdleHint=no\n"), None);
+    }
+
+    #[test]
+    fn airplane_state_round_trip_preserves_wwan_and_optional_bluetooth() {
+        let runtime = env::temp_dir().join(format!("vesper-control-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&runtime);
+        env::set_var("XDG_RUNTIME_DIR", &runtime);
+        let state = RadioState { wifi: true, wwan: false, bluetooth: Some(true) };
+        write_airplane_state(state).expect("save airplane state");
+        assert_eq!(read_airplane_state().expect("load airplane state"), state);
+        fs::remove_file(airplane_state_path()).expect("remove airplane state");
+        let _ = fs::remove_dir_all(runtime.join("vesper"));
+        let _ = fs::remove_dir_all(runtime);
     }
 }
